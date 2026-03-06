@@ -6,9 +6,10 @@ interface IssueCardProps {
   index: number;
   agents: AgentPreset[];
   onDelete: (id: string) => void;
+  onTerminalClick?: (issueId: string) => void;
 }
 
-export function IssueCard({ issue, index, agents, onDelete }: IssueCardProps) {
+export function IssueCard({ issue, index, agents, onDelete, onTerminalClick }: IssueCardProps) {
   const agent = agents.find((a) => a.id === issue.agent);
 
   return (
@@ -43,9 +44,16 @@ export function IssueCard({ issue, index, agents, onDelete }: IssueCardProps) {
               </span>
             )}
             {issue.terminalId && (
-              <span className="issue-card-terminal" title="Terminal active">
+              <button
+                className="issue-card-terminal-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTerminalClick?.(issue.id);
+                }}
+                title="Open terminal"
+              >
                 ▸ active
-              </span>
+              </button>
             )}
             {issue.branch && (
               <span className="issue-card-branch" title={issue.branch}>

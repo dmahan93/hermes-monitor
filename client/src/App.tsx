@@ -1,7 +1,8 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
 import { TerminalGrid } from './components/TerminalGrid';
 import { KanbanBoard } from './components/KanbanBoard';
+import { TaskTerminalPane } from './components/TaskTerminalPane';
 import { PRList } from './components/PRList';
 import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
@@ -24,8 +25,22 @@ export default function App() {
   const { prs, addComment, setVerdict, mergePR } = usePRs(subscribe);
   const agents = useAgents();
   const [view, setView] = useState<ViewMode>('kanban');
+  const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
 
-  // Refetch terminals when issues or PRs change (status changes can spawn/kill terminals)
+  // Get the expanded issue for the terminal pane
+  const expandedIssue = useMemo(() => {
+    if (!expandedIssueId) return null;
+    return issues.find((i) => i.id === expandedIssueId) || null;
+  }, [expandedIssueId, issues]);
+
+  // Auto-close pane if issue loses its terminal
+  useEffect(() => {
+    if (expandedIssue && !expandedIssue.terminalId) {
+      setExpandedIssueId(null);
+    }
+  }, [expandedIssue]);
+
+  // Refetch terminals when issues or PRs change
   useEffect(() => {
     const unsub = subscribe((msg) => {
       if (msg.type === 'issue:updated' || msg.type === 'issue:deleted' ||
@@ -36,13 +51,8 @@ export default function App() {
     return unsub;
   }, [subscribe, refetchTerminals]);
 
-  const handleAddTerminal = useCallback(() => {
-    addTerminal();
-  }, [addTerminal]);
-
-  const handleCloseTerminal = useCallback((id: string) => {
-    removeTerminal(id);
-  }, [removeTerminal]);
+  const handleAddTerminal = useCallback(() => { addTerminal(); }, [addTerminal]);
+  const handleCloseTerminal = useCallback((id: string) => { removeTerminal(id); }, [removeTerminal]);
 
   const handleCreateIssue = useCallback((title: string, description: string, agent: string, command: string, branch: string) => {
     createIssue(title, description || undefined, agent || undefined, command || undefined, branch || undefined);
@@ -54,9 +64,14 @@ export default function App() {
   }, [changeStatus, refetchTerminals]);
 
   const handleDeleteIssue = useCallback(async (id: string) => {
+    if (expandedIssueId === id) setExpandedIssueId(null);
     await deleteIssue(id);
     refetchTerminals();
-  }, [deleteIssue, refetchTerminals]);
+  }, [deleteIssue, refetchTerminals, expandedIssueId]);
+
+  const handleTerminalClick = useCallback((issueId: string) => {
+    setExpandedIssueId((prev) => prev === issueId ? null : issueId);
+  }, []);
 
   if (loading) {
     return (
@@ -65,6 +80,8 @@ export default function App() {
       </div>
     );
   }
+
+  const showTaskTerminal = view === 'kanban' && expandedIssue && expandedIssue.terminalId;
 
   return (
     <div className="app">
@@ -77,7 +94,7 @@ export default function App() {
         <ViewSwitcher mode={view} onChange={setView} prCount={prs.length} />
       </Header>
       <main className="main">
-        {/* All views stay mounted — hidden with visibility to preserve xterm state */}
+        {/* Terminal grid — always mounted, visibility toggled */}
         <div className={`view-panel ${view === 'terminals' ? 'view-active' : 'view-hidden'}`}>
           <TerminalGrid
             terminals={terminals}
@@ -88,15 +105,34 @@ export default function App() {
             onClose={handleCloseTerminal}
           />
         </div>
+
+        {/* Kanban — with optional split terminal pane */}
         <div className={`view-panel ${view === 'kanban' ? 'view-active' : 'view-hidden'}`}>
-          <KanbanBoard
-            issues={issues}
-            agents={agents}
-            onStatusChange={handleStatusChange}
-            onCreateIssue={handleCreateIssue}
-            onDeleteIssue={handleDeleteIssue}
-          />
+          <div className={`kanban-split ${showTaskTerminal ? 'split-open' : ''}`}>
+            <div className="kanban-split-left">
+              <KanbanBoard
+                issues={issues}
+                agents={agents}
+                onStatusChange={handleStatusChange}
+                onCreateIssue={handleCreateIssue}
+                onDeleteIssue={handleDeleteIssue}
+                onTerminalClick={handleTerminalClick}
+              />
+            </div>
+            {showTaskTerminal && (
+              <div className="kanban-split-right">
+                <TaskTerminalPane
+                  issue={expandedIssue}
+                  send={send}
+                  subscribe={subscribe}
+                  onMinimize={() => setExpandedIssueId(null)}
+                />
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* PRs */}
         <div className={`view-panel ${view === 'prs' ? 'view-active' : 'view-hidden'}`}>
           <PRList
             prs={prs}
