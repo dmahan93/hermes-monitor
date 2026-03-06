@@ -70,6 +70,10 @@ function DiffTable({ diff, loading }: { diff: string; loading?: boolean }) {
     return <div className="diff-loading">loading diff...</div>;
   }
 
+  if (!diff || parsed.length === 0) {
+    return <div className="diff-viewer-empty">No changes detected.</div>;
+  }
+
   return (
     <table className="diff-table">
       <tbody>

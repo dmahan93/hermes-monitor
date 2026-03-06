@@ -30,7 +30,15 @@ export default function App() {
   const { prs, addComment, setVerdict, mergePR, refetch: refetchPRs } = usePRs(subscribe);
   const agents = useAgents();
   const gitGraph = useGitGraph();
-  const [gitPanelOpen, setGitPanelOpen] = useState(true);
+  const [gitPanelOpen, setGitPanelOpen] = useState(() => {
+    const stored = localStorage.getItem('hermes:gitPanelOpen');
+    return stored !== null ? stored === 'true' : true;
+  });
+
+  // Persist sidebar state
+  useEffect(() => {
+    localStorage.setItem('hermes:gitPanelOpen', String(gitPanelOpen));
+  }, [gitPanelOpen]);
   const [view, setView] = useState<ViewMode>('kanban');
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [termViewAgentId, setTermViewAgentId] = useState<string | null>(null);

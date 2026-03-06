@@ -1,6 +1,9 @@
 import { Router } from 'express';
-import { execSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { config, isGitRepo } from './config.js';
+
+const execFileAsync = promisify(execFile);
 
 export interface GitCommit {
   hash: string;
@@ -19,17 +22,37 @@ export interface GitFileChange {
   deletions: number;
 }
 
-function git(args: string, cwd?: string): string {
-  return execSync(`git ${args}`, {
-    cwd: cwd || config.repoPath,
-    stdio: 'pipe',
-    maxBuffer: 10 * 1024 * 1024,
-  }).toString();
+// Input validation — strict patterns to prevent injection
+const SHA_RE = /^[a-f0-9]{4,40}$/i;
+const BRANCH_RE = /^[a-zA-Z0-9._\/-]+$/;
+// File paths: no NUL, no ".." traversal
+const FILE_RE = /^[^\x00]+$/;
+
+function validateSha(sha: string): boolean {
+  return SHA_RE.test(sha);
 }
 
-function parseLogLine(line: string): GitCommit | null {
-  // format: hash|shortHash|message|author|date|parents|refs
-  const parts = line.split('|SEP|');
+function validateBranch(branch: string): boolean {
+  return BRANCH_RE.test(branch) && !branch.includes('..');
+}
+
+function validateFilePath(path: string): boolean {
+  return FILE_RE.test(path) && !path.includes('..');
+}
+
+async function git(args: string[], cwd?: string): Promise<string> {
+  const { stdout } = await execFileAsync('git', args, {
+    cwd: cwd || config.repoPath,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  return stdout;
+}
+
+// NUL byte separator — guaranteed not to appear in git format fields
+const SEP = '\x00';
+
+export function parseLogLine(line: string): GitCommit | null {
+  const parts = line.split(SEP);
   if (parts.length < 5) return null;
   return {
     hash: parts[0],
@@ -46,7 +69,7 @@ export function createGitApiRouter(): Router {
   const router = Router();
 
   // GET /api/git/log — returns commit graph for the repo
-  router.get('/git/log', (req, res) => {
+  router.get('/git/log', async (req, res) => {
     if (!isGitRepo(config.repoPath)) {
       res.status(400).json({ error: 'Not a git repo' });
       return;
@@ -55,12 +78,22 @@ export function createGitApiRouter(): Router {
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
     const branch = (req.query.branch as string) || '--all';
 
+    // Validate branch if not the default --all flag
+    if (branch !== '--all' && !validateBranch(branch)) {
+      res.status(400).json({ error: 'Invalid branch name' });
+      return;
+    }
+
     try {
-      const format = '%H|SEP|%h|SEP|%s|SEP|%an|SEP|%cr|SEP|%P|SEP|%D';
-      const branchArg = branch === '--all' ? '--all' : branch;
-      const raw = git(
-        `log ${branchArg} --topo-order -n ${limit} --format="${format}"`
-      );
+      const format = `%H${SEP}%h${SEP}%s${SEP}%an${SEP}%cr${SEP}%P${SEP}%D`;
+      const args = ['log', '--topo-order', '-n', String(limit), `--format=${format}`];
+      if (branch === '--all') {
+        args.push('--all');
+      } else {
+        args.push(branch);
+      }
+
+      const raw = await git(args);
 
       const commits = raw
         .trim()
@@ -79,21 +112,25 @@ export function createGitApiRouter(): Router {
   });
 
   // GET /api/git/show/:sha — files changed in a commit
-  router.get('/git/show/:sha', (req, res) => {
+  router.get('/git/show/:sha', async (req, res) => {
     if (!isGitRepo(config.repoPath)) {
       res.status(400).json({ error: 'Not a git repo' });
       return;
     }
 
+    const sha = req.params.sha;
+    if (!validateSha(sha)) {
+      res.status(400).json({ error: 'Invalid SHA' });
+      return;
+    }
+
     try {
-      const sha = req.params.sha;
       // Get file changes with stats
-      const raw = git(`show --stat --name-status --format="" ${sha}`);
+      const raw = await git(['show', '--stat', '--name-status', '--format=', sha]);
       const lines = raw.trim().split('\n').filter(Boolean);
 
       const files: GitFileChange[] = [];
       // name-status lines come after stat lines
-      // Find where name-status starts (lines with tab-separated status + path)
       for (const line of lines) {
         const match = line.match(/^([AMDRCTU])\t(.+)$/);
         if (match) {
@@ -108,7 +145,7 @@ export function createGitApiRouter(): Router {
 
       // Get numstat for additions/deletions
       try {
-        const numstat = git(`show --numstat --format="" ${sha}`);
+        const numstat = await git(['show', '--numstat', '--format=', sha]);
         for (const line of numstat.trim().split('\n').filter(Boolean)) {
           const parts = line.split('\t');
           if (parts.length >= 3) {
@@ -130,21 +167,30 @@ export function createGitApiRouter(): Router {
   });
 
   // GET /api/git/diff/:sha — full diff for a commit
-  router.get('/git/diff/:sha', (req, res) => {
+  router.get('/git/diff/:sha', async (req, res) => {
     if (!isGitRepo(config.repoPath)) {
       res.status(400).json({ error: 'Not a git repo' });
       return;
     }
 
-    try {
-      const sha = req.params.sha;
-      const filePath = req.query.file as string | undefined;
+    const sha = req.params.sha;
+    if (!validateSha(sha)) {
+      res.status(400).json({ error: 'Invalid SHA' });
+      return;
+    }
 
+    const filePath = req.query.file as string | undefined;
+    if (filePath && !validateFilePath(filePath)) {
+      res.status(400).json({ error: 'Invalid file path' });
+      return;
+    }
+
+    try {
       let diff: string;
       if (filePath) {
-        diff = git(`show --format="" ${sha} -- "${filePath}"`);
+        diff = await git(['show', '--format=', sha, '--', filePath]);
       } else {
-        diff = git(`show --format="" ${sha}`);
+        diff = await git(['show', '--format=', sha]);
       }
 
       res.json({ sha, file: filePath || null, diff });
@@ -154,14 +200,14 @@ export function createGitApiRouter(): Router {
   });
 
   // GET /api/git/branches — list branches
-  router.get('/git/branches', (_req, res) => {
+  router.get('/git/branches', async (_req, res) => {
     if (!isGitRepo(config.repoPath)) {
       res.status(400).json({ error: 'Not a git repo' });
       return;
     }
 
     try {
-      const raw = git('branch -a --format="%(refname:short)|%(HEAD)"');
+      const raw = await git(['branch', '-a', '--format=%(refname:short)|%(HEAD)']);
       const branches = raw
         .trim()
         .split('\n')
@@ -180,19 +226,19 @@ export function createGitApiRouter(): Router {
 }
 
 // Build graph lanes for rendering a visual commit graph
-interface GraphNode {
+export interface GraphNode {
   hash: string;
   col: number;       // which column (lane) this commit is in
   lines: GraphLine[]; // lines connecting to children/parents
 }
 
-interface GraphLine {
+export interface GraphLine {
   fromCol: number;
   toCol: number;
   type: 'straight' | 'merge-left' | 'merge-right' | 'branch-left' | 'branch-right';
 }
 
-function buildGraphLanes(commits: GitCommit[]): GraphNode[] {
+export function buildGraphLanes(commits: GitCommit[]): GraphNode[] {
   const nodes: GraphNode[] = [];
   // Active lanes: each lane tracks a commit hash it's "expecting"
   let lanes: (string | null)[] = [];

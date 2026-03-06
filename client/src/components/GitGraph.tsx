@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useMemo } from 'react';
 import type { GitCommit, GraphNode, GitFileChange } from '../hooks/useGitGraph';
 
 interface GitGraphProps {
@@ -60,17 +60,30 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
           );
         }
 
-        // Curved merge/branch lines
-        const midY = cy;
+        // Curved merge/branch lines:
+        // Draw from the node (mid-height) curving down to the target lane at the bottom.
+        // Also draw a straight segment from the top to the node for the incoming lane.
         return (
-          <path
-            key={i}
-            d={`M ${x1} ${midY} C ${x1} ${ROW_H}, ${x2} ${midY}, ${x2} ${ROW_H}`}
-            stroke={color}
-            strokeWidth={1.5}
-            fill="none"
-            opacity={0.6}
-          />
+          <g key={i}>
+            {/* Straight segment from top to node center on the source lane */}
+            <line
+              x1={x1}
+              y1={0}
+              x2={x1}
+              y2={cy}
+              stroke={color}
+              strokeWidth={1.5}
+              opacity={0.6}
+            />
+            {/* Curve from node center on source lane to bottom of target lane */}
+            <path
+              d={`M ${x1} ${cy} C ${x1} ${ROW_H * 0.75}, ${x2} ${ROW_H * 0.25}, ${x2} ${ROW_H}`}
+              stroke={laneColor(line.toCol)}
+              strokeWidth={1.5}
+              fill="none"
+              opacity={0.6}
+            />
+          </g>
         );
       })}
 
@@ -118,19 +131,16 @@ export function GitGraph({
   onSelectCommit,
   onFileClick,
 }: GitGraphProps) {
-  const maxCols = graph.reduce((max, n) => {
-    const lineCols = n.lines.reduce(
-      (m, l) => Math.max(m, l.fromCol, l.toCol),
-      0
-    );
-    return Math.max(max, n.col, lineCols);
-  }, 0);
-
-  const handleCommitClick = useCallback(
-    (sha: string) => {
-      onSelectCommit(sha);
-    },
-    [onSelectCommit]
+  const maxCols = useMemo(
+    () =>
+      graph.reduce((max, n) => {
+        const lineCols = n.lines.reduce(
+          (m, l) => Math.max(m, l.fromCol, l.toCol),
+          0
+        );
+        return Math.max(max, n.col, lineCols);
+      }, 0),
+    [graph]
   );
 
   if (loading) {
@@ -164,7 +174,7 @@ export function GitGraph({
             <div key={commit.hash}>
               <button
                 className={`git-graph-row ${isSelected ? 'git-graph-row-selected' : ''}`}
-                onClick={() => handleCommitClick(commit.hash)}
+                onClick={() => onSelectCommit(commit.hash)}
                 title={`${commit.hash}\n${commit.author}\n${commit.date}`}
               >
                 {node && <GraphSvg node={node} maxCols={maxCols} />}

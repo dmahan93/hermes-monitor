@@ -1654,9 +1654,9 @@ body {
 }
 
 .git-graph-open {
-  width: 15%;
-  max-width: 15vw;
+  width: 15vw;
   min-width: 180px;
+  max-width: 320px;
 }
 
 .git-graph-closed {
