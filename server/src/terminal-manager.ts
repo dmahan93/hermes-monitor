@@ -22,7 +22,10 @@ function stripAnsi(str: string): string {
     .replace(/\r/g, '');
 }
 
-// Patterns that strongly indicate the terminal is awaiting user input
+// Patterns that strongly indicate the terminal is awaiting user input.
+// Loose patterns are anchored to require prompt-like endings (?, :, ], ...)
+// to avoid false positives on log output / prose that happens to contain
+// these phrases mid-sentence.
 const PROMPT_PATTERNS: RegExp[] = [
   /\[y(?:es)?\/n(?:o)?\]/i,           // [Y/n], [y/N], [yes/no]
   /\(y(?:es)?\/n(?:o)?\)/i,           // (y/n), (yes/no)
@@ -31,14 +34,14 @@ const PROMPT_PATTERNS: RegExp[] = [
   /\bconfirm\b.*:\s*$/i,              // Confirm:, Please confirm:
   /continue\s*\?\s*(\[.*\])?\s*$/i,   // Continue? [Y/n]
   /proceed\s*\?\s*(\[.*\])?\s*$/i,    // Proceed? [Y/n]
-  /press enter/i,                      // Press Enter to continue
-  /press any key/i,                    // Press any key
-  /are you sure/i,                     // Are you sure?
+  /press enter\b.*[.:]?\s*$/i,         // Press Enter to continue... (anchored)
+  /press any key\b.*[.:]?\s*$/i,       // Press any key to exit (anchored)
+  /are you sure\b.*[?:]\s*$/i,         // Are you sure? (require ? or : at end)
   /\(yes\/no(?:\/\[fingerprint\])?\)/i, // SSH: (yes/no/[fingerprint])
-  /overwrite.*\?/i,                    // overwrite file.txt? [y/n]
-  /do you want to continue/i,         // Do you want to continue?
+  /overwrite\b.*[?:]\s*$/i,            // overwrite file.txt? (require ? or : at end)
+  /do you want to continue\b.*[?]\s*$/i, // Do you want to continue? (require ?)
   /\[y\]es.*\[n\]o/i,                 // [y]es, [n]o, [A]ll
-  /enter (?:a |the )?(?:value|name|number|choice)/i, // Enter a value:
+  /enter (?:a |the )?(?:value|name|number|choice)\b.*[:.]\s*$/i, // Enter a value:
 ];
 
 /**

@@ -11,7 +11,7 @@ interface TerminalPaneProps {
 
 export function TerminalPane({ terminal, send, subscribe, onClose, awaitingInput }: TerminalPaneProps) {
   return (
-    <div className={`terminal-pane ${awaitingInput ? 'terminal-pane-awaiting' : ''}`}>
+    <div className={`terminal-pane${awaitingInput ? ' terminal-pane-awaiting' : ''}`}>
       <div className="terminal-pane-header">
         <span className="terminal-pane-drag-handle">⠿</span>
         <span className="terminal-pane-title">{terminal.title}</span>

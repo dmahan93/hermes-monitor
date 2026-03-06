@@ -13,7 +13,7 @@ export function TaskTerminalPane({ issue, send, subscribe, onMinimize, awaitingI
   if (!issue.terminalId) return null;
 
   return (
-    <div className={`task-terminal-pane ${awaitingInput ? 'terminal-pane-awaiting' : ''}`}>
+    <div className={`task-terminal-pane${awaitingInput ? ' terminal-pane-awaiting' : ''}`}>
       <div className="task-terminal-header">
         <span className="task-terminal-title">
           <span className="task-terminal-icon">▸</span>

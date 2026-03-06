@@ -89,6 +89,35 @@ describe('detectPrompt', () => {
   it('detects confirm prompt', () => {
     expect(detectPrompt('Please confirm: ')).toBe(true);
   });
+
+  // False-positive resistance tests
+  it('does not match "are you sure" in mid-sentence prose', () => {
+    expect(detectPrompt('Make sure you are sure about the config')).toBe(false);
+  });
+
+  it('does not match "do you want to continue" with trailing text', () => {
+    expect(detectPrompt('npm WARN do you want to continue using deprecated packages, see docs')).toBe(false);
+  });
+
+  it('does not match "overwrite" without prompt-like ending', () => {
+    expect(detectPrompt("this won't overwrite anything")).toBe(false);
+  });
+
+  it('does not match "overwrite" in mid-sentence without prompt ending', () => {
+    expect(detectPrompt("Will not overwrite anything, skipping")).toBe(false);
+  });
+
+  it('still detects "are you sure" with question mark ending', () => {
+    expect(detectPrompt('Are you sure? ')).toBe(true);
+  });
+
+  it('still detects "do you want to continue" with question mark', () => {
+    expect(detectPrompt('Do you want to continue? ')).toBe(true);
+  });
+
+  it('still detects overwrite with question mark', () => {
+    expect(detectPrompt('overwrite config.yaml? ')).toBe(true);
+  });
 });
 
 describe('TerminalManager', () => {

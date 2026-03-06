@@ -438,8 +438,9 @@ body {
   50% { border-color: #ddaa2260; box-shadow: 0 0 2px #ddaa2240; }
 }
 
-.terminal-pane-awaiting {
-  border-color: var(--warn) !important;
+.terminal-pane.terminal-pane-awaiting,
+.task-terminal-pane.terminal-pane-awaiting {
+  border-color: var(--warn);
   animation: awaiting-border-glow 2s ease-in-out infinite;
 }
 
