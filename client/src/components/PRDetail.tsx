@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { DiffViewer } from './DiffViewer';
+import { MarkdownContent } from './MarkdownContent';
 import type { PullRequest } from '../types';
 
 interface PRDetailProps {
@@ -43,7 +44,7 @@ export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge, onRelaunch
           <span>{pr.changedFiles.length} file{pr.changedFiles.length !== 1 ? 's' : ''} changed</span>
         </div>
         {pr.description && (
-          <div className="pr-detail-desc">{pr.description}</div>
+          <MarkdownContent text={pr.description} className="pr-detail-desc" />
         )}
       </div>
 
@@ -99,7 +100,7 @@ export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge, onRelaunch
                 </span>
               </div>
               <div className="pr-comment-body">
-                <pre>{c.body}</pre>
+                <MarkdownContent text={c.body} />
               </div>
             </div>
           ))}
