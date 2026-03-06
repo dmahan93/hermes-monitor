@@ -8,6 +8,7 @@ interface PRListProps {
   onVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => void;
   onMerge: (prId: string) => void;
   onRelaunchReview: (prId: string) => void;
+  onMoveToInProgress: (issueId: string) => void;
 }
 
 const STATUS_ICONS: Record<string, string> = {
@@ -19,7 +20,7 @@ const STATUS_ICONS: Record<string, string> = {
   closed: '—',
 };
 
-export function PRList({ prs, onComment, onVerdict, onMerge, onRelaunchReview }: PRListProps) {
+export function PRList({ prs, onComment, onVerdict, onMerge, onRelaunchReview, onMoveToInProgress }: PRListProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const selectedPR = selectedId ? prs.find((p) => p.id === selectedId) : null;
@@ -33,6 +34,7 @@ export function PRList({ prs, onComment, onVerdict, onMerge, onRelaunchReview }:
         onVerdict={onVerdict}
         onMerge={onMerge}
         onRelaunchReview={onRelaunchReview}
+        onMoveToInProgress={onMoveToInProgress}
       />
     );
   }

@@ -1477,6 +1477,8 @@ body {
 .pr-reject-btn:hover { background: #dd444420; }
 .pr-relaunch-btn { color: #ddaa33; }
 .pr-relaunch-btn:hover { background: #ddaa3320; }
+.pr-inprogress-btn { color: #66bbcc; }
+.pr-inprogress-btn:hover { background: #66bbcc20; }
 .pr-merge-btn { color: var(--link); }
 .pr-merge-btn:hover { background: #4488dd20; }
 

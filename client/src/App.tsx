@@ -198,6 +198,7 @@ export default function App() {
             onVerdict={setVerdict}
             onMerge={mergePR}
             onRelaunchReview={relaunchReview}
+            onMoveToInProgress={(issueId) => handleStatusChange(issueId, 'in_progress')}
           />
         </div>
       </main>
