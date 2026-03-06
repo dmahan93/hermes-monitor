@@ -8,7 +8,8 @@ interface PRDetailProps {
   onBack: () => void;
   onComment: (prId: string, body: string) => void;
   onVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => void;
-  onMerge: (prId: string) => void;
+  onMerge: (prId: string) => Promise<{ error?: string }>;
+  onFixConflicts: (prId: string) => void;
   onRelaunchReview: (prId: string) => void;
 }
 
@@ -21,8 +22,9 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   closed: { label: 'CLOSED', className: 'status-closed' },
 };
 
-export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge, onRelaunchReview }: PRDetailProps) {
+export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge, onFixConflicts, onRelaunchReview }: PRDetailProps) {
   const [comment, setComment] = useState('');
+  const [mergeError, setMergeError] = useState<string | null>(null);
   const status = STATUS_LABELS[pr.status] || STATUS_LABELS.open;
 
   const handleComment = () => {
@@ -72,12 +74,25 @@ export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge, onRelaunch
             {pr.verdict === 'approved' && (
               <button
                 className="pr-action-btn pr-merge-btn"
-                onClick={() => onMerge(pr.id)}
+                onClick={async () => {
+                  setMergeError(null);
+                  const result = await onMerge(pr.id);
+                  if (result.error) setMergeError(result.error);
+                }}
               >
                 [⎇ MERGE]
               </button>
             )}
+            <button
+              className="pr-action-btn pr-fix-btn"
+              onClick={() => { setMergeError(null); onFixConflicts(pr.id); }}
+            >
+              [🔧 FIX CONFLICTS]
+            </button>
           </>
+        )}
+        {mergeError && (
+          <div className="pr-merge-error">{mergeError}</div>
         )}
       </div>
 

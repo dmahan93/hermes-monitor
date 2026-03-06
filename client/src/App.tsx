@@ -24,7 +24,7 @@ export default function App() {
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals();
   const { issues, createIssue, changeStatus, updateIssue, deleteIssue } = useIssues(subscribe);
-  const { prs, addComment, setVerdict, mergePR, relaunchReview, refetch: refetchPRs } = usePRs(subscribe);
+  const { prs, addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe);
   const agents = useAgents();
   const [view, setView] = useState<ViewMode>('kanban');
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
@@ -241,6 +241,7 @@ export default function App() {
             onComment={addComment}
             onVerdict={setVerdict}
             onMerge={mergePR}
+            onFixConflicts={fixConflicts}
             onRelaunchReview={relaunchReview}
           />
         </div>

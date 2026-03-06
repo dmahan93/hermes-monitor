@@ -311,6 +311,47 @@ export class PRManager {
     return pr;
   }
 
+  /**
+   * Spawn an agent to fix merge conflicts by merging target into the source branch.
+   */
+  fixConflicts(prId: string): { pr?: PullRequest; error?: string } {
+    const pr = this.prs.get(prId);
+    if (!pr) return { error: 'PR not found' };
+
+    // Recreate worktree if needed
+    let worktreePath = this.worktreeManager.get(pr.issueId)?.path;
+    if (!worktreePath) {
+      try {
+        const wt = this.worktreeManager.create(pr.issueId, pr.title);
+        worktreePath = wt.path;
+      } catch (err: any) {
+        // Worktree might already exist on disk but not in our map
+        worktreePath = `/tmp/hermes-worktrees/${pr.issueId}`;
+        try {
+          execSync(`git worktree add "${worktreePath}" ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
+        } catch {
+          // Already exists, just use it
+        }
+      }
+    }
+
+    // Spawn agent to merge target branch in and resolve conflicts
+    const fixCommand = `hermes chat -q 'You are fixing merge conflicts. You are in a git worktree on branch ${pr.sourceBranch}. Run: git merge ${pr.targetBranch} — this will likely have conflicts. Resolve ALL conflicts by editing the files, then git add the resolved files and git commit. Make sure the code still works after resolution. Do NOT delete any functionality from either side — merge both changes together intelligently.'`;
+
+    const terminal = this.terminalManager.create({
+      title: `Fix conflicts: ${pr.title}`,
+      command: fixCommand,
+      cwd: worktreePath,
+    });
+
+    pr.status = 'open';
+    pr.reviewerTerminalId = terminal.id;
+    pr.updatedAt = Date.now();
+    this.persist(pr);
+    this.emit('pr:updated', pr);
+    return { pr };
+  }
+
   merge(prId: string): { pr?: PullRequest; error?: string } {
     const pr = this.prs.get(prId);
     if (!pr) return { error: 'PR not found' };
@@ -347,7 +388,7 @@ export class PRManager {
         { cwd: pr.repoPath, stdio: 'pipe' }
       );
     } catch (err: any) {
-      const gitError = err.stderr?.toString() || err.message;
+      const gitError = err.stderr?.toString() || err.stdout?.toString() || err.message;
       console.error('Merge failed:', gitError);
       // Abort failed merge
       try { execSync('git merge --abort', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
@@ -355,7 +396,12 @@ export class PRManager {
       if (stashed) {
         try { execSync('git stash pop', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
       }
-      return { error: `Merge failed: ${gitError}` };
+      const isConflict = gitError.toLowerCase().includes('conflict') || gitError.includes('CONFLICT');
+      return {
+        error: isConflict
+          ? `Merge conflicts detected. Use "Fix Conflicts" to spawn an agent to resolve them.`
+          : `Merge failed: ${gitError}`,
+      };
     }
 
     // Restore stash after successful merge

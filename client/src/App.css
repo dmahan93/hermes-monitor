@@ -1563,6 +1563,19 @@ body {
 .pr-relaunch-btn:hover { background: #ddaa3320; }
 .pr-merge-btn { color: var(--link); }
 .pr-merge-btn:hover { background: #4488dd20; }
+.pr-fix-btn { color: var(--warn); }
+.pr-fix-btn:hover { background: #ddaa2220; }
+
+.pr-merge-error {
+  width: 100%;
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--error);
+  background: #dd444415;
+  border: 1px solid var(--error);
+  font-family: 'JetBrains Mono', monospace;
+}
 
 .pr-action-btn:disabled {
   color: var(--text-muted);
