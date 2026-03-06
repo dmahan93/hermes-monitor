@@ -320,6 +320,9 @@ export class PRManager {
 
     const { exec } = await import('child_process');
     const { promisify } = await import('util');
+    const { mkdtempSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
     const execAsync = promisify(exec);
 
     // Check branch exists
@@ -329,39 +332,32 @@ export class PRManager {
       return { canMerge: false, hasConflicts: false, error: `Branch ${pr.sourceBranch} not found` };
     }
 
-    // Stash if dirty
-    let stashed = false;
+    // Create a temporary worktree to test the merge — never touch the main working tree
+    const tmpDir = mkdtempSync(join(tmpdir(), 'hermes-merge-check-'));
     try {
-      const { stdout } = await execAsync('git status --porcelain', { cwd: pr.repoPath });
-      if (stdout.trim()) {
-        await execAsync('git stash', { cwd: pr.repoPath });
-        stashed = true;
+      await execAsync(`git worktree add "${tmpDir}" ${pr.targetBranch} --detach`, { cwd: pr.repoPath });
+
+      let canMerge = false;
+      let hasConflicts = false;
+      try {
+        await execAsync(
+          `git merge --no-commit --no-ff ${pr.sourceBranch}`,
+          { cwd: tmpDir }
+        );
+        canMerge = true;
+      } catch (err: any) {
+        const msg = err.stderr?.toString() || err.stdout?.toString() || '';
+        hasConflicts = msg.toLowerCase().includes('conflict') || msg.includes('CONFLICT');
       }
-    } catch {}
 
-    // Try dry-run merge
-    let canMerge = false;
-    let hasConflicts = false;
-    try {
-      await execAsync(
-        `git merge --no-commit --no-ff ${pr.sourceBranch}`,
-        { cwd: pr.repoPath }
-      );
-      canMerge = true;
+      return { canMerge, hasConflicts };
     } catch (err: any) {
-      const msg = err.stderr?.toString() || err.stdout?.toString() || '';
-      hasConflicts = msg.toLowerCase().includes('conflict') || msg.includes('CONFLICT');
+      return { canMerge: false, hasConflicts: false, error: err.message };
+    } finally {
+      // Clean up temp worktree
+      try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      try { await execAsync('git worktree prune', { cwd: pr.repoPath }); } catch {}
     }
-
-    // Always abort the test merge
-    try { await execAsync('git merge --abort', { cwd: pr.repoPath }); } catch {}
-
-    // Restore stash
-    if (stashed) {
-      try { await execAsync('git stash pop', { cwd: pr.repoPath }); } catch {}
-    }
-
-    return { canMerge, hasConflicts };
   }
 
   /**
