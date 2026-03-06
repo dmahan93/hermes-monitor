@@ -14,8 +14,8 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
   });
 
   router.patch('/config', (req, res) => {
-    const { repoPath, worktreeBase, reviewBase, targetBranch } = req.body || {};
-    updateConfig({ repoPath, worktreeBase, reviewBase, targetBranch });
+    const { repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges } = req.body || {};
+    updateConfig({ repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges });
     res.json(config);
   });
 
