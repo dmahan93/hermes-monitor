@@ -120,4 +120,13 @@ describe('API', () => {
     expect(res.body.id).toBeTruthy();
     expect(res.body.title).toBe('With CWD');
   });
+
+  it('POST /api/terminals with non-existent cwd returns 400', async () => {
+    const res = await request(server, 'POST', '/api/terminals', {
+      title: 'Bad CWD',
+      cwd: '/nonexistent/path/that/does/not/exist',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeTruthy();
+  });
 });

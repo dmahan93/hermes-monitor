@@ -1,4 +1,5 @@
 import { Router, json } from 'express';
+import { existsSync } from 'fs';
 import type { TerminalManager } from './terminal-manager.js';
 
 export function createApiRouter(manager: TerminalManager): Router {
@@ -13,8 +14,16 @@ export function createApiRouter(manager: TerminalManager): Router {
   // Create a new terminal
   router.post('/terminals', (req, res) => {
     const { title, command, cwd, cols, rows } = req.body || {};
-    const terminal = manager.create({ title, command, cwd, cols, rows });
-    res.status(201).json(terminal);
+    if (cwd && !existsSync(cwd)) {
+      res.status(400).json({ error: `cwd does not exist: ${cwd}` });
+      return;
+    }
+    try {
+      const terminal = manager.create({ title, command, cwd, cols, rows });
+      res.status(201).json(terminal);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to create terminal' });
+    }
   });
 
   // Delete a terminal
