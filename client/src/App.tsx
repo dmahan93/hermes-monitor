@@ -4,7 +4,7 @@ import { TerminalGrid } from './components/TerminalGrid';
 import { KanbanBoard } from './components/KanbanBoard';
 import { IssueDetail } from './components/IssueDetail';
 import { TaskTerminalPane } from './components/TaskTerminalPane';
-import { AgentTerminalList } from './components/AgentTerminalList';
+import { AgentTerminalList, type AgentListSelection } from './components/AgentTerminalList';
 import { PRList } from './components/PRList';
 import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
@@ -28,7 +28,7 @@ export default function App() {
   const agents = useAgents();
   const [view, setView] = useState<ViewMode>('kanban');
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
-  const [termViewAgentId, setTermViewAgentId] = useState<string | null>(null);
+  const [termViewSelection, setTermViewSelection] = useState<AgentListSelection | null>(null);
   const [detailIssueId, setDetailIssueId] = useState<string | null>(null);
 
   // Get the expanded issue for the terminal pane
@@ -37,11 +37,28 @@ export default function App() {
     return issues.find((i) => i.id === expandedIssueId) || null;
   }, [expandedIssueId, issues]);
 
-  // Get the agent issue for the terminal view pane
+  // Get the issue/PR for the terminal view sidebar selection
   const termViewAgentIssue = useMemo(() => {
-    if (!termViewAgentId) return null;
-    return issues.find((i) => i.id === termViewAgentId) || null;
-  }, [termViewAgentId, issues]);
+    if (!termViewSelection) return null;
+    if (termViewSelection.kind === 'agent') {
+      return issues.find((i) => i.id === termViewSelection.issueId) || null;
+    }
+    // For reviewer terminals, build a synthetic Issue from the PR
+    const pr = prs.find((p) => p.id === termViewSelection.prId);
+    if (!pr || !pr.reviewerTerminalId) return null;
+    return {
+      id: pr.id,
+      title: `Review: ${pr.title}`,
+      description: '',
+      status: 'in_progress' as const,
+      agent: 'hermes-reviewer',
+      command: '',
+      terminalId: pr.reviewerTerminalId,
+      branch: pr.sourceBranch,
+      createdAt: pr.createdAt,
+      updatedAt: pr.updatedAt,
+    };
+  }, [termViewSelection, issues, prs]);
 
   // Auto-close panes if issue loses its terminal
   useEffect(() => {
@@ -52,7 +69,7 @@ export default function App() {
 
   useEffect(() => {
     if (termViewAgentIssue && !termViewAgentIssue.terminalId) {
-      setTermViewAgentId(null);
+      setTermViewSelection(null);
     }
   }, [termViewAgentIssue]);
 
@@ -140,9 +157,19 @@ export default function App() {
             <div className="terminals-sidebar">
               <AgentTerminalList
                 issues={issues}
+                prs={prs}
                 agents={agents}
                 activeTerminalId={termViewAgentIssue?.terminalId || null}
-                onSelect={(issueId) => setTermViewAgentId((prev) => prev === issueId ? null : issueId)}
+                onSelect={(selection) => {
+                  setTermViewSelection((prev) => {
+                    // Toggle off if clicking the same item
+                    if (prev && prev.kind === selection.kind) {
+                      if (selection.kind === 'agent' && prev.kind === 'agent' && prev.issueId === selection.issueId) return null;
+                      if (selection.kind === 'reviewer' && prev.kind === 'reviewer' && prev.prId === selection.prId) return null;
+                    }
+                    return selection;
+                  });
+                }}
               />
             </div>
             <div className="terminals-main">
@@ -151,7 +178,7 @@ export default function App() {
                   issue={termViewAgentIssue}
                   send={send}
                   subscribe={subscribe}
-                  onMinimize={() => setTermViewAgentId(null)}
+                  onMinimize={() => setTermViewSelection(null)}
                 />
               ) : (
                 <TerminalGrid
