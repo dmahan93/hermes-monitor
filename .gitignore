@@ -8,4 +8,4 @@ dist/
 .playwright-cli/
 hermes-monitor.db-shm
 hermes-monitor.db-wal
-*.tsbuildinfo
+

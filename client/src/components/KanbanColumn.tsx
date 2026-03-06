@@ -8,11 +8,12 @@ interface KanbanColumnProps {
   issues: Issue[];
   agents: AgentPreset[];
   onDelete: (id: string) => void;
+  onEdit?: (issueId: string) => void;
   onTerminalClick?: (issueId: string) => void;
   onIssueClick?: (issueId: string) => void;
 }
 
-export function KanbanColumn({ columnId, label, issues, agents, onDelete, onTerminalClick, onIssueClick }: KanbanColumnProps) {
+export function KanbanColumn({ columnId, label, issues, agents, onDelete, onEdit, onTerminalClick, onIssueClick }: KanbanColumnProps) {
   return (
     <div className="kanban-column">
       <div className="kanban-column-header">
@@ -33,6 +34,7 @@ export function KanbanColumn({ columnId, label, issues, agents, onDelete, onTerm
                 index={index}
                 agents={agents}
                 onDelete={onDelete}
+                onEdit={onEdit}
                 onTerminalClick={onTerminalClick}
                 onClick={onIssueClick}
               />
