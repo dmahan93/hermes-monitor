@@ -4,6 +4,7 @@ import type { TerminalInfo, CreateTerminalOptions } from './types.js';
 
 export type DataCallback = (terminalId: string, data: string) => void;
 export type ExitCallback = (terminalId: string, exitCode: number) => void;
+export type RemoveCallback = (terminalId: string) => void;
 
 const SCROLLBACK_LIMIT = 50000; // chars to buffer per terminal
 
@@ -19,6 +20,7 @@ export class TerminalManager {
   private terminals = new Map<string, ManagedTerminal>();
   private onDataCallbacks: DataCallback[] = [];
   private onExitCallbacks: ExitCallback[] = [];
+  private onRemoveCallbacks: RemoveCallback[] = [];
 
   onData(cb: DataCallback): void {
     this.onDataCallbacks.push(cb);
@@ -26,6 +28,10 @@ export class TerminalManager {
 
   onExit(cb: ExitCallback): void {
     this.onExitCallbacks.push(cb);
+  }
+
+  onRemove(cb: RemoveCallback): void {
+    this.onRemoveCallbacks.push(cb);
   }
 
   private emitData(terminalId: string, data: string): void {
@@ -37,6 +43,12 @@ export class TerminalManager {
   private emitExit(terminalId: string, exitCode: number): void {
     for (const cb of this.onExitCallbacks) {
       cb(terminalId, exitCode);
+    }
+  }
+
+  private emitRemove(terminalId: string): void {
+    for (const cb of this.onRemoveCallbacks) {
+      cb(terminalId);
     }
   }
 
@@ -125,14 +137,20 @@ export class TerminalManager {
   kill(id: string): boolean {
     const terminal = this.terminals.get(id);
     if (!terminal) return false;
-    terminal.process.kill();
+    if (!terminal.exited) {
+      terminal.process.kill();
+    }
     this.terminals.delete(id);
+    this.emitRemove(id);
     return true;
   }
 
   killAll(): void {
-    this.terminals.forEach((terminal) => {
-      terminal.process.kill();
+    this.terminals.forEach((terminal, id) => {
+      if (!terminal.exited) {
+        terminal.process.kill();
+      }
+      this.emitRemove(id);
     });
     this.terminals.clear();
   }

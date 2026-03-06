@@ -237,6 +237,12 @@ export class PRManager {
       pr.comments.push(comment);
     }
 
+    // Clean up the reviewer terminal — it has already exited, remove it from the manager
+    if (pr.reviewerTerminalId) {
+      this.terminalManager.kill(pr.reviewerTerminalId);
+      pr.reviewerTerminalId = null;
+    }
+
     pr.updatedAt = Date.now();
     this.persist(pr);
     this.emit('pr:updated', pr);

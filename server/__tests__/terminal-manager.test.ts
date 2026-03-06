@@ -133,11 +133,58 @@ describe('TerminalManager', () => {
 
   it('cleans up all terminals on killAll', () => {
     manager = new TerminalManager();
-    manager.create({ title: 'A' });
-    manager.create({ title: 'B' });
-    manager.create({ title: 'C' });
+    const a = manager.create({ title: 'A' });
+    const b = manager.create({ title: 'B' });
+    const c = manager.create({ title: 'C' });
     expect(manager.size).toBe(3);
+
+    const removed: string[] = [];
+    manager.onRemove((id) => removed.push(id));
+
     manager.killAll();
+    expect(manager.size).toBe(0);
+    expect(removed).toEqual(expect.arrayContaining([a.id, b.id, c.id]));
+    expect(removed).toHaveLength(3);
+  });
+
+  it('killAll safely handles already-exited terminals', async () => {
+    manager = new TerminalManager();
+    manager.create({ title: 'long-lived' });
+    manager.create({ command: '/bin/true' });
+    // Wait for /bin/true to exit
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(manager.size).toBe(2);
+
+    const removed: string[] = [];
+    manager.onRemove((id) => removed.push(id));
+
+    // Should not throw even though one terminal already exited
+    manager.killAll();
+    expect(manager.size).toBe(0);
+    expect(removed).toHaveLength(2);
+  });
+
+  it('emits remove events when a terminal is killed', () => {
+    manager = new TerminalManager();
+    const term = manager.create({ title: 'removable' });
+    const removed: string[] = [];
+    manager.onRemove((id) => removed.push(id));
+
+    manager.kill(term.id);
+    expect(removed).toEqual([term.id]);
+  });
+
+  it('safely kills an already-exited terminal', async () => {
+    manager = new TerminalManager();
+    const term = manager.create({ command: '/bin/true' });
+    // Wait for the process to exit
+    await new Promise((r) => setTimeout(r, 1000));
+    // Terminal should still be in the map (exited but not removed)
+    expect(manager.get(term.id)).toBeDefined();
+    // Killing it should not throw and should remove from map
+    const killed = manager.kill(term.id);
+    expect(killed).toBe(true);
+    expect(manager.get(term.id)).toBeUndefined();
     expect(manager.size).toBe(0);
   });
 });
