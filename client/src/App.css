@@ -1579,7 +1579,8 @@ body {
   color: var(--text-muted);
 }
 
-.pr-comment-body pre {
+.pr-comment-body pre,
+.pr-comment-body > div {
   margin: 0;
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.917rem;

@@ -100,7 +100,7 @@ function ImageWithZoom({ src, alt }: { src: string; alt: string }) {
           alt={alt}
           className="pr-screenshot-img"
           onClick={() => setZoomed(true)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setZoomed(true); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setZoomed(true); } }}
           tabIndex={0}
           role="button"
           aria-label={`View ${alt || 'screenshot'} full size`}
@@ -117,7 +117,7 @@ function ImageWithZoom({ src, alt }: { src: string; alt: string }) {
           aria-label={`Zoomed screenshot: ${alt || 'screenshot'}`}
           tabIndex={-1}
         >
-          <img src={src} alt={alt} className="pr-screenshot-zoomed" />
+          <img src={src} alt={alt} className="pr-screenshot-zoomed" onClick={(e) => e.stopPropagation()} />
           <button
             className="pr-screenshot-close"
             onClick={(e) => { e.stopPropagation(); closeZoom(); }}

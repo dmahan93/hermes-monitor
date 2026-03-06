@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MarkdownContent, parseMarkdownImages } from '../../src/components/MarkdownContent';
 
@@ -267,6 +267,34 @@ describe('MarkdownContent', () => {
     );
     const img = screen.getByAltText('test');
     fireEvent.keyDown(img, { key: ' ' });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('prevents default on Space key to avoid page scroll', () => {
+    render(
+      <MarkdownContent text="![test](https://example.com/img.png)" />
+    );
+    const img = screen.getByAltText('test');
+    const event = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    const preventDefaultSpy = vi.spyOn(event, 'preventDefault');
+    img.dispatchEvent(event);
+    expect(preventDefaultSpy).toHaveBeenCalled();
+  });
+
+  it('does not close zoom overlay when clicking the zoomed image', () => {
+    render(
+      <MarkdownContent text="![test](https://example.com/img.png)" />
+    );
+    // Open zoom
+    fireEvent.click(screen.getByAltText('test'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // Click the zoomed image (not the backdrop)
+    const zoomedImg = screen.getByRole('dialog').querySelector('.pr-screenshot-zoomed');
+    expect(zoomedImg).toBeInTheDocument();
+    fireEvent.click(zoomedImg!);
+
+    // Overlay should still be open
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
