@@ -57,7 +57,7 @@ if (issueCount > 0 || prCount > 0) {
 app.use('/api', createApiRouter(terminalManager));
 app.use('/api', createIssueApiRouter(issueManager));
 app.use('/api', createPRApiRouter(prManager));
-app.use('/', createTicketApiRouter(issueManager, prManager, worktreeManager));
+app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, worktreeManager));
 
 // WebSocket
 const wss = setupWebSocket(server, terminalManager);

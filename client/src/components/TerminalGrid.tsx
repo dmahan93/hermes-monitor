@@ -44,10 +44,10 @@ export function TerminalGrid({
   return (
     <ResponsiveGrid
       className="terminal-grid"
-      layouts={{ lg: layout }}
-      breakpoints={{ lg: 0 }}
-      cols={{ lg: 12 }}
-      rowHeight={80}
+      layouts={{ lg: layout, md: layout, sm: layout }}
+      breakpoints={{ lg: 1200, md: 800, sm: 0 }}
+      cols={{ lg: 12, md: 8, sm: 4 }}
+      rowHeight={60}
       margin={[2, 2]}
       containerPadding={[2, 2]}
       draggableHandle=".terminal-pane-drag-handle"
@@ -59,6 +59,7 @@ export function TerminalGrid({
       isResizable={true}
       isDraggable={true}
       compactType="vertical"
+      preventCollision={false}
     >
       {layout.map((item) => {
         const terminal = terminalMap.get(item.i);

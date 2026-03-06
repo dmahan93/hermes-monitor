@@ -1,6 +1,7 @@
 import { Router, json } from 'express';
 import type { IssueManager } from './issue-manager.js';
 import type { PRManager } from './pr-manager.js';
+import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
 import { config } from './config.js';
 
@@ -12,6 +13,7 @@ import { config } from './config.js';
 export function createTicketApiRouter(
   issueManager: IssueManager,
   prManager: PRManager,
+  terminalManager: TerminalManager,
   worktreeManager: WorktreeManager,
 ): Router {
   const router = Router();
@@ -52,7 +54,7 @@ export function createTicketApiRouter(
     });
   });
 
-  // Agent calls this when done — moves issue to review, creates PR, spawns reviewer
+  // Agent calls this when done — kills terminal, moves issue to review
   router.post('/ticket/:id/review', (req, res) => {
     const issue = issueManager.get(req.params.id);
     if (!issue) {
@@ -65,14 +67,13 @@ export function createTicketApiRouter(
       return;
     }
 
-    // Kill the agent terminal
+    // Kill the agent's terminal BEFORE moving to review
     if (issue.terminalId) {
-      const { TerminalManager } = require('./terminal-manager.js');
-      // We have access to issueManager which has the terminal manager ref
-      // The status change to 'review' will handle the PR creation
+      terminalManager.kill(issue.terminalId);
+      issue.terminalId = null;
     }
 
-    // Move to review — this triggers PR creation + reviewer spawn via handleTransition
+    // Move to review — triggers PR creation + reviewer spawn via handleTransition
     const updated = issueManager.changeStatus(issue.id, 'review');
     if (!updated) {
       res.status(500).json({ error: 'Failed to change status' });
