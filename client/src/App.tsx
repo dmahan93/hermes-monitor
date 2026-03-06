@@ -31,7 +31,7 @@ export default function App() {
   const [termViewSelection, setTermViewSelection] = useState<AgentListSelection | null>(null);
   const [detailIssueId, setDetailIssueId] = useState<string | null>(null);
 
-  // Get the expanded issue for the terminal pane
+  // Get the expanded issue for the kanban terminal pane
   const expandedIssue = useMemo(() => {
     if (!expandedIssueId) return null;
     return issues.find((i) => i.id === expandedIssueId) || null;
@@ -84,8 +84,6 @@ export default function App() {
     }
   }, [termViewAgentIssue]);
 
-  // Also clear selection when the resolved issue/PR disappears entirely
-  // (e.g. reviewer terminal goes away — useMemo returns null directly)
   useEffect(() => {
     if (termViewSelection && !termViewAgentIssue) {
       setTermViewSelection(null);
@@ -171,10 +169,9 @@ export default function App() {
         <ViewSwitcher mode={view} onChange={setView} prCount={prs.length} />
       </Header>
       <main className="main">
+        {/* Terminal view: sidebar + grid/expanded agent */}
         <div className={`view-panel ${view === 'terminals' ? 'view-active' : 'view-hidden'}`}>
           <div className="terminals-layout">
-<<<<<<< HEAD
-=======
             <div className="terminals-sidebar">
               <AgentTerminalList
                 issues={issues}
@@ -188,7 +185,6 @@ export default function App() {
                 }}
               />
             </div>
->>>>>>> issue/2e279ce3-add-review-agents-to-the-agent-panel-too
             <div className="terminals-main">
               {termViewAgentIssue && termViewAgentIssue.terminalId ? (
                 <TaskTerminalPane
@@ -208,16 +204,10 @@ export default function App() {
                 />
               )}
             </div>
-            <div className="terminals-sidebar">
-              <AgentTerminalList
-                issues={issues}
-                agents={agents}
-                activeTerminalId={termViewAgentIssue?.terminalId || null}
-                onSelect={(issueId) => setTermViewAgentId((prev) => prev === issueId ? null : issueId)}
-              />
-            </div>
           </div>
         </div>
+
+        {/* Kanban view: board + optional split terminal */}
         <div className={`view-panel ${view === 'kanban' ? 'view-active' : 'view-hidden'}`}>
           <div className={`kanban-split ${showTaskTerminal ? 'split-open' : ''}`}>
             <div className="kanban-split-left">
@@ -243,6 +233,8 @@ export default function App() {
             )}
           </div>
         </div>
+
+        {/* PR view */}
         <div className={`view-panel ${view === 'prs' ? 'view-active' : 'view-hidden'}`}>
           <PRList
             prs={prs}
