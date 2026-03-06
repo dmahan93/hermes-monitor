@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { execSync } from 'child_process';
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
@@ -159,13 +159,20 @@ export class PRManager {
       '- Code style and readability issues',
       '- Missing tests or documentation',
       '',
+      '## Screenshots for UI Changes',
+      'If the PR modifies UI components (.tsx, .css, .html files), check that:',
+      '- The PR description includes before/after screenshots showing the visual changes',
+      '- Screenshots use markdown image syntax: ![description](url)',
+      '- If screenshots are missing for UI changes, flag this in your review',
+      '  and request them with VERDICT: CHANGES_REQUESTED',
+      '',
       'Write your complete review to review.md in this directory.',
       'Start with a verdict line: VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED',
       'Then provide detailed feedback.',
     ].join('\n'));
 
     // Spawn reviewer — give it the repo, branch info, and let it git diff itself
-    const reviewCommand = `hermes chat -q 'You are an adversarial code reviewer. You are reviewing branch ${pr.sourceBranch} against ${pr.targetBranch} in repo ${pr.repoPath}. Run git diff ${pr.targetBranch}...${pr.sourceBranch} in the repo to see the changes. Read ${reviewDir}/context.md for context. Write a thorough critical review to ${reviewDir}/review.md. Start with VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED. Be rigorous.'`;
+    const reviewCommand = `hermes chat -q 'You are an adversarial code reviewer. If a summarization step occurs, always continue working afterward — do not treat it as a stopping point. You are reviewing branch ${pr.sourceBranch} against ${pr.targetBranch} in repo ${pr.repoPath}. Run git diff ${pr.targetBranch}...${pr.sourceBranch} in the repo to see the changes. Read ${reviewDir}/context.md for context. Write a thorough critical review to ${reviewDir}/review.md. Start with VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED. Be rigorous. Do not stop until the review file is written.'`;
 
     const terminal = this.terminalManager.create({
       title: `Review: ${pr.title}`,
@@ -235,6 +242,42 @@ export class PRManager {
     this.emit('pr:updated', pr);
   }
 
+  /**
+   * Relaunch a review — kill existing reviewer if any, re-spawn a new one.
+   * Useful when the reviewer terminal crashed or the review was lost.
+   */
+  relaunchReview(prId: string): PullRequest | null {
+    const pr = this.prs.get(prId);
+    if (!pr) return null;
+
+    // Kill existing reviewer terminal if it's still around
+    if (pr.reviewerTerminalId) {
+      this.terminalManager.kill(pr.reviewerTerminalId);
+      pr.reviewerTerminalId = null;
+    }
+
+    // Delete stale review.md so a crashed re-reviewer doesn't pick up the old verdict
+    const reviewPath = join(config.reviewBase, prId, 'review.md');
+    try { unlinkSync(reviewPath); } catch {}
+
+    // Reset status to open so spawnReviewer can set it to reviewing
+    pr.status = 'open';
+    pr.verdict = 'pending';
+    pr.updatedAt = Date.now();
+
+    // Re-generate the diff in case there were new changes
+    const diff = this.worktreeManager.getDiff(pr.issueId);
+    if (diff !== null) {
+      pr.diff = diff;
+      pr.changedFiles = this.worktreeManager.getChangedFiles(pr.issueId);
+    }
+
+    this.persist(pr);
+
+    // Spawn a fresh reviewer
+    return this.spawnReviewer(prId);
+  }
+
   addComment(prId: string, author: string, body: string, file?: string, line?: number): PRComment | null {
     const pr = this.prs.get(prId);
     if (!pr) return null;
@@ -268,22 +311,151 @@ export class PRManager {
     return pr;
   }
 
-  merge(prId: string): PullRequest | null {
+  /**
+   * Dry-run merge check — test if merge would succeed without actually doing it.
+   */
+  async checkMerge(prId: string): Promise<{ canMerge: boolean; hasConflicts: boolean; error?: string }> {
     const pr = this.prs.get(prId);
-    if (!pr) return null;
+    if (!pr) return { canMerge: false, hasConflicts: false, error: 'PR not found' };
+
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const { mkdtempSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const execAsync = promisify(exec);
+
+    // Check branch exists
+    try {
+      await execAsync(`git rev-parse --verify ${pr.sourceBranch}`, { cwd: pr.repoPath });
+    } catch {
+      return { canMerge: false, hasConflicts: false, error: `Branch ${pr.sourceBranch} not found` };
+    }
+
+    // Create a temporary worktree to test the merge — never touch the main working tree
+    const tmpDir = mkdtempSync(join(tmpdir(), 'hermes-merge-check-'));
+    try {
+      await execAsync(`git worktree add "${tmpDir}" ${pr.targetBranch} --detach`, { cwd: pr.repoPath });
+
+      let canMerge = false;
+      let hasConflicts = false;
+      try {
+        await execAsync(
+          `git merge --no-commit --no-ff ${pr.sourceBranch}`,
+          { cwd: tmpDir }
+        );
+        canMerge = true;
+      } catch (err: any) {
+        const msg = err.stderr?.toString() || err.stdout?.toString() || '';
+        hasConflicts = msg.toLowerCase().includes('conflict') || msg.includes('CONFLICT');
+      }
+
+      return { canMerge, hasConflicts };
+    } catch (err: any) {
+      return { canMerge: false, hasConflicts: false, error: err.message };
+    } finally {
+      // Clean up temp worktree
+      try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      try { await execAsync('git worktree prune', { cwd: pr.repoPath }); } catch {}
+    }
+  }
+
+  /**
+   * Spawn an agent to fix merge conflicts by merging target into the source branch.
+   */
+  fixConflicts(prId: string): { pr?: PullRequest; error?: string } {
+    const pr = this.prs.get(prId);
+    if (!pr) return { error: 'PR not found' };
+
+    // Recreate worktree if needed
+    let worktreePath = this.worktreeManager.get(pr.issueId)?.path;
+    if (!worktreePath) {
+      try {
+        const wt = this.worktreeManager.create(pr.issueId, pr.title);
+        worktreePath = wt.path;
+      } catch (err: any) {
+        // Worktree might already exist on disk but not in our map
+        worktreePath = `/tmp/hermes-worktrees/${pr.issueId}`;
+        try {
+          execSync(`git worktree add "${worktreePath}" ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
+        } catch {
+          // Already exists, just use it
+        }
+      }
+    }
+
+    // Spawn agent to merge target branch in and resolve conflicts
+    const fixCommand = `hermes chat -q 'You are an autonomous conflict resolution agent. If a summarization step occurs, always continue working afterward — do not treat it as a stopping point. You are in a git worktree on branch ${pr.sourceBranch}. Run: git merge ${pr.targetBranch} — this will have conflicts. Resolve ALL conflicts by editing the files intelligently, keeping functionality from both sides. Then git add the resolved files and git commit. Do not stop until all conflicts are resolved and committed.'`;
+
+    const terminal = this.terminalManager.create({
+      title: `Fix conflicts: ${pr.title}`,
+      command: fixCommand,
+      cwd: worktreePath,
+    });
+
+    pr.status = 'open';
+    pr.reviewerTerminalId = terminal.id;
+    pr.updatedAt = Date.now();
+    this.persist(pr);
+    this.emit('pr:updated', pr);
+    return { pr };
+  }
+
+  merge(prId: string): { pr?: PullRequest; error?: string } {
+    const pr = this.prs.get(prId);
+    if (!pr) return { error: 'PR not found' };
 
     // Remove worktree FIRST — git won't merge a branch checked out in a worktree
     this.worktreeManager.remove(pr.issueId, false);
 
-    // Merge using git directly
+    // Also force-remove the worktree dir if it still exists
+    try {
+      execSync(`git worktree prune`, { cwd: pr.repoPath, stdio: 'pipe' });
+    } catch {}
+
+    // Check the branch exists
+    try {
+      execSync(`git rev-parse --verify ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
+    } catch {
+      return { error: `Branch ${pr.sourceBranch} does not exist` };
+    }
+
+    // Stash any uncommitted changes in the main repo
+    let stashed = false;
+    try {
+      const status = execSync('git status --porcelain', { cwd: pr.repoPath, stdio: 'pipe' }).toString().trim();
+      if (status) {
+        execSync('git stash', { cwd: pr.repoPath, stdio: 'pipe' });
+        stashed = true;
+      }
+    } catch {}
+
+    // Merge
     try {
       execSync(
         `git merge ${pr.sourceBranch} --no-ff -m "Merge ${pr.sourceBranch}"`,
         { cwd: pr.repoPath, stdio: 'pipe' }
       );
     } catch (err: any) {
-      console.error('Merge failed:', err.stderr?.toString() || err.message);
-      return null;
+      const gitError = err.stderr?.toString() || err.stdout?.toString() || err.message;
+      console.error('Merge failed:', gitError);
+      // Abort failed merge
+      try { execSync('git merge --abort', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+      // Restore stash
+      if (stashed) {
+        try { execSync('git stash pop', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+      }
+      const isConflict = gitError.toLowerCase().includes('conflict') || gitError.includes('CONFLICT');
+      return {
+        error: isConflict
+          ? `Merge conflicts detected. Use "Fix Conflicts" to spawn an agent to resolve them.`
+          : `Merge failed: ${gitError}`,
+      };
+    }
+
+    // Restore stash after successful merge
+    if (stashed) {
+      try { execSync('git stash pop', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
     }
 
     pr.status = 'merged';
@@ -292,15 +464,36 @@ export class PRManager {
     // Clean up the branch
     try {
       execSync(`git branch -d ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
-    } catch {}
+    } catch {
+      // Force delete if not fully merged (shouldn't happen after merge)
+      try { execSync(`git branch -D ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+    }
 
     this.persist(pr);
     this.emit('pr:updated', pr);
-    return pr;
+    return { pr };
   }
 
   get(id: string): PullRequest | undefined {
     return this.prs.get(id);
+  }
+
+  /**
+   * Reset a PR back to open/pending state.
+   * Returns the updated PR on success, or null if the PR doesn't exist
+   * or is in a terminal state (merged/closed) and cannot be reset.
+   */
+  resetToOpen(prId: string): PullRequest | null {
+    const pr = this.prs.get(prId);
+    if (!pr) return null;
+    if (pr.status === 'merged' || pr.status === 'closed') return null;
+
+    pr.status = 'open';
+    pr.verdict = 'pending';
+    pr.updatedAt = Date.now();
+    this.persist(pr);
+    this.emit('pr:updated', pr);
+    return pr;
   }
 
   getByIssueId(issueId: string): PullRequest | undefined {

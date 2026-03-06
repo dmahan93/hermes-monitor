@@ -1,5 +1,6 @@
-import express from 'express';
+import express, { static as serveStatic } from 'express';
 import { createServer } from 'http';
+import { mkdirSync } from 'fs';
 import { TerminalManager } from './terminal-manager.js';
 import { IssueManager } from './issue-manager.js';
 import { WorktreeManager } from './worktree-manager.js';
@@ -52,6 +53,10 @@ const prCount = prManager.list().length;
 if (issueCount > 0 || prCount > 0) {
   console.log(`Loaded ${issueCount} issue(s), ${prCount} PR(s) from database`);
 }
+
+// Serve uploaded screenshots as static files
+mkdirSync(config.screenshotBase, { recursive: true });
+app.use('/screenshots', serveStatic(config.screenshotBase));
 
 // REST API
 app.use('/api', createApiRouter(terminalManager));

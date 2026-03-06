@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import type { Issue, PullRequest, AgentPreset } from '../types';
+import type { Issue, IssueStatus, PullRequest, AgentPreset } from '../types';
 
 interface IssueDetailProps {
   issue: Issue;
   agents: AgentPreset[];
   pr?: PullRequest;
+  initialEditing?: boolean;
   onClose: () => void;
   onUpdate: (id: string, updates: Partial<Issue>) => void;
-  onStatusChange: (id: string, status: string) => void;
+  onStatusChange: (id: string, status: IssueStatus) => void;
   onDelete: (id: string) => void;
   onTerminalClick?: (issueId: string) => void;
   onPRClick?: (prId: string) => void;
@@ -22,9 +23,12 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
 };
 
 export function IssueDetail({
-  issue, agents, pr, onClose, onUpdate, onStatusChange, onDelete, onTerminalClick, onPRClick,
+  issue, agents, pr, initialEditing, onClose, onUpdate, onStatusChange, onDelete, onTerminalClick, onPRClick,
 }: IssueDetailProps) {
-  const [editing, setEditing] = useState(false);
+  // initialEditing is only read at mount. This works because App.tsx renders
+  // <IssueDetail key={`${detailIssueId}-${detailEditing}`}>, forcing a full
+  // remount when switching issues OR when toggling between view/edit mode.
+  const [editing, setEditing] = useState(initialEditing ?? false);
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(issue.description);
   const agent = agents.find((a) => a.id === issue.agent);
@@ -162,7 +166,7 @@ export function IssueDetail({
               <button className="modal-btn" onClick={() => onStatusChange(issue.id, 'done')}>→ DONE</button>
             )}
           </div>
-          <button className="modal-btn issue-detail-delete-btn" onClick={() => { onDelete(issue.id); onClose(); }}>
+          <button className="modal-btn issue-detail-delete-btn" onClick={() => { onDelete(issue.id); onClose(); }} aria-label="Delete issue">
             [DELETE]
           </button>
         </div>
