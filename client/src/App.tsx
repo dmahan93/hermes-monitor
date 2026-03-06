@@ -77,7 +77,8 @@ export default function App() {
         <ViewSwitcher mode={view} onChange={setView} prCount={prs.length} />
       </Header>
       <main className="main">
-        {view === 'terminals' ? (
+        {/* All views stay mounted — hidden with CSS to preserve terminal state */}
+        <div className="view-panel" style={{ display: view === 'terminals' ? 'contents' : 'none' }}>
           <TerminalGrid
             terminals={terminals}
             layout={layout}
@@ -86,7 +87,8 @@ export default function App() {
             subscribe={subscribe}
             onClose={handleCloseTerminal}
           />
-        ) : view === 'kanban' ? (
+        </div>
+        <div className="view-panel" style={{ display: view === 'kanban' ? 'contents' : 'none' }}>
           <KanbanBoard
             issues={issues}
             agents={agents}
@@ -94,14 +96,15 @@ export default function App() {
             onCreateIssue={handleCreateIssue}
             onDeleteIssue={handleDeleteIssue}
           />
-        ) : (
+        </div>
+        <div className="view-panel" style={{ display: view === 'prs' ? 'contents' : 'none' }}>
           <PRList
             prs={prs}
             onComment={addComment}
             onVerdict={setVerdict}
             onMerge={mergePR}
           />
-        )}
+        </div>
       </main>
       <StatusBar connected={connected} terminalCount={terminals.length} issueCount={issues.length} />
     </div>
