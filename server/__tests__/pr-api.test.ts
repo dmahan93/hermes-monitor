@@ -49,6 +49,89 @@ function insertTestPR(prManager: PRManager, overrides: Partial<PullRequest> = {}
   return pr;
 }
 
+describe('PRManager.resetToOpen', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+
+  beforeEach(() => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+  });
+
+  afterEach(() => {
+    terminalManager.killAll();
+  });
+
+  it('resets an open PR back to open/pending (no-op for already open)', () => {
+    const pr = insertTestPR(prManager, { status: 'open', verdict: 'pending' });
+    const result = prManager.resetToOpen(pr.id);
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe('open');
+    expect(result!.verdict).toBe('pending');
+  });
+
+  it('resets a reviewing PR to open/pending', () => {
+    const pr = insertTestPR(prManager, { status: 'reviewing', verdict: 'pending' });
+    const result = prManager.resetToOpen(pr.id);
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe('open');
+    expect(result!.verdict).toBe('pending');
+  });
+
+  it('resets an approved PR to open/pending', () => {
+    const pr = insertTestPR(prManager, { status: 'approved', verdict: 'approved' });
+    const result = prManager.resetToOpen(pr.id);
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe('open');
+    expect(result!.verdict).toBe('pending');
+  });
+
+  it('resets a changes_requested PR to open/pending', () => {
+    const pr = insertTestPR(prManager, { status: 'changes_requested', verdict: 'changes_requested' });
+    const result = prManager.resetToOpen(pr.id);
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe('open');
+    expect(result!.verdict).toBe('pending');
+  });
+
+  it('returns null for a merged PR (cannot reset)', () => {
+    insertTestPR(prManager, { status: 'merged', verdict: 'approved' });
+    const result = prManager.resetToOpen('test-pr-1');
+    expect(result).toBeNull();
+  });
+
+  it('returns null for a closed PR (cannot reset)', () => {
+    insertTestPR(prManager, { status: 'closed', verdict: 'pending' });
+    const result = prManager.resetToOpen('test-pr-1');
+    expect(result).toBeNull();
+  });
+
+  it('returns null for a nonexistent PR', () => {
+    const result = prManager.resetToOpen('nonexistent');
+    expect(result).toBeNull();
+  });
+
+  it('emits pr:updated event on successful reset', () => {
+    const pr = insertTestPR(prManager, { status: 'approved', verdict: 'approved' });
+    const events: string[] = [];
+    prManager.onEvent((event) => events.push(event));
+
+    prManager.resetToOpen(pr.id);
+    expect(events).toContain('pr:updated');
+  });
+
+  it('does not emit event for merged/closed PRs', () => {
+    insertTestPR(prManager, { status: 'merged', verdict: 'approved' });
+    const events: string[] = [];
+    prManager.onEvent((event) => events.push(event));
+
+    prManager.resetToOpen('test-pr-1');
+    expect(events).toHaveLength(0);
+  });
+});
+
 describe('PR API — Relaunch Review', () => {
   let terminalManager: TerminalManager;
   let worktreeManager: WorktreeManager;

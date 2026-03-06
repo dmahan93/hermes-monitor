@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { DiffViewer } from './DiffViewer';
 import { MarkdownContent } from './MarkdownContent';
-import type { PullRequest } from '../types';
+import type { PullRequest, IssueStatus } from '../types';
 
 interface PRDetailProps {
   pr: PullRequest;
+  issueStatus?: IssueStatus;
   onBack: () => void;
   onComment: (prId: string, body: string) => void;
   onVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => void;
   onMerge: (prId: string) => Promise<{ error?: string }>;
   onFixConflicts: (prId: string) => void;
   onRelaunchReview: (prId: string) => void;
+  onMoveToInProgress: (issueId: string) => Promise<void>;
 }
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -22,7 +24,7 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   closed: { label: 'CLOSED', className: 'status-closed' },
 };
 
-export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge, onFixConflicts, onRelaunchReview }: PRDetailProps) {
+export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerge, onFixConflicts, onRelaunchReview, onMoveToInProgress }: PRDetailProps) {
   const [comment, setComment] = useState('');
   const [mergeCheck, setMergeCheck] = useState<{ checking: boolean; canMerge: boolean; hasConflicts: boolean }>({
     checking: true, canMerge: false, hasConflicts: false,
@@ -91,6 +93,14 @@ export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge, onFixConfl
             >
               [⟳ RELAUNCH REVIEW]
             </button>
+            {issueStatus === 'review' && (
+              <button
+                className="pr-action-btn pr-inprogress-btn"
+                onClick={async () => { await onMoveToInProgress(pr.issueId); onBack(); }}
+              >
+                [← BACK TO IN PROGRESS]
+              </button>
+            )}
             {mergeCheck.checking ? (
               <span className="pr-merge-checking">checking merge…</span>
             ) : mergeCheck.hasConflicts ? (

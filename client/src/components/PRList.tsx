@@ -1,16 +1,18 @@
 import { useState, useMemo } from 'react';
 import { PRDetail } from './PRDetail';
-import type { PullRequest } from '../types';
+import type { PullRequest, Issue } from '../types';
 
 type PRView = 'open' | 'closed' | 'all';
 
 interface PRListProps {
   prs: PullRequest[];
+  issues: Issue[];
   onComment: (prId: string, body: string) => void;
   onVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => void;
   onMerge: (prId: string) => Promise<{ error?: string }>;
   onFixConflicts: (prId: string) => void;
   onRelaunchReview: (prId: string) => void;
+  onMoveToInProgress: (issueId: string) => Promise<void>;
 }
 
 const STATUS_ICONS: Record<string, string> = {
@@ -45,7 +47,7 @@ export function filterPRs(prs: PullRequest[], view: PRView): PullRequest[] {
   }
 }
 
-export function PRList({ prs = [], onComment, onVerdict, onMerge, onFixConflicts, onRelaunchReview }: PRListProps) {
+export function PRList({ prs = [], issues, onComment, onVerdict, onMerge, onFixConflicts, onRelaunchReview, onMoveToInProgress }: PRListProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<PRView>('open');
 
@@ -58,17 +60,20 @@ export function PRList({ prs = [], onComment, onVerdict, onMerge, onFixConflicts
   const filtered = useMemo(() => filterPRs(prs, view), [prs, view]);
 
   const selectedPR = selectedId ? prs.find((p) => p.id === selectedId) : null;
+  const selectedIssue = selectedPR ? issues.find((i) => i.id === selectedPR.issueId) : null;
 
   if (selectedPR) {
     return (
       <PRDetail
         pr={selectedPR}
+        issueStatus={selectedIssue?.status}
         onBack={() => setSelectedId(null)}
         onComment={onComment}
         onVerdict={onVerdict}
         onMerge={onMerge}
         onFixConflicts={onFixConflicts}
         onRelaunchReview={onRelaunchReview}
+        onMoveToInProgress={onMoveToInProgress}
       />
     );
   }
