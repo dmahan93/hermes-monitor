@@ -76,5 +76,5 @@ export function useTerminals() {
     setLayout(newLayout);
   }, []);
 
-  return { terminals, layout, loading, addTerminal, removeTerminal, updateLayout };
+  return { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: fetchTerminals };
 }

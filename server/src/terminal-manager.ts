@@ -40,12 +40,17 @@ export class TerminalManager {
 
   create(options: CreateTerminalOptions = {}): TerminalInfo {
     const id = uuidv4();
-    const shell = options.command || process.env.SHELL || '/bin/bash';
     const cols = options.cols || 80;
     const rows = options.rows || 24;
     const title = options.title || `Terminal ${this.terminals.size + 1}`;
+    const defaultShell = process.env.SHELL || '/bin/bash';
 
-    const args = options.command ? [] : [];
+    // If a command is provided, run it through bash -c so the full command
+    // line (with args, pipes, quotes, etc.) works correctly.
+    // Otherwise just spawn an interactive shell.
+    const shell = options.command ? defaultShell : defaultShell;
+    const args = options.command ? ['-c', options.command] : [];
+
     const proc = pty.spawn(shell, args, {
       name: 'xterm-256color',
       cols,
@@ -57,7 +62,7 @@ export class TerminalManager {
     const info: TerminalInfo = {
       id,
       title,
-      command: shell,
+      command: options.command || defaultShell,
       cols,
       rows,
       pid: proc.pid,

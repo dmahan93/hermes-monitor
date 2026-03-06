@@ -17,7 +17,7 @@ function getWsUrl(): string {
 
 export default function App() {
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
-  const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout } = useTerminals();
+  const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals();
   const { issues, createIssue, changeStatus, deleteIssue } = useIssues(subscribe);
   const agents = useAgents();
   const [view, setView] = useState<ViewMode>('kanban');
@@ -34,13 +34,17 @@ export default function App() {
     createIssue(title, description || undefined, agent || undefined, command || undefined, branch || undefined);
   }, [createIssue]);
 
-  const handleStatusChange = useCallback((id: string, status: any) => {
-    changeStatus(id, status);
-  }, [changeStatus]);
+  const handleStatusChange = useCallback(async (id: string, status: any) => {
+    await changeStatus(id, status);
+    // Status changes can spawn/kill terminals — refetch terminal list
+    refetchTerminals();
+  }, [changeStatus, refetchTerminals]);
 
-  const handleDeleteIssue = useCallback((id: string) => {
-    deleteIssue(id);
-  }, [deleteIssue]);
+  const handleDeleteIssue = useCallback(async (id: string) => {
+    await deleteIssue(id);
+    // Deleting issue may kill its terminal — refetch
+    refetchTerminals();
+  }, [deleteIssue, refetchTerminals]);
 
   if (loading) {
     return (
