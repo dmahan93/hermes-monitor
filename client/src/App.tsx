@@ -77,8 +77,8 @@ export default function App() {
         <ViewSwitcher mode={view} onChange={setView} prCount={prs.length} />
       </Header>
       <main className="main">
-        {/* All views stay mounted — hidden with CSS to preserve terminal state */}
-        <div className="view-panel" style={{ display: view === 'terminals' ? 'contents' : 'none' }}>
+        {/* All views stay mounted — hidden with visibility to preserve xterm state */}
+        <div className={`view-panel ${view === 'terminals' ? 'view-active' : 'view-hidden'}`}>
           <TerminalGrid
             terminals={terminals}
             layout={layout}
@@ -88,7 +88,7 @@ export default function App() {
             onClose={handleCloseTerminal}
           />
         </div>
-        <div className="view-panel" style={{ display: view === 'kanban' ? 'contents' : 'none' }}>
+        <div className={`view-panel ${view === 'kanban' ? 'view-active' : 'view-hidden'}`}>
           <KanbanBoard
             issues={issues}
             agents={agents}
@@ -97,7 +97,7 @@ export default function App() {
             onDeleteIssue={handleDeleteIssue}
           />
         </div>
-        <div className="view-panel" style={{ display: view === 'prs' ? 'contents' : 'none' }}>
+        <div className={`view-panel ${view === 'prs' ? 'view-active' : 'view-hidden'}`}>
           <PRList
             prs={prs}
             onComment={addComment}

@@ -53,8 +53,29 @@ body {
 
 .main {
   flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* View panels stack on top of each other — only active one is visible.
+   Hidden panels keep their dimensions so xterm renderers stay alive. */
+.view-panel {
+  position: absolute;
+  inset: 0;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.view-active {
+  visibility: visible;
+  pointer-events: auto;
+  z-index: 1;
+}
+
+.view-hidden {
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .loading {
