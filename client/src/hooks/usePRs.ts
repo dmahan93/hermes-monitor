@@ -74,7 +74,11 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
 
   const relaunchReview = useCallback(async (prId: string) => {
     try {
-      await fetch(`${API}/prs/${prId}/relaunch-review`, { method: 'POST' });
+      const res = await fetch(`${API}/prs/${prId}/relaunch-review`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        console.error('Failed to relaunch review:', data?.error || res.statusText);
+      }
     } catch (err) {
       console.error('Failed to relaunch review:', err);
     }

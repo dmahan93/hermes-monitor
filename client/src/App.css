@@ -1475,6 +1475,8 @@ body {
 .pr-approve-btn:hover { background: var(--accent-dim); }
 .pr-reject-btn { color: var(--error); }
 .pr-reject-btn:hover { background: #dd444420; }
+.pr-relaunch-btn { color: #ddaa33; }
+.pr-relaunch-btn:hover { background: #ddaa3320; }
 .pr-merge-btn { color: var(--link); }
 .pr-merge-btn:hover { background: #4488dd20; }
 

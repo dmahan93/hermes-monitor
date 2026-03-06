@@ -2,11 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
+import { mkdirSync, writeFileSync, existsSync } from 'fs';
+import { join } from 'path';
 import { TerminalManager } from '../src/terminal-manager.js';
 import { WorktreeManager } from '../src/worktree-manager.js';
 import { PRManager, type PullRequest } from '../src/pr-manager.js';
 import { IssueManager } from '../src/issue-manager.js';
 import { createPRApiRouter } from '../src/pr-api.js';
+import { config } from '../src/config.js';
 
 async function request(server: Server, method: string, path: string, body?: any) {
   const addr = server.address() as any;
@@ -141,5 +144,22 @@ describe('PR API — Relaunch Review', () => {
     const res = await request(server, 'POST', '/api/prs/test-pr-1/relaunch-review');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('reviewing');
+  });
+
+  it('POST /api/prs/:id/relaunch-review deletes stale review.md', async () => {
+    const prId = 'test-pr-stale';
+    insertTestPR(prManager, { id: prId, status: 'changes_requested', verdict: 'changes_requested' });
+
+    // Create a stale review.md in the review directory
+    const reviewDir = join(config.reviewBase, prId);
+    mkdirSync(reviewDir, { recursive: true });
+    writeFileSync(join(reviewDir, 'review.md'), 'VERDICT: CHANGES_REQUESTED\nOld stale review.');
+
+    expect(existsSync(join(reviewDir, 'review.md'))).toBe(true);
+
+    const res = await request(server, 'POST', `/api/prs/${prId}/relaunch-review`);
+    expect(res.status).toBe(200);
+    // The stale review.md should be deleted
+    expect(existsSync(join(reviewDir, 'review.md'))).toBe(false);
   });
 });
