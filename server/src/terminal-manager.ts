@@ -11,6 +11,8 @@ interface ManagedTerminal {
   info: TerminalInfo;
   process: pty.IPty;
   scrollback: string;
+  exited: boolean;
+  exitCode: number | null;
 }
 
 export class TerminalManager {
@@ -69,7 +71,7 @@ export class TerminalManager {
       createdAt: Date.now(),
     };
 
-    const managed: ManagedTerminal = { info, process: proc, scrollback: '' };
+    const managed: ManagedTerminal = { info, process: proc, scrollback: '', exited: false, exitCode: null };
     this.terminals.set(id, managed);
 
     proc.onData((data: string) => {
@@ -82,7 +84,10 @@ export class TerminalManager {
     });
 
     proc.onExit(({ exitCode }: { exitCode: number }) => {
-      this.terminals.delete(id);
+      // Don't remove — keep terminal visible so user can see output.
+      // Terminal will be removed when explicitly killed/closed.
+      managed.exited = true;
+      managed.exitCode = exitCode;
       this.emitExit(id, exitCode);
     });
 
@@ -103,14 +108,14 @@ export class TerminalManager {
 
   write(id: string, data: string): boolean {
     const terminal = this.terminals.get(id);
-    if (!terminal) return false;
+    if (!terminal || terminal.exited) return false;
     terminal.process.write(data);
     return true;
   }
 
   resize(id: string, cols: number, rows: number): boolean {
     const terminal = this.terminals.get(id);
-    if (!terminal) return false;
+    if (!terminal || terminal.exited) return false;
     terminal.process.resize(cols, rows);
     terminal.info.cols = cols;
     terminal.info.rows = rows;
