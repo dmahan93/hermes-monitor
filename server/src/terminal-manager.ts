@@ -146,8 +146,11 @@ export class TerminalManager {
   }
 
   killAll(): void {
-    this.terminals.forEach((terminal) => {
-      terminal.process.kill();
+    this.terminals.forEach((terminal, id) => {
+      if (!terminal.exited) {
+        terminal.process.kill();
+      }
+      this.emitRemove(id);
     });
     this.terminals.clear();
   }
