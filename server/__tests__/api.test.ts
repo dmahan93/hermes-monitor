@@ -110,4 +110,14 @@ describe('API', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('POST /api/terminals with cwd creates terminal in specified directory', async () => {
+    const res = await request(server, 'POST', '/api/terminals', {
+      title: 'With CWD',
+      cwd: '/tmp',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBeTruthy();
+    expect(res.body.title).toBe('With CWD');
+  });
 });

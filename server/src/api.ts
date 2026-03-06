@@ -12,8 +12,8 @@ export function createApiRouter(manager: TerminalManager): Router {
 
   // Create a new terminal
   router.post('/terminals', (req, res) => {
-    const { title, command, cols, rows } = req.body || {};
-    const terminal = manager.create({ title, command, cols, rows });
+    const { title, command, cwd, cols, rows } = req.body || {};
+    const terminal = manager.create({ title, command, cwd, cols, rows });
     res.status(201).json(terminal);
   });
 
