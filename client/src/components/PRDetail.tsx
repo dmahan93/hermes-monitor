@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { DiffViewer } from './DiffViewer';
 import { MarkdownContent } from './MarkdownContent';
-import type { PullRequest } from '../types';
+import type { PullRequest, IssueStatus } from '../types';
 
 interface PRDetailProps {
   pr: PullRequest;
+  issueStatus?: IssueStatus;
   onBack: () => void;
   onComment: (prId: string, body: string) => void;
   onVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => void;
@@ -22,7 +23,7 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   closed: { label: 'CLOSED', className: 'status-closed' },
 };
 
-export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge, onRelaunchReview, onMoveToInProgress }: PRDetailProps) {
+export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerge, onRelaunchReview, onMoveToInProgress }: PRDetailProps) {
   const [comment, setComment] = useState('');
   const status = STATUS_LABELS[pr.status] || STATUS_LABELS.open;
 
@@ -70,12 +71,14 @@ export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge, onRelaunch
             >
               [⟳ RELAUNCH REVIEW]
             </button>
-            <button
-              className="pr-action-btn pr-inprogress-btn"
-              onClick={() => onMoveToInProgress(pr.issueId)}
-            >
-              [← BACK TO IN PROGRESS]
-            </button>
+            {issueStatus === 'review' && (
+              <button
+                className="pr-action-btn pr-inprogress-btn"
+                onClick={() => { onMoveToInProgress(pr.issueId); onBack(); }}
+              >
+                [← BACK TO IN PROGRESS]
+              </button>
+            )}
             {pr.verdict === 'approved' && (
               <button
                 className="pr-action-btn pr-merge-btn"

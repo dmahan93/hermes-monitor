@@ -13,6 +13,7 @@ import { useIssues } from './hooks/useIssues';
 import { usePRs } from './hooks/usePRs';
 import { useAgents } from './hooks/useAgents';
 import { useWebSocket } from './hooks/useWebSocket';
+import type { IssueStatus } from './types';
 import './App.css';
 
 function getWsUrl(): string {
@@ -84,7 +85,7 @@ export default function App() {
     createIssue(title, description || undefined, agent || undefined, command || undefined, branch || undefined);
   }, [createIssue]);
 
-  const handleStatusChange = useCallback(async (id: string, status: any) => {
+  const handleStatusChange = useCallback(async (id: string, status: IssueStatus) => {
     await changeStatus(id, status);
     refetchTerminals();
     refetchPRs();
@@ -194,6 +195,7 @@ export default function App() {
         <div className={`view-panel ${view === 'prs' ? 'view-active' : 'view-hidden'}`}>
           <PRList
             prs={prs}
+            issues={issues}
             onComment={addComment}
             onVerdict={setVerdict}
             onMerge={mergePR}

@@ -346,6 +346,19 @@ export class PRManager {
     return this.prs.get(id);
   }
 
+  resetToOpen(prId: string): PullRequest | null {
+    const pr = this.prs.get(prId);
+    if (!pr) return null;
+    if (pr.status === 'merged' || pr.status === 'closed') return pr;
+
+    pr.status = 'open';
+    pr.verdict = 'pending';
+    pr.updatedAt = Date.now();
+    this.persist(pr);
+    this.emit('pr:updated', pr);
+    return pr;
+  }
+
   getByIssueId(issueId: string): PullRequest | undefined {
     let found: PullRequest | undefined;
     this.prs.forEach((pr) => {

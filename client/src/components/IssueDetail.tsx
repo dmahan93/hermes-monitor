@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Issue, PullRequest, AgentPreset } from '../types';
+import type { Issue, IssueStatus, PullRequest, AgentPreset } from '../types';
 
 interface IssueDetailProps {
   issue: Issue;
@@ -7,7 +7,7 @@ interface IssueDetailProps {
   pr?: PullRequest;
   onClose: () => void;
   onUpdate: (id: string, updates: Partial<Issue>) => void;
-  onStatusChange: (id: string, status: string) => void;
+  onStatusChange: (id: string, status: IssueStatus) => void;
   onDelete: (id: string) => void;
   onTerminalClick?: (issueId: string) => void;
   onPRClick?: (prId: string) => void;

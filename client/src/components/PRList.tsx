@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { PRDetail } from './PRDetail';
-import type { PullRequest } from '../types';
+import type { PullRequest, Issue } from '../types';
 
 interface PRListProps {
   prs: PullRequest[];
+  issues: Issue[];
   onComment: (prId: string, body: string) => void;
   onVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => void;
   onMerge: (prId: string) => void;
@@ -20,15 +21,17 @@ const STATUS_ICONS: Record<string, string> = {
   closed: '—',
 };
 
-export function PRList({ prs, onComment, onVerdict, onMerge, onRelaunchReview, onMoveToInProgress }: PRListProps) {
+export function PRList({ prs, issues, onComment, onVerdict, onMerge, onRelaunchReview, onMoveToInProgress }: PRListProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const selectedPR = selectedId ? prs.find((p) => p.id === selectedId) : null;
+  const selectedIssue = selectedPR ? issues.find((i) => i.id === selectedPR.issueId) : null;
 
   if (selectedPR) {
     return (
       <PRDetail
         pr={selectedPR}
+        issueStatus={selectedIssue?.status}
         onBack={() => setSelectedId(null)}
         onComment={onComment}
         onVerdict={onVerdict}
