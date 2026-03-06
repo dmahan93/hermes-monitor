@@ -1024,6 +1024,9 @@ body {
   flex-shrink: 0;
 }
 
+/* Edit button is hidden by default and revealed on hover/focus.
+   Delete button stays always visible — intentional: destructive actions
+   remain visible as a signal, while edit uses progressive disclosure. */
 .issue-card-edit {
   background: transparent;
   border: none;

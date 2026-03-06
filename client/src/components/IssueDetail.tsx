@@ -24,6 +24,8 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
 export function IssueDetail({
   issue, agents, pr, initialEditing, onClose, onUpdate, onStatusChange, onDelete, onTerminalClick, onPRClick,
 }: IssueDetailProps) {
+  // initialEditing is only read at mount. This works because App.tsx renders
+  // <IssueDetail key={detailIssueId}>, forcing a full remount when switching issues.
   const [editing, setEditing] = useState(initialEditing ?? false);
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(issue.description);

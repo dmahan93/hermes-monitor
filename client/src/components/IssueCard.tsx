@@ -51,6 +51,7 @@ export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalCl
                   onDelete(issue.id);
                 }}
                 title="Delete issue"
+                aria-label="Delete issue"
               >
                 ×
               </button>
