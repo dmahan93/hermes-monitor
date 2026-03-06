@@ -1,0 +1,350 @@
+/* ═══════════════════════════════════════════
+   HERMES MONITOR — webcore-accented dark UI
+   ═══════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=VT323&display=swap');
+
+:root {
+  --bg: #0e0e16;
+  --surface: #0a0b12;
+  --chrome: #2a2a3a;
+  --chrome-light: #3a3a4e;
+  --chrome-dark: #1a1a28;
+  --text: #c0c8c0;
+  --text-muted: #555566;
+  --accent: #33dd77;
+  --accent-dim: #33dd7730;
+  --warn: #ddaa22;
+  --error: #dd4444;
+  --link: #4488dd;
+
+  /* bevel colors for that webcore nod */
+  --bevel-light: #444466;
+  --bevel-dark: #111122;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── App Layout ── */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.main {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+}
+
+/* ── Header ── */
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  background: var(--chrome-dark);
+  /* webcore: subtle top bevel */
+  border-bottom: 1px solid var(--bevel-dark);
+  border-top: 1px solid var(--bevel-light);
+  min-height: 28px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-title {
+  font-family: 'VT323', monospace;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.header-count {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-add-btn {
+  background: transparent;
+  border: 1px solid var(--chrome-light);
+  /* webcore: beveled button */
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.header-add-btn:hover {
+  background: var(--accent-dim);
+}
+
+.header-add-btn:active {
+  /* webcore: pressed button inverts bevel */
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.header-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.header-status.connected .header-status-dot {
+  background: var(--accent);
+  box-shadow: 0 0 4px var(--accent);
+}
+
+.header-status.disconnected .header-status-dot {
+  background: var(--error);
+  box-shadow: 0 0 4px var(--error);
+}
+
+/* ── Terminal Grid ── */
+
+.terminal-grid {
+  min-height: 100%;
+}
+
+.terminal-grid-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(100vh - 56px);
+  color: var(--text-muted);
+}
+
+.terminal-grid-empty-text {
+  text-align: center;
+  font-family: 'VT323', monospace;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.terminal-grid-empty-text .accent {
+  color: var(--accent);
+}
+
+/* ── Terminal Pane ── */
+
+.terminal-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--surface);
+  /* webcore: inset bevel border */
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+  overflow: hidden;
+}
+
+.terminal-pane-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 4px;
+  background: var(--chrome-dark);
+  /* webcore: raised header bar */
+  border-bottom: 1px solid var(--bevel-dark);
+  min-height: 20px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.terminal-pane-drag-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 0 2px;
+}
+
+.terminal-pane-drag-handle:active {
+  cursor: grabbing;
+}
+
+.terminal-pane-title {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-pane-pid {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+}
+
+.terminal-pane-close {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 3px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  /* webcore: tiny beveled close button */
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+}
+
+.terminal-pane-close:hover {
+  color: var(--error);
+  background: #dd444420;
+}
+
+.terminal-pane-close:active {
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.terminal-pane-body {
+  flex: 1;
+  overflow: hidden;
+  /* subtle phosphor glow on terminal content */
+}
+
+.terminal-pane-body .xterm {
+  padding: 2px;
+}
+
+/* phosphor text glow — subtle webcore CRT nod */
+.terminal-pane-body .xterm-rows {
+  text-shadow: 0 0 2px #33dd7715;
+}
+
+/* ── Status Bar ── */
+
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 8px;
+  background: var(--chrome-dark);
+  border-top: 1px solid var(--bevel-light);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  min-height: 18px;
+}
+
+.status-bar-item {
+  display: flex;
+  align-items: center;
+}
+
+/* ── react-grid-layout overrides ── */
+
+.react-grid-item.react-grid-placeholder {
+  background: var(--accent-dim) !important;
+  border: 1px dashed var(--accent) !important;
+  opacity: 0.3 !important;
+  border-radius: 0 !important;
+}
+
+.react-grid-item > .react-resizable-handle {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.react-grid-item:hover > .react-resizable-handle {
+  opacity: 0.5;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  border-color: var(--accent) !important;
+}
+
+/* ── Scrollbar (webcore nod) ── */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--chrome-dark);
+  border: 1px solid var(--bevel-dark);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--chrome);
+  /* beveled scrollbar thumb */
+  border-top: 1px solid var(--bevel-light);
+  border-left: 1px solid var(--bevel-light);
+  border-bottom: 1px solid var(--bevel-dark);
+  border-right: 1px solid var(--bevel-dark);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--chrome-light);
+}
