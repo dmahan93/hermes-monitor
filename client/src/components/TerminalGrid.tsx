@@ -73,7 +73,7 @@ export function TerminalGrid({
               send={send}
               subscribe={subscribe}
               onClose={onClose}
-              awaitingInput={awaitingInputIds?.has(terminal.id)}
+              awaitingInput={awaitingInputIds?.has(terminal.id) ?? false}
             />
           </div>
         );

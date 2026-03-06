@@ -50,6 +50,15 @@ export default function App() {
     return unsub;
   }, [subscribe]);
 
+  // Clear awaiting input state on WS reconnect — the server replays
+  // the correct state for each terminal on new connection, so we reset
+  // to avoid stale phantom alerts from a previous session.
+  useEffect(() => {
+    if (connected) {
+      setAwaitingInputIds(new Set());
+    }
+  }, [connected]);
+
   // Clean up awaiting input state when terminals are removed
   useEffect(() => {
     const terminalIds = new Set(terminals.map((t) => t.id));

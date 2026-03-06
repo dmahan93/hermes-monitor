@@ -286,8 +286,15 @@ describe('TerminalManager', () => {
     });
     // Use a command that stays alive long enough for the debounce to fire
     const term = manager.create({ command: 'bash -c \'echo "Continue? [Y/n]"; sleep 10\'' });
-    // Wait for the output + debounce to trigger detection
-    await new Promise((r) => setTimeout(r, 3000));
+    // Poll until the debounced prompt check fires, rather than a brittle hardcoded sleep
+    const waitFor = async (pred: () => boolean, ms = 10000) => {
+      const start = Date.now();
+      while (!pred() && Date.now() - start < ms) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      if (!pred()) throw new Error('Timed out waiting for condition');
+    };
+    await waitFor(() => manager.isAwaitingInput(term.id));
 
     // The prompt should be detected while the process is still alive
     expect(manager.isAwaitingInput(term.id)).toBe(true);

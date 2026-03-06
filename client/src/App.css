@@ -435,7 +435,7 @@ body {
 
 @keyframes awaiting-border-glow {
   0%, 100% { border-color: var(--warn); box-shadow: 0 0 4px var(--warn); }
-  50% { border-color: #ddaa2260; box-shadow: 0 0 2px #ddaa2240; }
+  50% { border-color: color-mix(in srgb, var(--warn) 38%, transparent); box-shadow: 0 0 2px color-mix(in srgb, var(--warn) 25%, transparent); }
 }
 
 .terminal-pane.terminal-pane-awaiting,
@@ -453,7 +453,7 @@ body {
   font-family: 'VT323', monospace;
   font-size: 0.833rem;
   color: var(--warn);
-  background: #ddaa2218;
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
   padding: 0 0.333rem;
   border: 1px solid var(--warn);
   border-top-color: var(--bevel-light);
@@ -477,6 +477,22 @@ body {
 .status-bar-awaiting {
   color: var(--warn);
   animation: awaiting-pulse 1.5s ease-in-out infinite;
+}
+
+/* Accessibility: disable animations for users with motion sensitivity */
+@media (prefers-reduced-motion: reduce) {
+  .terminal-pane-alert,
+  .header-awaiting-input,
+  .status-bar-awaiting {
+    animation: none;
+  }
+
+  .terminal-pane.terminal-pane-awaiting,
+  .task-terminal-pane.terminal-pane-awaiting {
+    animation: none;
+    border-color: var(--warn);
+    box-shadow: 0 0 4px var(--warn);
+  }
 }
 
 /* ── Status Bar ── */
