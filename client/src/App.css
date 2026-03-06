@@ -18,6 +18,12 @@
   --error: #dd4444;
   --link: #4488dd;
 
+  /* backlog / planning accent */
+  --backlog: #887799;
+  --backlog-dim: #554466;
+  --backlog-bright: #aa99bb;
+  --backlog-glow: #55446630;
+
   /* bevel colors for that webcore nod */
   --bevel-light: #444466;
   --bevel-dark: #111122;
@@ -537,7 +543,7 @@ body {
   border: 1px solid;
 }
 
-.issue-status-backlog { color: #887799; border-color: #554466; }
+.issue-status-backlog { color: var(--backlog); border-color: var(--backlog-dim); }
 .issue-status-todo { color: var(--text-muted); border-color: var(--chrome); }
 .issue-status-wip { color: var(--accent); border-color: var(--accent); }
 .issue-status-review { color: var(--warn); border-color: var(--warn); }
@@ -1663,7 +1669,7 @@ body {
 .backlog-label {
   font-family: 'VT323', monospace;
   font-size: 1.083rem;
-  color: #887799;
+  color: var(--backlog);
   letter-spacing: 0.083rem;
 }
 
@@ -1716,7 +1722,7 @@ body {
 }
 
 .backlog-card:hover {
-  border-color: #554466;
+  border-color: var(--backlog-dim);
 }
 
 .backlog-card.dragging {
@@ -1743,7 +1749,7 @@ body {
 }
 
 .backlog-card-title:hover {
-  color: #887799;
+  color: var(--backlog);
 }
 
 .backlog-card-desc {
@@ -1765,8 +1771,8 @@ body {
 
 .backlog-plan-btn {
   background: transparent;
-  border: 1px solid #554466;
-  color: #887799;
+  border: 1px solid var(--backlog-dim);
+  color: var(--backlog);
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.75rem;
   padding: 0 0.333rem;
@@ -1775,8 +1781,8 @@ body {
 }
 
 .backlog-plan-btn:hover {
-  background: #55446630;
-  color: #aa99bb;
+  background: var(--backlog-glow);
+  color: var(--backlog-bright);
 }
 
 /* ═══════════════════════════════════════════
@@ -1824,7 +1830,7 @@ body {
 .planning-title-display {
   font-family: 'VT323', monospace;
   font-size: 1.167rem;
-  color: #887799;
+  color: var(--backlog);
   letter-spacing: 0.083rem;
   flex: 1;
   overflow: hidden;
@@ -1886,24 +1892,7 @@ body {
   letter-spacing: 0.083rem;
 }
 
-.planning-input {
-  background: var(--surface);
-  border: 1px solid var(--chrome);
-  border-top-color: var(--bevel-dark);
-  border-left-color: var(--bevel-dark);
-  border-bottom-color: var(--bevel-light);
-  border-right-color: var(--bevel-light);
-  color: var(--text);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.917rem;
-  padding: 0.333rem 0.5rem;
-  outline: none;
-}
-
-.planning-input:focus {
-  border-color: #887799;
-}
-
+.planning-input,
 .planning-textarea {
   background: var(--surface);
   border: 1px solid var(--chrome);
@@ -1916,11 +1905,15 @@ body {
   font-size: 0.917rem;
   padding: 0.333rem 0.5rem;
   outline: none;
+}
+
+.planning-textarea {
   resize: vertical;
 }
 
+.planning-input:focus,
 .planning-textarea:focus {
-  border-color: #887799;
+  border-color: var(--backlog);
 }
 
 .planning-textarea::placeholder {
@@ -1946,8 +1939,8 @@ body {
 
 .planning-save-btn {
   background: transparent;
-  border: 1px solid #887799;
-  color: #887799;
+  border: 1px solid var(--backlog);
+  color: var(--backlog);
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.833rem;
   padding: 0.167rem 0.667rem;
@@ -1957,8 +1950,8 @@ body {
 }
 
 .planning-save-btn:hover {
-  background: #55446630;
-  color: #aa99bb;
+  background: var(--backlog-glow);
+  color: var(--backlog-bright);
 }
 
 .planning-terminal {
@@ -1981,7 +1974,7 @@ body {
 
 .planning-terminal-label {
   font-size: 0.833rem;
-  color: #887799;
+  color: var(--backlog);
 }
 
 .planning-terminal-stop {
@@ -2023,12 +2016,12 @@ body {
 
 .planning-terminal-start {
   background: transparent;
-  border: 1px solid #554466;
+  border: 1px solid var(--backlog-dim);
   border-top-color: #665577;
   border-left-color: #665577;
   border-bottom-color: #332244;
   border-right-color: #332244;
-  color: #887799;
+  color: var(--backlog);
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.917rem;
   padding: 0.333rem 1rem;
@@ -2037,8 +2030,8 @@ body {
 }
 
 .planning-terminal-start:hover {
-  background: #55446630;
-  color: #aa99bb;
+  background: var(--backlog-glow);
+  color: var(--backlog-bright);
 }
 
 .planning-terminal-hint {

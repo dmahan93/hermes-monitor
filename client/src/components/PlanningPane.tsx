@@ -1,13 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { TerminalView } from './TerminalView';
-import type { Issue, AgentPreset, ServerMessage } from '../types';
+import type { Issue, AgentPreset, ClientMessage, ServerMessage } from '../types';
 
 interface PlanningPaneProps {
   issue: Issue;
   agents: AgentPreset[];
-  send: (msg: any) => void;
+  send: (msg: ClientMessage) => void;
   subscribe: (handler: (msg: ServerMessage) => void) => () => void;
-  onUpdate: (id: string, updates: Partial<Issue>) => void;
+  onUpdate: (id: string, updates: Partial<Issue>) => Promise<void>;
   onPromote: (id: string) => void;
   onStartPlanning: (id: string) => void;
   onStopPlanning: (id: string) => void;
@@ -22,17 +22,25 @@ export function PlanningPane({
   const [description, setDescription] = useState(issue.description);
   const [dirty, setDirty] = useState(false);
 
+  // Sync local state with prop changes (e.g., from WebSocket updates)
+  useEffect(() => {
+    if (!dirty) {
+      setTitle(issue.title);
+      setDescription(issue.description);
+    }
+  }, [issue.title, issue.description, dirty]);
+
   const agent = agents.find((a) => a.id === issue.agent);
 
-  const handleSave = useCallback(() => {
-    onUpdate(issue.id, { title: title.trim(), description: description.trim() });
+  const handleSave = useCallback(async () => {
+    await onUpdate(issue.id, { title: title.trim(), description: description.trim() });
     setDirty(false);
   }, [issue.id, title, description, onUpdate]);
 
-  const handlePromote = useCallback(() => {
-    // Save any unsaved changes first
+  const handlePromote = useCallback(async () => {
+    // Save any unsaved changes first, then promote
     if (dirty) {
-      onUpdate(issue.id, { title: title.trim(), description: description.trim() });
+      await onUpdate(issue.id, { title: title.trim(), description: description.trim() });
     }
     onPromote(issue.id);
   }, [issue.id, title, description, dirty, onUpdate, onPromote]);

@@ -64,12 +64,14 @@ export default function App() {
     }
   }, [termViewAgentIssue]);
 
-  // Auto-close planning pane if issue is no longer in backlog
+  // Auto-close planning pane if issue is no longer in backlog or was deleted externally
   useEffect(() => {
-    if (planningIssue && planningIssue.status !== 'backlog') {
+    if (planningIssueId && !planningIssue) {
+      setPlanningIssueId(null);
+    } else if (planningIssue && planningIssue.status !== 'backlog') {
       setPlanningIssueId(null);
     }
-  }, [planningIssue]);
+  }, [planningIssueId, planningIssue]);
 
   // Refetch terminals and PRs when issues change
   useEffect(() => {
@@ -213,6 +215,7 @@ export default function App() {
         <div className={`view-panel ${view === 'kanban' ? 'view-active' : 'view-hidden'}`}>
           {showPlanning ? (
             <PlanningPane
+              key={planningIssue.id}
               issue={planningIssue}
               agents={agents}
               send={send}

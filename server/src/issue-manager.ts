@@ -4,6 +4,7 @@ import type { WorktreeManager } from './worktree-manager.js';
 import type { PRManager } from './pr-manager.js';
 import type { Store } from './store.js';
 import { getPreset } from './agents.js';
+import { config } from './config.js';
 
 export type IssueStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
 
@@ -239,6 +240,7 @@ export class IssueManager {
 
     const terminal = this.terminalManager.create({
       title: `[plan] ${issue.title}`,
+      cwd: config.repoPath,
     });
     issue.terminalId = terminal.id;
     issue.updatedAt = Date.now();

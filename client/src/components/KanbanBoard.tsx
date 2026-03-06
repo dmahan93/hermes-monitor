@@ -6,6 +6,8 @@ import { NewIssueModal } from './NewIssueModal';
 import type { Issue, IssueStatus, AgentPreset } from '../types';
 import { COLUMNS } from '../types';
 
+const noop = () => {};
+
 interface KanbanBoardProps {
   issues: Issue[];
   agents: AgentPreset[];
@@ -75,7 +77,7 @@ export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onD
           issues={issuesByColumn.backlog}
           agents={agents}
           onDelete={onDeleteIssue}
-          onPlanClick={onPlanClick || (() => {})}
+          onPlanClick={onPlanClick || noop}
           onIssueClick={onIssueClick}
         />
       </DragDropContext>

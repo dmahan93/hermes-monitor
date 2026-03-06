@@ -84,9 +84,14 @@ export function createIssueApiRouter(manager: IssueManager): Router {
 
   // Start planning terminal for a backlog issue
   router.post('/issues/:id/plan', (req, res) => {
+    const existing = manager.get(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: 'Issue not found' });
+      return;
+    }
     const issue = manager.startPlanning(req.params.id);
     if (!issue) {
-      res.status(400).json({ error: 'Issue not found or not in backlog status' });
+      res.status(400).json({ error: 'Issue is not in backlog status' });
       return;
     }
     res.json(issue);
@@ -94,9 +99,14 @@ export function createIssueApiRouter(manager: IssueManager): Router {
 
   // Stop planning terminal for a backlog issue
   router.delete('/issues/:id/plan', (req, res) => {
+    const existing = manager.get(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: 'Issue not found' });
+      return;
+    }
     const issue = manager.stopPlanning(req.params.id);
     if (!issue) {
-      res.status(400).json({ error: 'Issue not found or not in backlog status' });
+      res.status(400).json({ error: 'Issue is not in backlog status' });
       return;
     }
     res.json(issue);
