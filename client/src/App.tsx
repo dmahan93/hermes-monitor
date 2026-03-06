@@ -4,6 +4,7 @@ import { TerminalGrid } from './components/TerminalGrid';
 import { KanbanBoard } from './components/KanbanBoard';
 import { IssueDetail } from './components/IssueDetail';
 import { TaskTerminalPane } from './components/TaskTerminalPane';
+import { AgentTerminalList } from './components/AgentTerminalList';
 import { PRList } from './components/PRList';
 import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
@@ -27,6 +28,7 @@ export default function App() {
   const agents = useAgents();
   const [view, setView] = useState<ViewMode>('kanban');
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
+  const [termViewAgentId, setTermViewAgentId] = useState<string | null>(null);
   const [detailIssueId, setDetailIssueId] = useState<string | null>(null);
 
   // Get the expanded issue for the terminal pane
@@ -35,12 +37,24 @@ export default function App() {
     return issues.find((i) => i.id === expandedIssueId) || null;
   }, [expandedIssueId, issues]);
 
-  // Auto-close pane if issue loses its terminal
+  // Get the agent issue for the terminal view pane
+  const termViewAgentIssue = useMemo(() => {
+    if (!termViewAgentId) return null;
+    return issues.find((i) => i.id === termViewAgentId) || null;
+  }, [termViewAgentId, issues]);
+
+  // Auto-close panes if issue loses its terminal
   useEffect(() => {
     if (expandedIssue && !expandedIssue.terminalId) {
       setExpandedIssueId(null);
     }
   }, [expandedIssue]);
+
+  useEffect(() => {
+    if (termViewAgentIssue && !termViewAgentIssue.terminalId) {
+      setTermViewAgentId(null);
+    }
+  }, [termViewAgentIssue]);
 
   // Refetch terminals and PRs when issues change
   useEffect(() => {
@@ -122,14 +136,35 @@ export default function App() {
       </Header>
       <main className="main">
         <div className={`view-panel ${view === 'terminals' ? 'view-active' : 'view-hidden'}`}>
-          <TerminalGrid
-            terminals={terminals}
-            layout={layout}
-            onLayoutChange={updateLayout}
-            send={send}
-            subscribe={subscribe}
-            onClose={handleCloseTerminal}
-          />
+          <div className="terminals-layout">
+            <div className="terminals-sidebar">
+              <AgentTerminalList
+                issues={issues}
+                agents={agents}
+                activeTerminalId={termViewAgentIssue?.terminalId || null}
+                onSelect={(issueId) => setTermViewAgentId((prev) => prev === issueId ? null : issueId)}
+              />
+            </div>
+            <div className="terminals-main">
+              {termViewAgentIssue && termViewAgentIssue.terminalId ? (
+                <TaskTerminalPane
+                  issue={termViewAgentIssue}
+                  send={send}
+                  subscribe={subscribe}
+                  onMinimize={() => setTermViewAgentId(null)}
+                />
+              ) : (
+                <TerminalGrid
+                  terminals={terminals}
+                  layout={layout}
+                  onLayoutChange={updateLayout}
+                  send={send}
+                  subscribe={subscribe}
+                  onClose={handleCloseTerminal}
+                />
+              )}
+            </div>
+          </div>
         </div>
         <div className={`view-panel ${view === 'kanban' ? 'view-active' : 'view-hidden'}`}>
           <div className={`kanban-split ${showTaskTerminal ? 'split-open' : ''}`}>
