@@ -82,7 +82,8 @@ export const COLUMNS: { id: IssueStatus; label: string }[] = [
 // WebSocket messages
 export type ClientMessage =
   | { type: 'stdin'; terminalId: string; data: string }
-  | { type: 'resize'; terminalId: string; cols: number; rows: number };
+  | { type: 'resize'; terminalId: string; cols: number; rows: number }
+  | { type: 'replay'; terminalId: string };
 
 export type ServerMessage =
   | { type: 'stdout'; terminalId: string; data: string }

@@ -63,6 +63,14 @@ export function setupWebSocket(server: Server, manager: TerminalManager): WebSoc
           }
           break;
         }
+        case 'replay': {
+          // Client requests scrollback for a specific terminal (e.g. on component mount)
+          const scrollback = manager.getScrollback(msg.terminalId);
+          if (scrollback) {
+            ws.send(JSON.stringify({ type: 'stdout', terminalId: msg.terminalId, data: scrollback }));
+          }
+          break;
+        }
         default: {
           const m = msg as any;
           ws.send(JSON.stringify({ type: 'error', terminalId: m.terminalId || '', message: `Unknown message type: ${m.type}` }));

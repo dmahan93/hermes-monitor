@@ -19,7 +19,8 @@ export interface CreateTerminalOptions {
 // WebSocket messages: client -> server
 export type ClientMessage =
   | { type: 'stdin'; terminalId: string; data: string }
-  | { type: 'resize'; terminalId: string; cols: number; rows: number };
+  | { type: 'resize'; terminalId: string; cols: number; rows: number }
+  | { type: 'replay'; terminalId: string };
 
 // WebSocket messages: server -> client
 export type ServerMessage =

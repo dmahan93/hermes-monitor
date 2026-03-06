@@ -84,7 +84,6 @@ export function TerminalView({ terminalId, send, subscribe, onResize }: Terminal
     });
 
     // Subscribe to server messages for this terminal
-    // Re-subscribe when subscribe ref changes (WS reconnect)
     let unsub: (() => void) | null = null;
 
     const doSubscribe = () => {
@@ -100,9 +99,15 @@ export function TerminalView({ terminalId, send, subscribe, onResize }: Terminal
     };
     doSubscribe();
 
+    // Request scrollback replay — catches any output that happened
+    // before this component mounted (e.g. terminal spawned by kanban)
+    sendRef.current({ type: 'replay', terminalId });
+
     // Re-subscribe periodically to handle WS reconnects
     const subInterval = setInterval(() => {
       doSubscribe();
+      // Also re-request scrollback after reconnect
+      sendRef.current({ type: 'replay', terminalId });
     }, 5000);
 
     // ResizeObserver to refit on container size change
