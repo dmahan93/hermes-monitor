@@ -22,13 +22,17 @@ const mockIssue: Issue = {
   updatedAt: Date.now(),
 };
 
-function renderCard(issue: Issue = mockIssue, onDelete = vi.fn()) {
+function renderCard(
+  issue: Issue = mockIssue,
+  onDelete = vi.fn(),
+  { onEdit }: { onEdit?: (issueId: string) => void } = {},
+) {
   return render(
     <DragDropContext onDragEnd={() => {}}>
       <Droppable droppableId="test">
         {(provided) => (
           <div ref={provided.innerRef} {...provided.droppableProps}>
-            <IssueCard issue={issue} index={0} agents={mockAgents} onDelete={onDelete} />
+            <IssueCard issue={issue} index={0} agents={mockAgents} onDelete={onDelete} onEdit={onEdit} />
             {provided.placeholder}
           </div>
         )}
@@ -68,5 +72,29 @@ describe('IssueCard', () => {
     renderCard(mockIssue, onDelete);
     fireEvent.click(screen.getByTitle('Delete issue'));
     expect(onDelete).toHaveBeenCalledWith('issue-1');
+  });
+
+  it('edit button renders when onEdit is provided', () => {
+    const onEdit = vi.fn();
+    renderCard(mockIssue, vi.fn(), { onEdit });
+    expect(screen.getByTitle('Edit issue')).toBeInTheDocument();
+  });
+
+  it('edit button calls onEdit with issue id', () => {
+    const onEdit = vi.fn();
+    renderCard(mockIssue, vi.fn(), { onEdit });
+    fireEvent.click(screen.getByTitle('Edit issue'));
+    expect(onEdit).toHaveBeenCalledWith('issue-1');
+  });
+
+  it('edit button does not render when onEdit is not provided', () => {
+    renderCard();
+    expect(screen.queryByTitle('Edit issue')).not.toBeInTheDocument();
+  });
+
+  it('edit button has aria-label for accessibility', () => {
+    const onEdit = vi.fn();
+    renderCard(mockIssue, vi.fn(), { onEdit });
+    expect(screen.getByLabelText('Edit issue')).toBeInTheDocument();
   });
 });

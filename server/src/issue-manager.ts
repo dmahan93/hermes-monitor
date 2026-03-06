@@ -171,6 +171,14 @@ export class IssueManager {
   }
 
   private handleTransition(issue: Issue, from: IssueStatus, to: IssueStatus): void {
+    // Reset PR verdict when moving back to in_progress so it doesn't show stale status
+    if (to === 'in_progress' && this.prManager) {
+      const existingPr = this.prManager.getByIssueId(issue.id);
+      if (existingPr) {
+        this.prManager.resetToOpen(existingPr.id);
+      }
+    }
+
     // Spawn terminal + worktree when moving TO in_progress
     if (to === 'in_progress' && !issue.terminalId) {
       let cwd: string | undefined;
@@ -210,6 +218,10 @@ export class IssueManager {
           // Spawn adversarial reviewer
           this.prManager.spawnReviewer(pr.id);
         }
+      } else {
+        // PR already exists (e.g. review → in_progress → review cycle)
+        // Relaunch the review to pick up new changes
+        this.prManager.relaunchReview(existingPr.id);
       }
     }
 
