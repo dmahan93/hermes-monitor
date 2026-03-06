@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { PRDetail } from './PRDetail';
 import type { PullRequest } from '../types';
 
-type PRView = 'open' | 'merged' | 'all';
+type PRView = 'open' | 'closed' | 'all';
 
 interface PRListProps {
   prs: PullRequest[];
@@ -23,28 +23,38 @@ const STATUS_ICONS: Record<string, string> = {
 
 const VIEWS: { id: PRView; label: string }[] = [
   { id: 'open', label: 'OPEN' },
-  { id: 'merged', label: 'MERGED' },
+  { id: 'closed', label: 'CLOSED' },
   { id: 'all', label: 'ALL' },
 ];
 
-function filterPRs(prs: PullRequest[], view: PRView): PullRequest[] {
+const VIEW_LABELS: Record<PRView, string> = {
+  open: 'open',
+  closed: 'closed',
+  all: '',
+};
+
+export function filterPRs(prs: PullRequest[], view: PRView): PullRequest[] {
   switch (view) {
     case 'open':
       return prs.filter((pr) => pr.status !== 'merged' && pr.status !== 'closed');
-    case 'merged':
-      return prs.filter((pr) => pr.status === 'merged');
+    case 'closed':
+      return prs.filter((pr) => pr.status === 'merged' || pr.status === 'closed');
     case 'all':
       return prs;
   }
 }
 
-function countForView(prs: PullRequest[], view: PRView): number {
-  return filterPRs(prs, view).length;
-}
-
 export function PRList({ prs, onComment, onVerdict, onMerge, onRelaunchReview }: PRListProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<PRView>('open');
+
+  const counts = useMemo(() => {
+    const result = {} as Record<PRView, number>;
+    for (const v of VIEWS) result[v.id] = filterPRs(prs, v.id).length;
+    return result;
+  }, [prs]);
+
+  const filtered = useMemo(() => filterPRs(prs, view), [prs, view]);
 
   const selectedPR = selectedId ? prs.find((p) => p.id === selectedId) : null;
 
@@ -61,27 +71,22 @@ export function PRList({ prs, onComment, onVerdict, onMerge, onRelaunchReview }:
     );
   }
 
-  const filtered = filterPRs(prs, view);
-
   return (
     <div className="pr-list">
       <div className="pr-list-header">
         <span className="pr-list-title">PULL REQUESTS</span>
-        <span className="pr-list-count">{prs.length}</span>
+        <span className="pr-list-count">{filtered.length}</span>
       </div>
       <div className="pr-view-tabs">
-        {VIEWS.map((v) => {
-          const count = countForView(prs, v.id);
-          return (
-            <button
-              key={v.id}
-              className={`pr-view-tab ${view === v.id ? 'pr-view-tab-active' : ''}`}
-              onClick={() => setView(v.id)}
-            >
-              {v.label} <span className="pr-view-tab-count">{count}</span>
-            </button>
-          );
-        })}
+        {VIEWS.map((v) => (
+          <button
+            key={v.id}
+            className={`pr-view-tab ${view === v.id ? 'pr-view-tab-active' : ''}`}
+            onClick={() => setView(v.id)}
+          >
+            {v.label} <span className="pr-view-tab-count">{counts[v.id]}</span>
+          </button>
+        ))}
       </div>
       {prs.length === 0 ? (
         <div className="pr-list-empty">
@@ -90,7 +95,7 @@ export function PRList({ prs, onComment, onVerdict, onMerge, onRelaunchReview }:
         </div>
       ) : filtered.length === 0 ? (
         <div className="pr-list-empty">
-          No {view === 'merged' ? 'merged' : 'open'} pull requests.
+          No {VIEW_LABELS[view]} pull requests.
         </div>
       ) : (
         <div className="pr-list-items">

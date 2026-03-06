@@ -1386,6 +1386,7 @@ body {
 .pr-list-icon.status-approved { color: var(--accent); }
 .pr-list-icon.status-changes_requested { color: var(--error); }
 .pr-list-icon.status-merged { color: var(--link); }
+.pr-list-icon.status-closed { color: var(--text-muted); }
 
 .pr-list-item-info {
   flex: 1;
