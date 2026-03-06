@@ -172,19 +172,6 @@ export default function App() {
         {/* Terminal view: sidebar + grid/expanded agent */}
         <div className={`view-panel ${view === 'terminals' ? 'view-active' : 'view-hidden'}`}>
           <div className="terminals-layout">
-            <div className="terminals-sidebar">
-              <AgentTerminalList
-                issues={issues}
-                prs={prs}
-                agents={agents}
-                activeTerminalId={termViewAgentIssue?.terminalId || null}
-                onSelect={(selection) => {
-                  setTermViewSelection((prev) =>
-                    prev && selectionKey(prev) === selectionKey(selection) ? null : selection
-                  );
-                }}
-              />
-            </div>
             <div className="terminals-main">
               {termViewAgentIssue && termViewAgentIssue.terminalId ? (
                 <TaskTerminalPane
@@ -203,6 +190,19 @@ export default function App() {
                   onClose={handleCloseTerminal}
                 />
               )}
+            </div>
+            <div className="terminals-sidebar">
+              <AgentTerminalList
+                issues={issues}
+                prs={prs}
+                agents={agents}
+                activeTerminalId={termViewAgentIssue?.terminalId || null}
+                onSelect={(selection) => {
+                  setTermViewSelection((prev) =>
+                    prev && selectionKey(prev) === selectionKey(selection) ? null : selection
+                  );
+                }}
+              />
             </div>
           </div>
         </div>
