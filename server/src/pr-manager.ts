@@ -172,7 +172,7 @@ export class PRManager {
     ].join('\n'));
 
     // Spawn reviewer — give it the repo, branch info, and let it git diff itself
-    const reviewCommand = `hermes chat -q 'You are an adversarial code reviewer. You are reviewing branch ${pr.sourceBranch} against ${pr.targetBranch} in repo ${pr.repoPath}. Run git diff ${pr.targetBranch}...${pr.sourceBranch} in the repo to see the changes. Read ${reviewDir}/context.md for context. If the PR touches UI files (.tsx, .css, .html), verify that screenshots are included in the description — request them if missing. Write a thorough critical review to ${reviewDir}/review.md. Start with VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED. Be rigorous.'`;
+    const reviewCommand = `hermes chat -q 'You are an adversarial code reviewer. If a summarization step occurs, always continue working afterward — do not treat it as a stopping point. You are reviewing branch ${pr.sourceBranch} against ${pr.targetBranch} in repo ${pr.repoPath}. Run git diff ${pr.targetBranch}...${pr.sourceBranch} in the repo to see the changes. Read ${reviewDir}/context.md for context. Write a thorough critical review to ${reviewDir}/review.md. Start with VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED. Be rigorous. Do not stop until the review file is written.'`;
 
     const terminal = this.terminalManager.create({
       title: `Review: ${pr.title}`,
@@ -311,22 +311,151 @@ export class PRManager {
     return pr;
   }
 
-  merge(prId: string): PullRequest | null {
+  /**
+   * Dry-run merge check — test if merge would succeed without actually doing it.
+   */
+  checkMerge(prId: string): { canMerge: boolean; hasConflicts: boolean; error?: string } {
     const pr = this.prs.get(prId);
-    if (!pr) return null;
+    if (!pr) return { canMerge: false, hasConflicts: false, error: 'PR not found' };
+
+    // Check branch exists
+    try {
+      execSync(`git rev-parse --verify ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
+    } catch {
+      return { canMerge: false, hasConflicts: false, error: `Branch ${pr.sourceBranch} not found` };
+    }
+
+    // Stash if dirty
+    let stashed = false;
+    try {
+      const status = execSync('git status --porcelain', { cwd: pr.repoPath, stdio: 'pipe' }).toString().trim();
+      if (status) {
+        execSync('git stash', { cwd: pr.repoPath, stdio: 'pipe' });
+        stashed = true;
+      }
+    } catch {}
+
+    // Try dry-run merge
+    let canMerge = false;
+    let hasConflicts = false;
+    try {
+      execSync(
+        `git merge --no-commit --no-ff ${pr.sourceBranch}`,
+        { cwd: pr.repoPath, stdio: 'pipe' }
+      );
+      canMerge = true;
+    } catch (err: any) {
+      const msg = err.stderr?.toString() || err.stdout?.toString() || '';
+      hasConflicts = msg.toLowerCase().includes('conflict') || msg.includes('CONFLICT');
+    }
+
+    // Always abort the test merge
+    try { execSync('git merge --abort', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+
+    // Restore stash
+    if (stashed) {
+      try { execSync('git stash pop', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+    }
+
+    return { canMerge, hasConflicts };
+  }
+
+  /**
+   * Spawn an agent to fix merge conflicts by merging target into the source branch.
+   */
+  fixConflicts(prId: string): { pr?: PullRequest; error?: string } {
+    const pr = this.prs.get(prId);
+    if (!pr) return { error: 'PR not found' };
+
+    // Recreate worktree if needed
+    let worktreePath = this.worktreeManager.get(pr.issueId)?.path;
+    if (!worktreePath) {
+      try {
+        const wt = this.worktreeManager.create(pr.issueId, pr.title);
+        worktreePath = wt.path;
+      } catch (err: any) {
+        // Worktree might already exist on disk but not in our map
+        worktreePath = `/tmp/hermes-worktrees/${pr.issueId}`;
+        try {
+          execSync(`git worktree add "${worktreePath}" ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
+        } catch {
+          // Already exists, just use it
+        }
+      }
+    }
+
+    // Spawn agent to merge target branch in and resolve conflicts
+    const fixCommand = `hermes chat -q 'You are an autonomous conflict resolution agent. If a summarization step occurs, always continue working afterward — do not treat it as a stopping point. You are in a git worktree on branch ${pr.sourceBranch}. Run: git merge ${pr.targetBranch} — this will have conflicts. Resolve ALL conflicts by editing the files intelligently, keeping functionality from both sides. Then git add the resolved files and git commit. Do not stop until all conflicts are resolved and committed.'`;
+
+    const terminal = this.terminalManager.create({
+      title: `Fix conflicts: ${pr.title}`,
+      command: fixCommand,
+      cwd: worktreePath,
+    });
+
+    pr.status = 'open';
+    pr.reviewerTerminalId = terminal.id;
+    pr.updatedAt = Date.now();
+    this.persist(pr);
+    this.emit('pr:updated', pr);
+    return { pr };
+  }
+
+  merge(prId: string): { pr?: PullRequest; error?: string } {
+    const pr = this.prs.get(prId);
+    if (!pr) return { error: 'PR not found' };
 
     // Remove worktree FIRST — git won't merge a branch checked out in a worktree
     this.worktreeManager.remove(pr.issueId, false);
 
-    // Merge using git directly
+    // Also force-remove the worktree dir if it still exists
+    try {
+      execSync(`git worktree prune`, { cwd: pr.repoPath, stdio: 'pipe' });
+    } catch {}
+
+    // Check the branch exists
+    try {
+      execSync(`git rev-parse --verify ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
+    } catch {
+      return { error: `Branch ${pr.sourceBranch} does not exist` };
+    }
+
+    // Stash any uncommitted changes in the main repo
+    let stashed = false;
+    try {
+      const status = execSync('git status --porcelain', { cwd: pr.repoPath, stdio: 'pipe' }).toString().trim();
+      if (status) {
+        execSync('git stash', { cwd: pr.repoPath, stdio: 'pipe' });
+        stashed = true;
+      }
+    } catch {}
+
+    // Merge
     try {
       execSync(
         `git merge ${pr.sourceBranch} --no-ff -m "Merge ${pr.sourceBranch}"`,
         { cwd: pr.repoPath, stdio: 'pipe' }
       );
     } catch (err: any) {
-      console.error('Merge failed:', err.stderr?.toString() || err.message);
-      return null;
+      const gitError = err.stderr?.toString() || err.stdout?.toString() || err.message;
+      console.error('Merge failed:', gitError);
+      // Abort failed merge
+      try { execSync('git merge --abort', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+      // Restore stash
+      if (stashed) {
+        try { execSync('git stash pop', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+      }
+      const isConflict = gitError.toLowerCase().includes('conflict') || gitError.includes('CONFLICT');
+      return {
+        error: isConflict
+          ? `Merge conflicts detected. Use "Fix Conflicts" to spawn an agent to resolve them.`
+          : `Merge failed: ${gitError}`,
+      };
+    }
+
+    // Restore stash after successful merge
+    if (stashed) {
+      try { execSync('git stash pop', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
     }
 
     pr.status = 'merged';
@@ -335,11 +464,14 @@ export class PRManager {
     // Clean up the branch
     try {
       execSync(`git branch -d ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
-    } catch {}
+    } catch {
+      // Force delete if not fully merged (shouldn't happen after merge)
+      try { execSync(`git branch -D ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+    }
 
     this.persist(pr);
     this.emit('pr:updated', pr);
-    return pr;
+    return { pr };
   }
 
   get(id: string): PullRequest | undefined {
