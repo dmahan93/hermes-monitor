@@ -1,20 +1,30 @@
+import type { ReactNode } from 'react';
+
 interface HeaderProps {
-  onAdd: () => void;
+  onAdd?: () => void;
   connected: boolean;
   terminalCount: number;
+  issueCount?: number;
+  children?: ReactNode;
 }
 
-export function Header({ onAdd, connected, terminalCount }: HeaderProps) {
+export function Header({ onAdd, connected, terminalCount, issueCount, children }: HeaderProps) {
   return (
     <header className="header">
       <div className="header-left">
         <h1 className="header-title">HERMES MONITOR</h1>
-        <span className="header-count">{terminalCount} terminal{terminalCount !== 1 ? 's' : ''}</span>
+        {children}
       </div>
       <div className="header-right">
-        <button className="header-add-btn" onClick={onAdd}>
-          [+ ADD TERMINAL]
-        </button>
+        <span className="header-count">
+          {terminalCount} terminal{terminalCount !== 1 ? 's' : ''}
+          {issueCount !== undefined && ` · ${issueCount} issue${issueCount !== 1 ? 's' : ''}`}
+        </span>
+        {onAdd && (
+          <button className="header-add-btn" onClick={onAdd}>
+            [+ ADD TERMINAL]
+          </button>
+        )}
         <span className={`header-status ${connected ? 'connected' : 'disconnected'}`}>
           <span className="header-status-dot" />
           {connected ? 'connected' : 'disconnected'}

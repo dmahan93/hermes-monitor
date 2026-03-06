@@ -287,9 +287,151 @@ hermes-monitor/
 
 ---
 
+---
+
+## Phase 2: Kanban Board + Agent Spawn
+
+### Overview
+
+A kanban board where issues flow through columns. The key behavior:
+**dragging an issue to IN PROGRESS automatically spawns a terminal and
+starts an agent**. Moving it out kills the terminal.
+
+### Columns
+
+| Column      | Behavior                                        |
+|-------------|-------------------------------------------------|
+| TODO        | Backlog. No terminal.                           |
+| IN PROGRESS | Spawns terminal, runs agent command.            |
+| REVIEW      | Terminal stays open (agent may still be working).|
+| DONE        | Kills terminal if still running.                |
+
+### Data Model: Issue
+
+```typescript
+interface Issue {
+  id: string;
+  title: string;
+  description: string;
+  status: 'todo' | 'in_progress' | 'review' | 'done';
+  command: string;        // template: "hermes --task '{{title}}'"
+  terminalId: string | null;
+  branch: string | null;  // git branch for this issue
+  createdAt: number;
+  updatedAt: number;
+}
+```
+
+### Command Templates
+
+Issues have a `command` field that supports variable interpolation:
+- `{{id}}` — issue id
+- `{{title}}` — issue title
+- `{{description}}` — issue description  
+- `{{branch}}` — git branch name
+
+Default command: user's `$SHELL` (just opens a terminal).
+
+### Status Transitions
+
+```
+TODO ──→ IN PROGRESS: spawn terminal with issue.command
+IN PROGRESS ──→ REVIEW: terminal stays alive
+IN PROGRESS ──→ TODO: kill terminal
+REVIEW ──→ DONE: kill terminal  
+REVIEW ──→ IN PROGRESS: no-op (terminal still alive)
+DONE ──→ TODO: no terminal action
+```
+
+### API Additions
+
+| Method | Path                      | Body               | Response    |
+|--------|---------------------------|---------------------|-------------|
+| GET    | /api/issues               | —                   | Issue[]     |
+| POST   | /api/issues               | { title, ... }      | Issue       |
+| PATCH  | /api/issues/:id           | { title?, desc?, ...} | Issue     |
+| PATCH  | /api/issues/:id/status    | { status }          | Issue       |
+| DELETE | /api/issues/:id           | —                   | { ok: true }|
+
+### WebSocket Additions
+
+```
+Server -> Client:
+  { type: "issue:created", issue: Issue }
+  { type: "issue:updated", issue: Issue }
+  { type: "issue:deleted", issueId: string }
+```
+
+### Frontend Components
+
+```
+App
+├── Header
+├── ViewSwitcher      — toggle between terminal grid and kanban
+├── KanbanBoard
+│   ├── KanbanColumn (×4: todo, in_progress, review, done)
+│   │   └── IssueCard (×N)
+│   │       ├── title, description preview
+│   │       ├── terminal status indicator
+│   │       └── branch name
+│   └── NewIssueModal
+├── TerminalGrid      — (existing, from Phase 1)
+└── StatusBar
+```
+
+### Test Plan: Phase 2
+
+#### Server Tests: IssueManager
+
+| # | Test                                          |
+|---|-----------------------------------------------|
+| 1 | creates issue with defaults                   |
+| 2 | creates issue with custom fields              |
+| 3 | lists all issues                              |
+| 4 | gets issue by id                              |
+| 5 | updates issue fields                          |
+| 6 | deletes issue                                 |
+| 7 | status change to in_progress spawns terminal  |
+| 8 | status change to done kills terminal          |
+| 9 | status change todo→in_progress→todo kills term|
+| 10| command template variables are interpolated   |
+
+#### Server Tests: Issue API
+
+| # | Test                                          |
+|---|-----------------------------------------------|
+| 1 | POST /api/issues creates issue                |
+| 2 | GET /api/issues lists issues                  |
+| 3 | PATCH /api/issues/:id updates issue           |
+| 4 | PATCH /api/issues/:id/status changes status   |
+| 5 | PATCH /api/issues/:id/status spawns terminal  |
+| 6 | DELETE /api/issues/:id removes issue          |
+| 7 | operations on nonexistent issue return 404    |
+
+#### Client Tests: Kanban Components
+
+| # | Test                                          |
+|---|-----------------------------------------------|
+| 1 | KanbanBoard renders 4 columns                |
+| 2 | IssueCard renders title and description       |
+| 3 | IssueCard shows terminal status indicator     |
+| 4 | NewIssueModal opens and submits               |
+| 5 | ViewSwitcher toggles between grid and kanban  |
+
+#### E2E Tests
+
+| # | Test                                          |
+|---|-----------------------------------------------|
+| 1 | kanban view loads with 4 columns              |
+| 2 | create issue via modal                        |
+| 3 | drag issue to in_progress spawns terminal     |
+| 4 | terminal appears in grid view                 |
+| 5 | move issue to done kills terminal             |
+
+---
+
 ## Future Phases (not in scope yet)
 
-- **Phase 2:** Kanban board for task management
 - **Phase 3:** Custom PR system (worktrees/docker, branch management)
 - **Phase 4:** Git viewer (diff, log, blame, file browser)
-- **Phase 5:** Agent orchestration (spawn agents, assign tasks, monitor)
+- **Phase 5:** Full agent orchestration

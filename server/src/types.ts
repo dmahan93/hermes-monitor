@@ -24,4 +24,7 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'stdout'; terminalId: string; data: string }
   | { type: 'exit'; terminalId: string; exitCode: number }
-  | { type: 'error'; terminalId: string; message: string };
+  | { type: 'error'; terminalId: string; message: string }
+  | { type: 'issue:created'; issue: any }
+  | { type: 'issue:updated'; issue: any }
+  | { type: 'issue:deleted'; issueId: string };

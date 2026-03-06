@@ -1,8 +1,11 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Header } from './components/Header';
 import { TerminalGrid } from './components/TerminalGrid';
+import { KanbanBoard } from './components/KanbanBoard';
+import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
 import { useTerminals } from './hooks/useTerminals';
+import { useIssues } from './hooks/useIssues';
 import { useWebSocket } from './hooks/useWebSocket';
 import './App.css';
 
@@ -12,16 +15,30 @@ function getWsUrl(): string {
 }
 
 export default function App() {
-  const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout } = useTerminals();
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
+  const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout } = useTerminals();
+  const { issues, createIssue, changeStatus, deleteIssue } = useIssues(subscribe);
+  const [view, setView] = useState<ViewMode>('kanban');
 
-  const handleAdd = useCallback(() => {
+  const handleAddTerminal = useCallback(() => {
     addTerminal();
   }, [addTerminal]);
 
-  const handleClose = useCallback((id: string) => {
+  const handleCloseTerminal = useCallback((id: string) => {
     removeTerminal(id);
   }, [removeTerminal]);
+
+  const handleCreateIssue = useCallback((title: string, description: string, command: string, branch: string) => {
+    createIssue(title, description || undefined, command || undefined, branch || undefined);
+  }, [createIssue]);
+
+  const handleStatusChange = useCallback((id: string, status: any) => {
+    changeStatus(id, status);
+  }, [changeStatus]);
+
+  const handleDeleteIssue = useCallback((id: string) => {
+    deleteIssue(id);
+  }, [deleteIssue]);
 
   if (loading) {
     return (
@@ -34,21 +51,33 @@ export default function App() {
   return (
     <div className="app">
       <Header
-        onAdd={handleAdd}
+        onAdd={view === 'terminals' ? handleAddTerminal : undefined}
         connected={connected}
         terminalCount={terminals.length}
-      />
+        issueCount={issues.length}
+      >
+        <ViewSwitcher mode={view} onChange={setView} />
+      </Header>
       <main className="main">
-        <TerminalGrid
-          terminals={terminals}
-          layout={layout}
-          onLayoutChange={updateLayout}
-          send={send}
-          subscribe={subscribe}
-          onClose={handleClose}
-        />
+        {view === 'terminals' ? (
+          <TerminalGrid
+            terminals={terminals}
+            layout={layout}
+            onLayoutChange={updateLayout}
+            send={send}
+            subscribe={subscribe}
+            onClose={handleCloseTerminal}
+          />
+        ) : (
+          <KanbanBoard
+            issues={issues}
+            onStatusChange={handleStatusChange}
+            onCreateIssue={handleCreateIssue}
+            onDeleteIssue={handleDeleteIssue}
+          />
+        )}
       </main>
-      <StatusBar connected={connected} terminalCount={terminals.length} />
+      <StatusBar connected={connected} terminalCount={terminals.length} issueCount={issues.length} />
     </div>
   );
 }
