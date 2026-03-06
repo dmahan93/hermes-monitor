@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { execSync } from 'child_process';
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
@@ -233,6 +233,42 @@ export class PRManager {
     pr.updatedAt = Date.now();
     this.persist(pr);
     this.emit('pr:updated', pr);
+  }
+
+  /**
+   * Relaunch a review — kill existing reviewer if any, re-spawn a new one.
+   * Useful when the reviewer terminal crashed or the review was lost.
+   */
+  relaunchReview(prId: string): PullRequest | null {
+    const pr = this.prs.get(prId);
+    if (!pr) return null;
+
+    // Kill existing reviewer terminal if it's still around
+    if (pr.reviewerTerminalId) {
+      this.terminalManager.kill(pr.reviewerTerminalId);
+      pr.reviewerTerminalId = null;
+    }
+
+    // Delete stale review.md so a crashed re-reviewer doesn't pick up the old verdict
+    const reviewPath = join(config.reviewBase, prId, 'review.md');
+    try { unlinkSync(reviewPath); } catch {}
+
+    // Reset status to open so spawnReviewer can set it to reviewing
+    pr.status = 'open';
+    pr.verdict = 'pending';
+    pr.updatedAt = Date.now();
+
+    // Re-generate the diff in case there were new changes
+    const diff = this.worktreeManager.getDiff(pr.issueId);
+    if (diff !== null) {
+      pr.diff = diff;
+      pr.changedFiles = this.worktreeManager.getChangedFiles(pr.issueId);
+    }
+
+    this.persist(pr);
+
+    // Spawn a fresh reviewer
+    return this.spawnReviewer(prId);
   }
 
   addComment(prId: string, author: string, body: string, file?: string, line?: number): PRComment | null {

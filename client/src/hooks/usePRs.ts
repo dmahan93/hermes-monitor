@@ -72,5 +72,17 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
     }
   }, []);
 
-  return { prs, loading, addComment, setVerdict, mergePR, refetch: fetchPRs };
+  const relaunchReview = useCallback(async (prId: string) => {
+    try {
+      const res = await fetch(`${API}/prs/${prId}/relaunch-review`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        console.error('Failed to relaunch review:', data?.error || res.statusText);
+      }
+    } catch (err) {
+      console.error('Failed to relaunch review:', err);
+    }
+  }, []);
+
+  return { prs, loading, addComment, setVerdict, mergePR, relaunchReview, refetch: fetchPRs };
 }

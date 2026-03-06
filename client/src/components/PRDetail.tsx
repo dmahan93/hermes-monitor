@@ -8,6 +8,7 @@ interface PRDetailProps {
   onComment: (prId: string, body: string) => void;
   onVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => void;
   onMerge: (prId: string) => void;
+  onRelaunchReview: (prId: string) => void;
 }
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -19,7 +20,7 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   closed: { label: 'CLOSED', className: 'status-closed' },
 };
 
-export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge }: PRDetailProps) {
+export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge, onRelaunchReview }: PRDetailProps) {
   const [comment, setComment] = useState('');
   const status = STATUS_LABELS[pr.status] || STATUS_LABELS.open;
 
@@ -60,6 +61,12 @@ export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge }: PRDetail
               onClick={() => onVerdict(pr.id, 'changes_requested')}
             >
               [✗ REQUEST CHANGES]
+            </button>
+            <button
+              className="pr-action-btn pr-relaunch-btn"
+              onClick={() => onRelaunchReview(pr.id)}
+            >
+              [⟳ RELAUNCH REVIEW]
             </button>
             {pr.verdict === 'approved' && (
               <button
