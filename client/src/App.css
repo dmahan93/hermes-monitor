@@ -377,6 +377,275 @@ body {
 }
 
 /* ═══════════════════════════════════════════
+   ISSUE DETAIL VIEW
+   ═══════════════════════════════════════════ */
+
+.issue-detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.issue-detail {
+  background: var(--chrome-dark);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  width: 560px;
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.issue-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--bevel-dark);
+  flex-shrink: 0;
+}
+
+.issue-detail-status {
+  font-family: 'VT323', monospace;
+  font-size: 12px;
+  letter-spacing: 1px;
+  padding: 1px 6px;
+  border: 1px solid;
+}
+
+.issue-status-todo { color: var(--text-muted); border-color: var(--chrome); }
+.issue-status-wip { color: var(--accent); border-color: var(--accent); }
+.issue-status-review { color: var(--warn); border-color: var(--warn); }
+.issue-status-done { color: var(--link); border-color: var(--link); }
+
+.issue-detail-close {
+  background: transparent;
+  border: 1px solid transparent;
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.issue-detail-close:hover { color: var(--error); }
+
+.issue-detail-body {
+  padding: 12px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.issue-detail-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+  margin: 0 0 6px;
+}
+
+.issue-detail-desc {
+  font-size: 12px;
+  color: var(--text);
+  margin: 0 0 8px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.issue-detail-no-desc {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.issue-detail-edit-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 12px;
+}
+
+.issue-detail-edit-btn:hover { color: var(--text); }
+
+.issue-detail-title-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 4px 6px;
+  outline: none;
+  margin-bottom: 6px;
+}
+
+.issue-detail-desc-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  padding: 4px 6px;
+  outline: none;
+  resize: vertical;
+  margin-bottom: 6px;
+}
+
+.issue-detail-desc-input:focus { border-color: var(--accent); }
+
+.issue-detail-edit-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.issue-detail-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.issue-detail-meta-row {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+}
+
+.issue-detail-label {
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  font-size: 12px;
+  min-width: 80px;
+  letter-spacing: 1px;
+}
+
+.issue-detail-value {
+  color: var(--text);
+  flex: 1;
+}
+
+.issue-detail-branch { color: var(--link); }
+
+.issue-detail-terminal-link {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.issue-detail-terminal-link:hover { text-decoration: underline; }
+
+.issue-detail-pr-link {
+  background: transparent;
+  border: none;
+  color: var(--warn);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.issue-detail-pr-link:hover { text-decoration: underline; }
+
+.issue-detail-reviews {
+  margin-top: 8px;
+}
+
+.issue-detail-section-title {
+  font-family: 'VT323', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  margin: 0 0 6px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--bevel-dark);
+}
+
+.issue-detail-review {
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  padding: 6px 8px;
+  margin-bottom: 4px;
+}
+
+.review-bot { border-left: 2px solid var(--warn); }
+.review-human { border-left: 2px solid var(--link); }
+
+.issue-detail-review-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  margin-bottom: 4px;
+}
+
+.issue-detail-review-body {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.issue-detail-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  border-top: 1px solid var(--bevel-dark);
+  flex-shrink: 0;
+}
+
+.issue-detail-status-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.issue-detail-delete-btn {
+  color: var(--error);
+}
+
+.issue-detail-delete-btn:hover {
+  background: #dd444420;
+}
+
+/* ═══════════════════════════════════════════
    KANBAN SPLIT LAYOUT + TASK TERMINAL
    ═══════════════════════════════════════════ */
 
@@ -618,11 +887,19 @@ body {
 }
 
 .issue-card-title {
-  font-size: 1rem;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text);
   flex: 1;
   word-break: break-word;
+}
+
+.issue-card-title-clickable {
+  cursor: pointer;
+}
+
+.issue-card-title-clickable:hover {
+  color: var(--accent);
 }
 
 .issue-card-delete {

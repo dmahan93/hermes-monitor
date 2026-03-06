@@ -7,9 +7,10 @@ interface IssueCardProps {
   agents: AgentPreset[];
   onDelete: (id: string) => void;
   onTerminalClick?: (issueId: string) => void;
+  onClick?: (issueId: string) => void;
 }
 
-export function IssueCard({ issue, index, agents, onDelete, onTerminalClick }: IssueCardProps) {
+export function IssueCard({ issue, index, agents, onDelete, onTerminalClick, onClick }: IssueCardProps) {
   const agent = agents.find((a) => a.id === issue.agent);
 
   return (
@@ -22,7 +23,12 @@ export function IssueCard({ issue, index, agents, onDelete, onTerminalClick }: I
           className={`issue-card ${snapshot.isDragging ? 'dragging' : ''}`}
         >
           <div className="issue-card-header">
-            <span className="issue-card-title">{issue.title}</span>
+            <span
+              className="issue-card-title issue-card-title-clickable"
+              onClick={(e) => { e.stopPropagation(); onClick?.(issue.id); }}
+            >
+              {issue.title}
+            </span>
             <button
               className="issue-card-delete"
               onClick={(e) => {

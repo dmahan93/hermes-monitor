@@ -12,9 +12,10 @@ interface KanbanBoardProps {
   onCreateIssue: (title: string, description: string, agent: string, command: string, branch: string) => void;
   onDeleteIssue: (id: string) => void;
   onTerminalClick?: (issueId: string) => void;
+  onIssueClick?: (issueId: string) => void;
 }
 
-export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onDeleteIssue, onTerminalClick }: KanbanBoardProps) {
+export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onDeleteIssue, onTerminalClick, onIssueClick }: KanbanBoardProps) {
   const [showModal, setShowModal] = useState(false);
 
   const issuesByColumn = useMemo(() => {
@@ -63,6 +64,7 @@ export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onD
               agents={agents}
               onDelete={onDeleteIssue}
               onTerminalClick={onTerminalClick}
+              onIssueClick={onIssueClick}
             />
           ))}
         </div>

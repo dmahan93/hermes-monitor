@@ -2,6 +2,7 @@ import { useCallback, useState, useEffect, useMemo } from 'react';
 import { Header } from './components/Header';
 import { TerminalGrid } from './components/TerminalGrid';
 import { KanbanBoard } from './components/KanbanBoard';
+import { IssueDetail } from './components/IssueDetail';
 import { TaskTerminalPane } from './components/TaskTerminalPane';
 import { PRList } from './components/PRList';
 import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
@@ -21,11 +22,12 @@ function getWsUrl(): string {
 export default function App() {
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals();
-  const { issues, createIssue, changeStatus, deleteIssue } = useIssues(subscribe);
+  const { issues, createIssue, changeStatus, updateIssue, deleteIssue } = useIssues(subscribe);
   const { prs, addComment, setVerdict, mergePR } = usePRs(subscribe);
   const agents = useAgents();
   const [view, setView] = useState<ViewMode>('kanban');
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
+  const [detailIssueId, setDetailIssueId] = useState<string | null>(null);
 
   // Get the expanded issue for the terminal pane
   const expandedIssue = useMemo(() => {
@@ -73,6 +75,21 @@ export default function App() {
     setExpandedIssueId((prev) => prev === issueId ? null : issueId);
   }, []);
 
+  const handleIssueClick = useCallback((issueId: string) => {
+    setDetailIssueId(issueId);
+  }, []);
+
+  // Get detail issue and its PR
+  const detailIssue = useMemo(() => {
+    if (!detailIssueId) return null;
+    return issues.find((i) => i.id === detailIssueId) || null;
+  }, [detailIssueId, issues]);
+
+  const detailPR = useMemo(() => {
+    if (!detailIssueId) return undefined;
+    return prs.find((p) => p.issueId === detailIssueId);
+  }, [detailIssueId, prs]);
+
   if (loading) {
     return (
       <div className="app">
@@ -117,6 +134,7 @@ export default function App() {
                 onCreateIssue={handleCreateIssue}
                 onDeleteIssue={handleDeleteIssue}
                 onTerminalClick={handleTerminalClick}
+                onIssueClick={handleIssueClick}
               />
             </div>
             {showTaskTerminal && (
@@ -143,6 +161,21 @@ export default function App() {
         </div>
       </main>
       <StatusBar connected={connected} terminalCount={terminals.length} issueCount={issues.length} />
+
+      {/* Issue Detail Modal */}
+      {detailIssue && (
+        <IssueDetail
+          issue={detailIssue}
+          agents={agents}
+          pr={detailPR}
+          onClose={() => setDetailIssueId(null)}
+          onUpdate={(id, updates) => updateIssue(id, updates)}
+          onStatusChange={(id, status) => { handleStatusChange(id, status); setDetailIssueId(null); }}
+          onDelete={(id) => { handleDeleteIssue(id); setDetailIssueId(null); }}
+          onTerminalClick={(issueId) => { setDetailIssueId(null); handleTerminalClick(issueId); }}
+          onPRClick={() => { setDetailIssueId(null); setView('prs'); }}
+        />
+      )}
     </div>
   );
 }
