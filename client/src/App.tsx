@@ -137,14 +137,6 @@ export default function App() {
       <main className="main">
         <div className={`view-panel ${view === 'terminals' ? 'view-active' : 'view-hidden'}`}>
           <div className="terminals-layout">
-            <div className="terminals-sidebar">
-              <AgentTerminalList
-                issues={issues}
-                agents={agents}
-                activeTerminalId={termViewAgentIssue?.terminalId || null}
-                onSelect={(issueId) => setTermViewAgentId((prev) => prev === issueId ? null : issueId)}
-              />
-            </div>
             <div className="terminals-main">
               {termViewAgentIssue && termViewAgentIssue.terminalId ? (
                 <TaskTerminalPane
@@ -163,6 +155,14 @@ export default function App() {
                   onClose={handleCloseTerminal}
                 />
               )}
+            </div>
+            <div className="terminals-sidebar">
+              <AgentTerminalList
+                issues={issues}
+                agents={agents}
+                activeTerminalId={termViewAgentIssue?.terminalId || null}
+                onSelect={(issueId) => setTermViewAgentId((prev) => prev === issueId ? null : issueId)}
+              />
             </div>
           </div>
         </div>
