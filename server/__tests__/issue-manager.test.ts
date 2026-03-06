@@ -1,6 +1,7 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { TerminalManager } from '../src/terminal-manager.js';
 import { IssueManager } from '../src/issue-manager.js';
+import type { PRManager } from '../src/pr-manager.js';
 
 describe('IssueManager', () => {
   let terminalManager: TerminalManager;
@@ -207,5 +208,51 @@ describe('IssueManager', () => {
       'issue:updated', // status change emits updated
       'issue:deleted',
     ]);
+  });
+
+  it('review→in_progress→review relaunches review on existing PR', () => {
+    setup();
+
+    const fakePr = { id: 'pr-123', issueId: '' };
+    const mockPRManager = {
+      getByIssueId: vi.fn(),
+      create: vi.fn().mockReturnValue(fakePr),
+      spawnReviewer: vi.fn(),
+      relaunchReview: vi.fn(),
+    } as unknown as PRManager;
+
+    issueManager.setPRManager(mockPRManager);
+
+    const issue = issueManager.create({ title: 'Review cycle test' });
+    fakePr.issueId = issue.id;
+
+    // First cycle: todo → in_progress → review (creates PR + spawns reviewer)
+    issueManager.changeStatus(issue.id, 'in_progress');
+    // Kill terminal so ticket-api path is simulated (it kills terminal before changeStatus)
+    const termId = issueManager.get(issue.id)!.terminalId;
+    if (termId) terminalManager.kill(termId);
+    issueManager.get(issue.id)!.terminalId = null;
+
+    // First time going to review — no existing PR
+    (mockPRManager.getByIssueId as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+    issueManager.changeStatus(issue.id, 'review');
+
+    expect(mockPRManager.create).toHaveBeenCalledTimes(1);
+    expect(mockPRManager.spawnReviewer).toHaveBeenCalledWith('pr-123');
+    expect(mockPRManager.relaunchReview).not.toHaveBeenCalled();
+
+    // Second cycle: review → in_progress → review (relaunches review)
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const termId2 = issueManager.get(issue.id)!.terminalId;
+    if (termId2) terminalManager.kill(termId2);
+    issueManager.get(issue.id)!.terminalId = null;
+
+    // Second time going to review — PR already exists
+    (mockPRManager.getByIssueId as ReturnType<typeof vi.fn>).mockReturnValue(fakePr);
+    issueManager.changeStatus(issue.id, 'review');
+
+    // Should NOT create a new PR, should relaunch review instead
+    expect(mockPRManager.create).toHaveBeenCalledTimes(1); // still 1
+    expect(mockPRManager.relaunchReview).toHaveBeenCalledWith('pr-123');
   });
 });

@@ -210,6 +210,10 @@ export class IssueManager {
           // Spawn adversarial reviewer
           this.prManager.spawnReviewer(pr.id);
         }
+      } else {
+        // PR already exists (e.g. review → in_progress → review cycle)
+        // Relaunch the review to pick up new changes
+        this.prManager.relaunchReview(existingPr.id);
       }
     }
 
