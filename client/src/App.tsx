@@ -23,7 +23,7 @@ export default function App() {
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals();
   const { issues, createIssue, changeStatus, updateIssue, deleteIssue } = useIssues(subscribe);
-  const { prs, addComment, setVerdict, mergePR } = usePRs(subscribe);
+  const { prs, addComment, setVerdict, mergePR, refetch: refetchPRs } = usePRs(subscribe);
   const agents = useAgents();
   const [view, setView] = useState<ViewMode>('kanban');
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
@@ -42,16 +42,21 @@ export default function App() {
     }
   }, [expandedIssue]);
 
-  // Refetch terminals when issues or PRs change
+  // Refetch terminals and PRs when issues change (status changes spawn/kill terminals and create PRs)
   useEffect(() => {
     const unsub = subscribe((msg) => {
-      if (msg.type === 'issue:updated' || msg.type === 'issue:deleted' ||
-          msg.type === 'pr:created' || msg.type === 'pr:updated') {
+      if (msg.type === 'issue:updated' || msg.type === 'issue:deleted') {
+        setTimeout(() => {
+          refetchTerminals();
+          refetchPRs();
+        }, 300);
+      }
+      if (msg.type === 'pr:created' || msg.type === 'pr:updated') {
         setTimeout(() => refetchTerminals(), 300);
       }
     });
     return unsub;
-  }, [subscribe, refetchTerminals]);
+  }, [subscribe, refetchTerminals, refetchPRs]);
 
   const handleAddTerminal = useCallback(() => { addTerminal(); }, [addTerminal]);
   const handleCloseTerminal = useCallback((id: string) => { removeTerminal(id); }, [removeTerminal]);
@@ -62,8 +67,10 @@ export default function App() {
 
   const handleStatusChange = useCallback(async (id: string, status: any) => {
     await changeStatus(id, status);
+    // Status changes can spawn/kill terminals and create PRs
     refetchTerminals();
-  }, [changeStatus, refetchTerminals]);
+    refetchPRs();
+  }, [changeStatus, refetchTerminals, refetchPRs]);
 
   const handleDeleteIssue = useCallback(async (id: string) => {
     if (expandedIssueId === id) setExpandedIssueId(null);

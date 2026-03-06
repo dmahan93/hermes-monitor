@@ -130,20 +130,25 @@ export class PRManager {
     const pr = this.prs.get(prId);
     if (!pr) return null;
 
-    // Write diff and context to review directory
+    // Write context for the reviewer
     const reviewDir = join(config.reviewBase, prId);
     mkdirSync(reviewDir, { recursive: true });
 
-    writeFileSync(join(reviewDir, 'diff.patch'), pr.diff);
     writeFileSync(join(reviewDir, 'context.md'), [
       `# PR Review: ${pr.title}`,
       '',
       `**Description:** ${pr.description}`,
-      `**Branch:** ${pr.sourceBranch} → ${pr.targetBranch}`,
+      `**Source Branch:** ${pr.sourceBranch}`,
+      `**Target Branch:** ${pr.targetBranch}`,
+      `**Repo:** ${pr.repoPath}`,
       `**Changed files:** ${pr.changedFiles.join(', ') || 'none detected'}`,
       '',
+      '## How to view the diff',
+      `Run: git diff ${pr.targetBranch}...${pr.sourceBranch}`,
+      `Or:  git log ${pr.targetBranch}..${pr.sourceBranch} --oneline`,
+      '',
       '## Instructions',
-      'Review the diff at diff.patch in this directory.',
+      `Compare branch ${pr.sourceBranch} against ${pr.targetBranch} using git diff.`,
       'Be critical and thorough. Look for:',
       '- Bugs, edge cases, error handling gaps',
       '- Security issues',
@@ -156,12 +161,13 @@ export class PRManager {
       'Then provide detailed feedback.',
     ].join('\n'));
 
-    // Spawn reviewer terminal
-    const reviewCommand = `hermes chat -q 'You are an adversarial code reviewer. Read the diff at ${reviewDir}/diff.patch and the context at ${reviewDir}/context.md. Write a thorough critical review to ${reviewDir}/review.md. Start with a line "VERDICT: APPROVED" or "VERDICT: CHANGES_REQUESTED" followed by detailed feedback on every issue you find. Be rigorous.'`;
+    // Spawn reviewer — give it the repo, branch info, and let it git diff itself
+    const reviewCommand = `hermes chat -q 'You are an adversarial code reviewer. You are reviewing branch ${pr.sourceBranch} against ${pr.targetBranch} in repo ${pr.repoPath}. Run git diff ${pr.targetBranch}...${pr.sourceBranch} in the repo to see the changes. Read ${reviewDir}/context.md for context. Write a thorough critical review to ${reviewDir}/review.md. Start with VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED. Be rigorous.'`;
 
     const terminal = this.terminalManager.create({
       title: `Review: ${pr.title}`,
       command: reviewCommand,
+      cwd: pr.repoPath,
     });
 
     pr.reviewerTerminalId = terminal.id;
