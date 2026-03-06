@@ -4,8 +4,6 @@ import type { WorktreeManager } from './worktree-manager.js';
 import type { PRManager } from './pr-manager.js';
 import type { Store } from './store.js';
 import { getPreset } from './agents.js';
-import { config } from './config.js';
-
 export type IssueStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
 
 export interface Issue {
@@ -45,9 +43,11 @@ export class IssueManager {
   private prManager: PRManager | null = null;
   private store: Store | null = null;
   private eventCallbacks: IssueEventCallback[] = [];
+  private repoPath: string | undefined;
 
-  constructor(terminalManager: TerminalManager) {
+  constructor(terminalManager: TerminalManager, repoPath?: string) {
     this.terminalManager = terminalManager;
+    this.repoPath = repoPath;
   }
 
   setStore(store: Store): void {
@@ -172,7 +172,9 @@ export class IssueManager {
   }
 
   private handleTransition(issue: Issue, from: IssueStatus, to: IssueStatus): void {
-    // Kill planning terminal when leaving backlog
+    // Kill planning terminal when leaving backlog.
+    // This must happen before the in_progress spawn logic below so the planning
+    // terminal is cleaned up before an agent terminal is created.
     if (from === 'backlog' && issue.terminalId) {
       this.terminalManager.kill(issue.terminalId);
       issue.terminalId = null;
@@ -240,7 +242,7 @@ export class IssueManager {
 
     const terminal = this.terminalManager.create({
       title: `[plan] ${issue.title}`,
-      cwd: config.repoPath,
+      cwd: this.repoPath,
     });
     issue.terminalId = terminal.id;
     issue.updatedAt = Date.now();

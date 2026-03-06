@@ -127,7 +127,10 @@ export default function App() {
     if (!issue) return;
     // Auto-start planning terminal if not already running
     if (!issue.terminalId) {
-      await startPlanning(issueId);
+      const result = await startPlanning(issueId);
+      if (!result) {
+        console.warn('Failed to start planning terminal for issue', issueId);
+      }
       refetchTerminals();
     }
     setPlanningIssueId(issueId);

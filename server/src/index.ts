@@ -24,7 +24,7 @@ const store = new Store();
 const terminalManager = new TerminalManager();
 const worktreeManager = new WorktreeManager();
 const prManager = new PRManager(terminalManager, worktreeManager);
-const issueManager = new IssueManager(terminalManager);
+const issueManager = new IssueManager(terminalManager, config.repoPath);
 
 // Wire up cross-references
 issueManager.setWorktreeManager(worktreeManager);

@@ -23,6 +23,8 @@
   --backlog-dim: #554466;
   --backlog-bright: #aa99bb;
   --backlog-glow: #55446630;
+  --backlog-bevel-light: #665577;
+  --backlog-bevel-dark: #332244;
 
   /* bevel colors for that webcore nod */
   --bevel-light: #444466;
@@ -1119,6 +1121,21 @@ body {
   letter-spacing: 0.083rem;
 }
 
+.modal-title-hint {
+  color: var(--backlog);
+  font-size: 0.917rem;
+  opacity: 0.8;
+}
+
+.modal-backlog-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+  padding: 0.25rem 0;
+  opacity: 0.7;
+}
+
 .modal-close {
   background: transparent;
   border: 1px solid transparent;
@@ -2017,10 +2034,10 @@ body {
 .planning-terminal-start {
   background: transparent;
   border: 1px solid var(--backlog-dim);
-  border-top-color: #665577;
-  border-left-color: #665577;
-  border-bottom-color: #332244;
-  border-right-color: #332244;
+  border-top-color: var(--backlog-bevel-light);
+  border-left-color: var(--backlog-bevel-light);
+  border-bottom-color: var(--backlog-bevel-dark);
+  border-right-color: var(--backlog-bevel-dark);
   color: var(--backlog);
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.917rem;

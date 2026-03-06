@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Droppable, Draggable } from '@hello-pangea/dnd';
 import type { Issue, AgentPreset } from '../types';
 
@@ -12,6 +12,15 @@ interface BacklogSectionProps {
 
 export function BacklogSection({ issues, agents, onDelete, onPlanClick, onIssueClick }: BacklogSectionProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const prevCountRef = useRef(issues.length);
+
+  // Auto-expand when new issues are added to backlog
+  useEffect(() => {
+    if (issues.length > prevCountRef.current && collapsed) {
+      setCollapsed(false);
+    }
+    prevCountRef.current = issues.length;
+  }, [issues.length, collapsed]);
 
   return (
     <div className="backlog-section">

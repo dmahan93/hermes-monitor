@@ -22,7 +22,10 @@ export function PlanningPane({
   const [description, setDescription] = useState(issue.description);
   const [dirty, setDirty] = useState(false);
 
-  // Sync local state with prop changes (e.g., from WebSocket updates)
+  // Sync local state with prop changes (e.g., from WebSocket updates).
+  // When dirty, local edits are preserved and external updates are intentionally
+  // dropped — the user's version wins on save. This is acceptable for a single-user
+  // tool but would need conflict detection for multi-user scenarios.
   useEffect(() => {
     if (!dirty) {
       setTitle(issue.title);
