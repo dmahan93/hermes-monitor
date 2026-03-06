@@ -16,6 +16,14 @@ export function TerminalView({ terminalId, send, subscribe, onResize }: Terminal
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  // Use refs for callbacks so the effect doesn't re-run when they change
+  const sendRef = useRef(send);
+  const subscribeRef = useRef(subscribe);
+  const onResizeRef = useRef(onResize);
+
+  sendRef.current = send;
+  subscribeRef.current = subscribe;
+  onResizeRef.current = onResize;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -56,45 +64,63 @@ export function TerminalView({ terminalId, send, subscribe, onResize }: Terminal
     term.loadAddon(webLinksAddon);
     term.open(containerRef.current);
 
-    // Fit to container
-    try { fitAddon.fit(); } catch {}
-
     termRef.current = term;
     fitRef.current = fitAddon;
 
+    // Delayed initial fit — container may not have dimensions yet
+    const fitTimer = setTimeout(() => {
+      try { fitAddon.fit(); } catch {}
+    }, 50);
+
     // Send keystrokes to server
     term.onData((data) => {
-      send({ type: 'stdin', terminalId, data });
+      sendRef.current({ type: 'stdin', terminalId, data });
     });
 
     // Notify server of resize
     term.onResize(({ cols, rows }) => {
-      send({ type: 'resize', terminalId, cols, rows });
-      onResize?.(cols, rows);
+      sendRef.current({ type: 'resize', terminalId, cols, rows });
+      onResizeRef.current?.(cols, rows);
     });
 
     // Subscribe to server messages for this terminal
-    const unsub = subscribe((msg) => {
-      if (msg.terminalId !== terminalId) return;
-      if (msg.type === 'stdout') {
-        term.write(msg.data);
-      } else if (msg.type === 'exit') {
-        term.write(`\r\n\x1b[90m[Process exited with code ${msg.exitCode}]\x1b[0m\r\n`);
-      }
-    });
+    // Re-subscribe when subscribe ref changes (WS reconnect)
+    let unsub: (() => void) | null = null;
+
+    const doSubscribe = () => {
+      unsub?.();
+      unsub = subscribeRef.current((msg) => {
+        if (msg.terminalId !== terminalId) return;
+        if (msg.type === 'stdout') {
+          term.write(msg.data);
+        } else if (msg.type === 'exit') {
+          term.write(`\r\n\x1b[90m[Process exited with code ${msg.exitCode}]\x1b[0m\r\n`);
+        }
+      });
+    };
+    doSubscribe();
+
+    // Re-subscribe periodically to handle WS reconnects
+    const subInterval = setInterval(() => {
+      doSubscribe();
+    }, 5000);
 
     // ResizeObserver to refit on container size change
     const ro = new ResizeObserver(() => {
-      try { fitAddon.fit(); } catch {}
+      requestAnimationFrame(() => {
+        try { fitAddon.fit(); } catch {}
+      });
     });
     ro.observe(containerRef.current);
 
     return () => {
-      unsub();
+      clearTimeout(fitTimer);
+      clearInterval(subInterval);
+      unsub?.();
       ro.disconnect();
       term.dispose();
     };
-  }, [terminalId, send, subscribe, onResize]);
+  }, [terminalId]); // Only re-run if terminalId changes
 
   return (
     <div

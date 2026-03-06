@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { TerminalGrid } from './components/TerminalGrid';
 import { KanbanBoard } from './components/KanbanBoard';
@@ -21,6 +21,17 @@ export default function App() {
   const { issues, createIssue, changeStatus, deleteIssue } = useIssues(subscribe);
   const agents = useAgents();
   const [view, setView] = useState<ViewMode>('kanban');
+
+  // Refetch terminals when issues change (status changes can spawn/kill terminals)
+  useEffect(() => {
+    const unsub = subscribe((msg) => {
+      if (msg.type === 'issue:updated' || msg.type === 'issue:deleted') {
+        // Small delay to let the server finish spawning/killing the terminal
+        setTimeout(() => refetchTerminals(), 300);
+      }
+    });
+    return unsub;
+  }, [subscribe, refetchTerminals]);
 
   const handleAddTerminal = useCallback(() => {
     addTerminal();
