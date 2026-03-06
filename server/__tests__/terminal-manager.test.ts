@@ -140,4 +140,28 @@ describe('TerminalManager', () => {
     manager.killAll();
     expect(manager.size).toBe(0);
   });
+
+  it('emits remove events when a terminal is killed', () => {
+    manager = new TerminalManager();
+    const term = manager.create({ title: 'removable' });
+    const removed: string[] = [];
+    manager.onRemove((id) => removed.push(id));
+
+    manager.kill(term.id);
+    expect(removed).toEqual([term.id]);
+  });
+
+  it('safely kills an already-exited terminal', async () => {
+    manager = new TerminalManager();
+    const term = manager.create({ command: '/bin/true' });
+    // Wait for the process to exit
+    await new Promise((r) => setTimeout(r, 1000));
+    // Terminal should still be in the map (exited but not removed)
+    expect(manager.get(term.id)).toBeDefined();
+    // Killing it should not throw and should remove from map
+    const killed = manager.kill(term.id);
+    expect(killed).toBe(true);
+    expect(manager.get(term.id)).toBeUndefined();
+    expect(manager.size).toBe(0);
+  });
 });
