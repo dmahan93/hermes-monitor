@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { TerminalInfo, GridItem } from '../types';
+import type { TerminalInfo, GridItem, ServerMessage } from '../types';
 
 const API = '/api';
 
-export function useTerminals() {
+export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void) => () => void) {
   const [terminals, setTerminals] = useState<TerminalInfo[]>([]);
   const [layout, setLayout] = useState<GridItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,6 +75,18 @@ export function useTerminals() {
   const updateLayout = useCallback((newLayout: GridItem[]) => {
     setLayout(newLayout);
   }, []);
+
+  // Auto-remove terminals when the server kills them (e.g. after conflict resolution)
+  useEffect(() => {
+    if (!subscribe) return;
+    const unsub = subscribe((msg) => {
+      if (msg.type === 'terminal:removed') {
+        setTerminals((prev) => prev.filter((t) => t.id !== msg.terminalId));
+        setLayout((prev) => prev.filter((l) => l.i !== msg.terminalId));
+      }
+    });
+    return unsub;
+  }, [subscribe]);
 
   return { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: fetchTerminals };
 }

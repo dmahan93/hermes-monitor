@@ -4,6 +4,7 @@ import type { TerminalInfo, CreateTerminalOptions } from './types.js';
 
 export type DataCallback = (terminalId: string, data: string) => void;
 export type ExitCallback = (terminalId: string, exitCode: number) => void;
+export type KillCallback = (terminalId: string) => void;
 
 const SCROLLBACK_LIMIT = 50000; // chars to buffer per terminal
 
@@ -19,6 +20,7 @@ export class TerminalManager {
   private terminals = new Map<string, ManagedTerminal>();
   private onDataCallbacks: DataCallback[] = [];
   private onExitCallbacks: ExitCallback[] = [];
+  private onKillCallbacks: KillCallback[] = [];
 
   onData(cb: DataCallback): void {
     this.onDataCallbacks.push(cb);
@@ -26,6 +28,10 @@ export class TerminalManager {
 
   onExit(cb: ExitCallback): void {
     this.onExitCallbacks.push(cb);
+  }
+
+  onKill(cb: KillCallback): void {
+    this.onKillCallbacks.push(cb);
   }
 
   private emitData(terminalId: string, data: string): void {
@@ -37,6 +43,12 @@ export class TerminalManager {
   private emitExit(terminalId: string, exitCode: number): void {
     for (const cb of this.onExitCallbacks) {
       cb(terminalId, exitCode);
+    }
+  }
+
+  private emitKill(terminalId: string): void {
+    for (const cb of this.onKillCallbacks) {
+      cb(terminalId);
     }
   }
 
@@ -127,6 +139,7 @@ export class TerminalManager {
     if (!terminal) return false;
     terminal.process.kill();
     this.terminals.delete(id);
+    this.emitKill(id);
     return true;
   }
 

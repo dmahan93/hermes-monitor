@@ -52,14 +52,19 @@ export class PRManager {
   private worktreeManager: WorktreeManager;
   private store: Store | null = null;
   private eventCallbacks: PREventCallback[] = [];
+  private conflictFixerTerminals = new Set<string>();
 
   constructor(terminalManager: TerminalManager, worktreeManager: WorktreeManager) {
     this.terminalManager = terminalManager;
     this.worktreeManager = worktreeManager;
 
-    // When reviewer terminal exits, read the review file
+    // When a terminal exits, check if it's a conflict fixer or reviewer
     this.terminalManager.onExit((terminalId, _exitCode) => {
-      this.handleReviewerExit(terminalId);
+      if (this.conflictFixerTerminals.has(terminalId)) {
+        this.handleConflictFixerExit(terminalId);
+      } else {
+        this.handleReviewerExit(terminalId);
+      }
     });
   }
 
@@ -243,6 +248,45 @@ export class PRManager {
   }
 
   /**
+   * Handle conflict fixer terminal exit — remove the terminal from the grid.
+   * Gives 5 seconds for the user to see the final output, then auto-removes.
+   */
+  private handleConflictFixerExit(terminalId: string): void {
+    this.conflictFixerTerminals.delete(terminalId);
+
+    // Find the PR this conflict fixer belongs to
+    let targetPr: PullRequest | null = null;
+    this.prs.forEach((pr) => {
+      if (pr.reviewerTerminalId === terminalId) {
+        targetPr = pr;
+      }
+    });
+
+    if (!targetPr) {
+      // No PR found — just remove the terminal after delay
+      setTimeout(() => {
+        this.terminalManager.kill(terminalId);
+      }, 5000);
+      return;
+    }
+
+    const pr = targetPr as PullRequest;
+
+    // Clear the terminal reference on the PR immediately
+    pr.reviewerTerminalId = null;
+    pr.updatedAt = Date.now();
+    this.persist(pr);
+    this.emit('pr:updated', pr);
+
+    // Remove the terminal after a short delay so the user can see the final output,
+    // then emit pr:updated again to trigger a terminal list refetch on the client
+    setTimeout(() => {
+      this.terminalManager.kill(terminalId);
+      this.emit('pr:updated', pr);
+    }, 5000);
+  }
+
+  /**
    * Relaunch a review — kill existing reviewer if any, re-spawn a new one.
    * Useful when the reviewer terminal crashed or the review was lost.
    */
@@ -392,6 +436,9 @@ export class PRManager {
       command: fixCommand,
       cwd: worktreePath,
     });
+
+    // Track this as a conflict fixer so we auto-remove on exit
+    this.conflictFixerTerminals.add(terminal.id);
 
     pr.status = 'open';
     pr.reviewerTerminalId = terminal.id;
