@@ -311,22 +311,56 @@ export class PRManager {
     return pr;
   }
 
-  merge(prId: string): PullRequest | null {
+  merge(prId: string): { pr?: PullRequest; error?: string } {
     const pr = this.prs.get(prId);
-    if (!pr) return null;
+    if (!pr) return { error: 'PR not found' };
 
     // Remove worktree FIRST — git won't merge a branch checked out in a worktree
     this.worktreeManager.remove(pr.issueId, false);
 
-    // Merge using git directly
+    // Also force-remove the worktree dir if it still exists
+    try {
+      execSync(`git worktree prune`, { cwd: pr.repoPath, stdio: 'pipe' });
+    } catch {}
+
+    // Check the branch exists
+    try {
+      execSync(`git rev-parse --verify ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
+    } catch {
+      return { error: `Branch ${pr.sourceBranch} does not exist` };
+    }
+
+    // Stash any uncommitted changes in the main repo
+    let stashed = false;
+    try {
+      const status = execSync('git status --porcelain', { cwd: pr.repoPath, stdio: 'pipe' }).toString().trim();
+      if (status) {
+        execSync('git stash', { cwd: pr.repoPath, stdio: 'pipe' });
+        stashed = true;
+      }
+    } catch {}
+
+    // Merge
     try {
       execSync(
         `git merge ${pr.sourceBranch} --no-ff -m "Merge ${pr.sourceBranch}"`,
         { cwd: pr.repoPath, stdio: 'pipe' }
       );
     } catch (err: any) {
-      console.error('Merge failed:', err.stderr?.toString() || err.message);
-      return null;
+      const gitError = err.stderr?.toString() || err.message;
+      console.error('Merge failed:', gitError);
+      // Abort failed merge
+      try { execSync('git merge --abort', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+      // Restore stash
+      if (stashed) {
+        try { execSync('git stash pop', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+      }
+      return { error: `Merge failed: ${gitError}` };
+    }
+
+    // Restore stash after successful merge
+    if (stashed) {
+      try { execSync('git stash pop', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
     }
 
     pr.status = 'merged';
@@ -335,11 +369,14 @@ export class PRManager {
     // Clean up the branch
     try {
       execSync(`git branch -d ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
-    } catch {}
+    } catch {
+      // Force delete if not fully merged (shouldn't happen after merge)
+      try { execSync(`git branch -D ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+    }
 
     this.persist(pr);
     this.emit('pr:updated', pr);
-    return pr;
+    return { pr };
   }
 
   get(id: string): PullRequest | undefined {

@@ -96,16 +96,16 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
       res.status(404).json({ error: 'PR not found' });
       return;
     }
-    const pr = prManager.merge(req.params.id);
-    if (!pr) {
-      res.status(500).json({ error: 'Merge failed — possible conflict' });
+    const result = prManager.merge(req.params.id);
+    if (result.error || !result.pr) {
+      res.status(500).json({ error: result.error || 'Merge failed' });
       return;
     }
     // Move the linked issue to DONE
     if (issueManager) {
-      issueManager.changeStatus(pr.issueId, 'done');
+      issueManager.changeStatus(result.pr.issueId, 'done');
     }
-    res.json(pr);
+    res.json(result.pr);
   });
 
   return router;

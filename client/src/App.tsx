@@ -4,7 +4,7 @@ import { TerminalGrid } from './components/TerminalGrid';
 import { KanbanBoard } from './components/KanbanBoard';
 import { IssueDetail } from './components/IssueDetail';
 import { TaskTerminalPane } from './components/TaskTerminalPane';
-import { AgentTerminalList } from './components/AgentTerminalList';
+import { AgentTerminalList, type AgentListSelection, selectionKey } from './components/AgentTerminalList';
 import { PRList } from './components/PRList';
 import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
@@ -28,7 +28,7 @@ export default function App() {
   const agents = useAgents();
   const [view, setView] = useState<ViewMode>('kanban');
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
-  const [termViewAgentId, setTermViewAgentId] = useState<string | null>(null);
+  const [termViewSelection, setTermViewSelection] = useState<AgentListSelection | null>(null);
   const [detailIssueId, setDetailIssueId] = useState<string | null>(null);
 
   // Get the expanded issue for the terminal pane
@@ -37,11 +37,39 @@ export default function App() {
     return issues.find((i) => i.id === expandedIssueId) || null;
   }, [expandedIssueId, issues]);
 
-  // Get the agent issue for the terminal view pane
+  // Map PR status to a sensible Issue status for synthetic entries
+  const prStatusToIssueStatus = useCallback((prStatus: string): 'in_progress' | 'review' | 'done' => {
+    switch (prStatus) {
+      case 'reviewing': return 'review';
+      case 'approved':
+      case 'merged':
+      case 'closed': return 'done';
+      default: return 'in_progress';
+    }
+  }, []);
+
+  // Get the issue/PR for the terminal view sidebar selection
   const termViewAgentIssue = useMemo(() => {
-    if (!termViewAgentId) return null;
-    return issues.find((i) => i.id === termViewAgentId) || null;
-  }, [termViewAgentId, issues]);
+    if (!termViewSelection) return null;
+    if (termViewSelection.kind === 'agent') {
+      return issues.find((i) => i.id === termViewSelection.issueId) || null;
+    }
+    // For reviewer terminals, build a synthetic Issue from the PR
+    const pr = prs.find((p) => p.id === termViewSelection.prId);
+    if (!pr || !pr.reviewerTerminalId) return null;
+    return {
+      id: pr.id,
+      title: `Review: ${pr.title}`,
+      description: '',
+      status: prStatusToIssueStatus(pr.status),
+      agent: 'hermes-reviewer',
+      command: '',
+      terminalId: pr.reviewerTerminalId,
+      branch: pr.sourceBranch,
+      createdAt: pr.createdAt,
+      updatedAt: pr.updatedAt,
+    };
+  }, [termViewSelection, issues, prs, prStatusToIssueStatus]);
 
   // Auto-close panes if issue loses its terminal
   useEffect(() => {
@@ -52,9 +80,17 @@ export default function App() {
 
   useEffect(() => {
     if (termViewAgentIssue && !termViewAgentIssue.terminalId) {
-      setTermViewAgentId(null);
+      setTermViewSelection(null);
     }
   }, [termViewAgentIssue]);
+
+  // Also clear selection when the resolved issue/PR disappears entirely
+  // (e.g. reviewer terminal goes away — useMemo returns null directly)
+  useEffect(() => {
+    if (termViewSelection && !termViewAgentIssue) {
+      setTermViewSelection(null);
+    }
+  }, [termViewSelection, termViewAgentIssue]);
 
   // Refetch terminals and PRs when issues change
   useEffect(() => {
@@ -137,13 +173,29 @@ export default function App() {
       <main className="main">
         <div className={`view-panel ${view === 'terminals' ? 'view-active' : 'view-hidden'}`}>
           <div className="terminals-layout">
+<<<<<<< HEAD
+=======
+            <div className="terminals-sidebar">
+              <AgentTerminalList
+                issues={issues}
+                prs={prs}
+                agents={agents}
+                activeTerminalId={termViewAgentIssue?.terminalId || null}
+                onSelect={(selection) => {
+                  setTermViewSelection((prev) =>
+                    prev && selectionKey(prev) === selectionKey(selection) ? null : selection
+                  );
+                }}
+              />
+            </div>
+>>>>>>> issue/2e279ce3-add-review-agents-to-the-agent-panel-too
             <div className="terminals-main">
               {termViewAgentIssue && termViewAgentIssue.terminalId ? (
                 <TaskTerminalPane
                   issue={termViewAgentIssue}
                   send={send}
                   subscribe={subscribe}
-                  onMinimize={() => setTermViewAgentId(null)}
+                  onMinimize={() => setTermViewSelection(null)}
                 />
               ) : (
                 <TerminalGrid
