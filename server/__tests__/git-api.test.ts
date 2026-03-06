@@ -271,6 +271,16 @@ describe('Git API endpoints', () => {
       expect(res.body.error).toBe('Invalid branch name');
     });
 
+    it('rejects branch names starting with - (git flag injection)', async () => {
+      const res1 = await request(server, 'GET', '/api/git/log?branch=--no-walk');
+      expect(res1.status).toBe(400);
+      expect(res1.body.error).toBe('Invalid branch name');
+
+      const res2 = await request(server, 'GET', '/api/git/log?branch=--output=/tmp/evil');
+      expect(res2.status).toBe(400);
+      expect(res2.body.error).toBe('Invalid branch name');
+    });
+
     it('rejects file path with directory traversal in /git/diff', async () => {
       // Mock valid SHA response
       vi.mocked(execFile).mockImplementation(

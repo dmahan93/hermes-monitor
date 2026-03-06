@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export interface GitCommit {
   hash: string;
@@ -62,16 +62,34 @@ export function useGitGraph() {
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffSha, setDiffSha] = useState<string | null>(null);
 
+  // AbortController refs for cleanup on unmount
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Abort any in-flight request and create a new controller
+  function newAbort(): AbortSignal {
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    return ctrl.signal;
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
+
   const fetchLog = useCallback(async () => {
+    const signal = newAbort();
     try {
       setLoading(true);
-      const res = await fetch('/api/git/log?limit=80');
+      const res = await fetch('/api/git/log?limit=80', { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: GitLogResponse = await res.json();
       setCommits(data.commits);
       setGraph(data.graph);
       setError(null);
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
       setError(err.message);
     } finally {
       setLoading(false);
@@ -91,12 +109,14 @@ export function useGitGraph() {
 
     setSelectedSha(sha);
     setFilesLoading(true);
+    const signal = newAbort();
     try {
-      const res = await fetch(`/api/git/show/${sha}`);
+      const res = await fetch(`/api/git/show/${sha}`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: GitShowResponse = await res.json();
       setFiles(data.files);
-    } catch {
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
       setFiles([]);
     } finally {
       setFilesLoading(false);
@@ -107,12 +127,14 @@ export function useGitGraph() {
     setDiffLoading(true);
     setDiffFile(filePath);
     setDiffSha(sha);
+    const signal = newAbort();
     try {
-      const res = await fetch(`/api/git/diff/${sha}?file=${encodeURIComponent(filePath)}`);
+      const res = await fetch(`/api/git/diff/${sha}?file=${encodeURIComponent(filePath)}`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: GitDiffResponse = await res.json();
       setDiffContent(data.diff);
-    } catch {
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
       setDiffContent('Failed to load diff');
     } finally {
       setDiffLoading(false);

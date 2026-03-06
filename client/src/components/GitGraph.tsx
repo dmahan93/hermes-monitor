@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { GitCommit, GraphNode, GitFileChange } from '../hooks/useGitGraph';
+import './GitGraph.css';
 
 interface GitGraphProps {
   commits: GitCommit[];
@@ -190,7 +191,7 @@ export function GitGraph({
                               r.startsWith('origin/') ? 'git-ref-remote' : 'git-ref-branch'
                             }`}
                           >
-                            {r.replace('origin/', '○ ')}
+                            {r.startsWith('origin/') ? '○ ' + r.slice(7) : r}
                           </span>
                         ))}
                       </span>

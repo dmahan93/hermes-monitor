@@ -98,7 +98,7 @@ export function TerminalView({ terminalId, send, subscribe, onResize }: Terminal
     const doSubscribe = () => {
       unsub?.();
       unsub = subscribeRef.current((msg) => {
-        if (msg.terminalId !== terminalId) return;
+        if (!('terminalId' in msg) || msg.terminalId !== terminalId) return;
         if (msg.type === 'stdout') {
           hasReceivedData = true;
           term.write(msg.data);

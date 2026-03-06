@@ -167,6 +167,7 @@ export default function App() {
               className="git-graph-toggle"
               onClick={() => setGitPanelOpen(true)}
               title="Open git graph"
+              aria-label="Open git graph"
             >
               ⎇
             </button>
@@ -176,6 +177,7 @@ export default function App() {
               className="git-graph-collapse"
               onClick={() => setGitPanelOpen(false)}
               title="Collapse git graph"
+              aria-label="Collapse git graph"
             >
               ◂
             </button>

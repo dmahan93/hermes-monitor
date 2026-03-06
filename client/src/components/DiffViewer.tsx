@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
+import './DiffViewer.css';
 
 interface DiffViewerProps {
   diff: string;
@@ -19,7 +20,13 @@ function parseDiff(raw: string): DiffLine[] {
   let oldLine = 0;
   let newLine = 0;
 
-  for (const line of raw.split('\n')) {
+  const rawLines = raw.split('\n');
+  // Remove trailing empty string from split (avoids phantom context line)
+  if (rawLines.length > 0 && rawLines[rawLines.length - 1] === '') {
+    rawLines.pop();
+  }
+
+  for (const line of rawLines) {
     if (line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) {
       lines.push({ type: 'meta', content: line });
       continue;
@@ -99,6 +106,16 @@ function DiffTable({ diff, loading }: { diff: string; loading?: boolean }) {
 }
 
 export function DiffViewer({ diff, sha, file, loading, onClose }: DiffViewerProps) {
+  // Close on Escape key (overlay mode only)
+  useEffect(() => {
+    if (!onClose) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   // Inline mode (used by PRDetail): no overlay, just render the table
   if (!onClose) {
     return (

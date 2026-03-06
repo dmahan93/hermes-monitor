@@ -33,7 +33,7 @@ function validateSha(sha: string): boolean {
 }
 
 function validateBranch(branch: string): boolean {
-  return BRANCH_RE.test(branch) && !branch.includes('..');
+  return BRANCH_RE.test(branch) && !branch.includes('..') && !branch.startsWith('-');
 }
 
 function validateFilePath(path: string): boolean {
@@ -48,7 +48,9 @@ async function git(args: string[], cwd?: string): Promise<string> {
   return stdout;
 }
 
-// NUL byte separator — guaranteed not to appear in git format fields
+// NUL byte separator — guaranteed not to appear in git format fields.
+// We use %x00 in the git format string (git's own escape) rather than
+// embedding literal NUL bytes in the args (which execFile rejects).
 const SEP = '\x00';
 
 export function parseLogLine(line: string): GitCommit | null {
@@ -85,7 +87,8 @@ export function createGitApiRouter(): Router {
     }
 
     try {
-      const format = `%H${SEP}%h${SEP}%s${SEP}%an${SEP}%cr${SEP}%P${SEP}%D`;
+      // Use git's %x00 escape — outputs NUL bytes without embedding them in the arg
+      const format = '%H%x00%h%x00%s%x00%an%x00%cr%x00%P%x00%D';
       const args = ['log', '--topo-order', '-n', String(limit), `--format=${format}`];
       if (branch === '--all') {
         args.push('--all');
@@ -125,13 +128,25 @@ export function createGitApiRouter(): Router {
     }
 
     try {
-      // Get file changes with stats
-      const raw = await git(['show', '--stat', '--name-status', '--format=', sha]);
+      // Get file changes with name-status and numstat in a single git call
+      const raw = await git(['show', '--name-status', '--numstat', '--format=', sha]);
       const lines = raw.trim().split('\n').filter(Boolean);
 
       const files: GitFileChange[] = [];
-      // name-status lines come after stat lines
+      const numstatMap = new Map<string, { additions: number; deletions: number }>();
+
       for (const line of lines) {
+        // numstat lines: "additions\tdeletions\tpath"
+        const numstatMatch = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+        if (numstatMatch) {
+          numstatMap.set(numstatMatch[3], {
+            additions: numstatMatch[1] === '-' ? 0 : parseInt(numstatMatch[1]) || 0,
+            deletions: numstatMatch[2] === '-' ? 0 : parseInt(numstatMatch[2]) || 0,
+          });
+          continue;
+        }
+
+        // name-status lines: "STATUS\tpath"
         const match = line.match(/^([AMDRCTU])\t(.+)$/);
         if (match) {
           files.push({
@@ -143,21 +158,13 @@ export function createGitApiRouter(): Router {
         }
       }
 
-      // Get numstat for additions/deletions
-      try {
-        const numstat = await git(['show', '--numstat', '--format=', sha]);
-        for (const line of numstat.trim().split('\n').filter(Boolean)) {
-          const parts = line.split('\t');
-          if (parts.length >= 3) {
-            const file = files.find((f) => f.path === parts[2]);
-            if (file) {
-              file.additions = parts[0] === '-' ? 0 : parseInt(parts[0]) || 0;
-              file.deletions = parts[1] === '-' ? 0 : parseInt(parts[1]) || 0;
-            }
-          }
+      // Merge numstat data into files
+      for (const file of files) {
+        const stats = numstatMap.get(file.path);
+        if (stats) {
+          file.additions = stats.additions;
+          file.deletions = stats.deletions;
         }
-      } catch {
-        // numstat might fail for binary files, that's fine
       }
 
       res.json({ sha, files });
@@ -278,9 +285,6 @@ export function buildGraphLanes(commits: GitCommit[]): GraphNode[] {
       } else if (existingLane === -1) {
         // Assign first parent to current lane
         lanes[col] = firstParent;
-        graphLines.push({ fromCol: col, toCol: col, type: 'straight' });
-      } else {
-        // Same lane, straight down
         graphLines.push({ fromCol: col, toCol: col, type: 'straight' });
       }
 
