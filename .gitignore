@@ -8,3 +8,4 @@ dist/
 .playwright-cli/
 hermes-monitor.db-shm
 hermes-monitor.db-wal
+client/tsconfig.tsbuildinfo
