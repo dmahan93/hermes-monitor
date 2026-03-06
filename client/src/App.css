@@ -1684,7 +1684,7 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 1001;
   cursor: pointer;
 }
 
@@ -1706,6 +1706,8 @@ body {
   border-left-color: var(--bevel-light);
   border-bottom-color: var(--bevel-dark);
   border-right-color: var(--bevel-dark);
+  background: transparent;
+  cursor: pointer;
   transition: color 0.15s;
 }
 

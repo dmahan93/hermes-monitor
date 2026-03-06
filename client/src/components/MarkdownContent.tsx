@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 interface MarkdownContentProps {
   text: string;
@@ -11,12 +11,25 @@ interface ContentPart {
   alt?: string;
 }
 
+const ALLOWED_PROTOCOLS = ['http://', 'https://', 'data:image/'];
+
 /**
- * Lightweight markdown renderer that handles image syntax: ![alt](url)
- * Text is rendered in <pre> blocks, images are rendered as <img> elements.
- * Used in PR descriptions and comments to display screenshots inline.
+ * Validates that a URL starts with an allowed protocol.
  */
-function parseMarkdownImages(text: string): ContentPart[] {
+function isAllowedUrl(url: string): boolean {
+  return ALLOWED_PROTOCOLS.some((proto) => url.startsWith(proto));
+}
+
+/**
+ * Lightweight markdown image parser: extracts ![alt](url) patterns from text.
+ * Returns an array of ContentPart objects (text or image).
+ *
+ * Known limitations:
+ * - Brackets in alt text: ![alt [with] brackets](url) stops at the first ]
+ * - Parentheses in URLs: ![img](https://example.com/foo_(bar).png) stops at the first )
+ * These are inherent to simple regex-based parsing; a full markdown parser would be needed for those edge cases.
+ */
+export function parseMarkdownImages(text: string): ContentPart[] {
   const parts: ContentPart[] = [];
   // Match markdown images: ![alt text](url)
   const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
@@ -26,16 +39,27 @@ function parseMarkdownImages(text: string): ContentPart[] {
   while ((match = imageRegex.exec(text)) !== null) {
     // Add text before the image
     if (match.index > lastIndex) {
-      parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
+      const textContent = text.slice(lastIndex, match.index);
+      const trimmed = textContent.replace(/^\n+/, '').replace(/\n+$/, '');
+      if (trimmed) {
+        parts.push({ type: 'text', content: trimmed });
+      }
     }
-    // Add the image
-    parts.push({ type: 'image', alt: match[1], content: match[2] });
+    // Only add image if URL passes validation
+    const url = match[2];
+    if (isAllowedUrl(url)) {
+      parts.push({ type: 'image', alt: match[1], content: url });
+    }
     lastIndex = match.index + match[0].length;
   }
 
   // Add remaining text
   if (lastIndex < text.length) {
-    parts.push({ type: 'text', content: text.slice(lastIndex) });
+    const textContent = text.slice(lastIndex);
+    const trimmed = textContent.replace(/^\n+/, '').replace(/\n+$/, '');
+    if (trimmed) {
+      parts.push({ type: 'text', content: trimmed });
+    }
   }
 
   return parts;
@@ -43,23 +67,64 @@ function parseMarkdownImages(text: string): ContentPart[] {
 
 function ImageWithZoom({ src, alt }: { src: string; alt: string }) {
   const [zoomed, setZoomed] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLImageElement>(null);
+
+  const closeZoom = useCallback(() => {
+    setZoomed(false);
+    // Return focus to the triggering image
+    triggerRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!zoomed) return;
+
+    // Focus the overlay when it opens
+    overlayRef.current?.focus();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeZoom();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [zoomed, closeZoom]);
 
   return (
     <>
       <figure className="pr-screenshot">
         <img
+          ref={triggerRef}
           src={src}
           alt={alt}
           className="pr-screenshot-img"
           onClick={() => setZoomed(true)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setZoomed(true); }}
+          tabIndex={0}
+          role="button"
+          aria-label={`View ${alt || 'screenshot'} full size`}
           loading="lazy"
         />
         {alt && <figcaption className="pr-screenshot-caption">{alt}</figcaption>}
       </figure>
       {zoomed && (
-        <div className="pr-screenshot-overlay" onClick={() => setZoomed(false)}>
+        <div
+          ref={overlayRef}
+          className="pr-screenshot-overlay"
+          onClick={closeZoom}
+          role="dialog"
+          aria-label={`Zoomed screenshot: ${alt || 'screenshot'}`}
+          tabIndex={-1}
+        >
           <img src={src} alt={alt} className="pr-screenshot-zoomed" />
-          <span className="pr-screenshot-close">[✕ CLOSE]</span>
+          <button
+            className="pr-screenshot-close"
+            onClick={(e) => { e.stopPropagation(); closeZoom(); }}
+            aria-label="Close zoomed view"
+          >
+            [✕ CLOSE]
+          </button>
         </div>
       )}
     </>
@@ -69,9 +134,9 @@ function ImageWithZoom({ src, alt }: { src: string; alt: string }) {
 export function MarkdownContent({ text, className }: MarkdownContentProps) {
   const parts = parseMarkdownImages(text);
 
-  // No images found — render as plain pre (backwards compatible)
-  if (parts.length === 1 && parts[0].type === 'text') {
-    return <pre className={className}>{text}</pre>;
+  // No images found — render as plain div (backwards compatible with pr-detail-desc styling)
+  if (parts.length <= 1 && parts.every((p) => p.type === 'text')) {
+    return <div className={className}>{text}</div>;
   }
 
   return (

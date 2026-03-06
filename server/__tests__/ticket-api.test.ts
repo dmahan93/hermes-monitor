@@ -58,6 +58,8 @@ describe('Ticket API (Agent Communication)', () => {
     expect(res.body.description).toBe('Do the thing');
     expect(res.body.reviewUrl).toContain(`/ticket/${issue.id}/review`);
     expect(res.body.previousReviews).toEqual([]);
+    expect(res.body.guidelines).toBeDefined();
+    expect(res.body.guidelines.screenshots).toContain('screenshots');
   });
 
   it('GET /ticket/:id/info returns 404 for unknown issue', async () => {

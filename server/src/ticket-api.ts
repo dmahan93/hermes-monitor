@@ -5,6 +5,28 @@ import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
 import { config } from './config.js';
 
+interface TicketGuidelines {
+  screenshots: string;
+}
+
+interface TicketInfoResponse {
+  id: string;
+  title: string;
+  description: string;
+  branch: string | undefined;
+  worktreePath: string | null;
+  repoPath: string;
+  targetBranch: string;
+  previousReviews: Array<{
+    author: string;
+    verdict: string | null;
+    body: string;
+    createdAt: number;
+  }>;
+  reviewUrl: string;
+  guidelines: TicketGuidelines;
+}
+
 /**
  * Agent-facing API — these endpoints are called BY the agent during task execution.
  * GET  /ticket/:id/info   — agent gets its task context
@@ -41,7 +63,7 @@ export function createTicketApiRouter(
     const port = process.env.PORT || '4000';
     const baseUrl = `http://localhost:${port}`;
 
-    res.json({
+    const response: TicketInfoResponse = {
       id: issue.id,
       title: issue.title,
       description: issue.description,
@@ -54,7 +76,8 @@ export function createTicketApiRouter(
       guidelines: {
         screenshots: 'If your changes modify UI components (.tsx, .css, .html files), include before/after screenshots in the PR description using markdown image syntax: ![description](url). The PR view renders these inline. Screenshots are required for UI changes and will be checked during review.',
       },
-    });
+    };
+    res.json(response);
   });
 
   // Agent calls this when done — kills terminal, moves issue to review
