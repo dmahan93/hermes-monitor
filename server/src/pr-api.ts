@@ -70,6 +70,25 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
     res.json(pr);
   });
 
+  // Relaunch review — kill existing reviewer, re-spawn a new one
+  router.post('/prs/:id/relaunch-review', (req, res) => {
+    const pr = prManager.get(req.params.id);
+    if (!pr) {
+      res.status(404).json({ error: 'PR not found' });
+      return;
+    }
+    if (pr.status === 'merged' || pr.status === 'closed') {
+      res.status(400).json({ error: `Cannot relaunch review on a ${pr.status} PR` });
+      return;
+    }
+    const updated = prManager.relaunchReview(req.params.id);
+    if (!updated) {
+      res.status(500).json({ error: 'Failed to relaunch review' });
+      return;
+    }
+    res.json(updated);
+  });
+
   // Merge PR — also moves the issue to DONE
   router.post('/prs/:id/merge', (req, res) => {
     const prBefore = prManager.get(req.params.id);
