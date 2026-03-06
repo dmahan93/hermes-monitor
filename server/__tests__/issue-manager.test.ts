@@ -22,22 +22,36 @@ describe('IssueManager', () => {
     expect(issue.title).toBe('Fix bug');
     expect(issue.description).toBe('');
     expect(issue.status).toBe('todo');
+    expect(issue.agent).toBe('hermes');
+    expect(issue.command).toContain('hermes');
     expect(issue.terminalId).toBeNull();
     expect(issue.branch).toBeNull();
     expect(issue.createdAt).toBeGreaterThan(0);
   });
 
-  it('creates issue with custom fields', () => {
+  it('creates issue with custom agent', () => {
     setup();
     const issue = issueManager.create({
       title: 'Add feature',
       description: 'Implement the thing',
-      command: 'echo "{{title}}"',
+      agent: 'claude',
       branch: 'feat/thing',
     });
+    expect(issue.agent).toBe('claude');
+    expect(issue.command).toContain('claude');
     expect(issue.description).toBe('Implement the thing');
-    expect(issue.command).toBe('echo "{{title}}"');
     expect(issue.branch).toBe('feat/thing');
+  });
+
+  it('creates issue with custom command override', () => {
+    setup();
+    const issue = issueManager.create({
+      title: 'Custom task',
+      agent: 'custom',
+      command: 'my-agent --task "{{title}}"',
+    });
+    expect(issue.agent).toBe('custom');
+    expect(issue.command).toBe('my-agent --task "{{title}}"');
   });
 
   it('lists all issues', () => {

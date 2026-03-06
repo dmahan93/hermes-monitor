@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { TerminalManager } from './terminal-manager.js';
+import { getPreset } from './agents.js';
 
 export type IssueStatus = 'todo' | 'in_progress' | 'review' | 'done';
 
@@ -8,7 +9,8 @@ export interface Issue {
   title: string;
   description: string;
   status: IssueStatus;
-  command: string;
+  agent: string;        // agent preset id
+  command: string;       // resolved command (from preset or custom)
   terminalId: string | null;
   branch: string | null;
   createdAt: number;
@@ -18,7 +20,8 @@ export interface Issue {
 export interface CreateIssueOptions {
   title: string;
   description?: string;
-  command?: string;
+  agent?: string;        // agent preset id, defaults to 'hermes'
+  command?: string;      // override command (used with 'custom' agent)
   branch?: string;
 }
 
@@ -62,12 +65,17 @@ export class IssueManager {
   create(options: CreateIssueOptions): Issue {
     const id = uuidv4();
     const now = Date.now();
+    const agentId = options.agent || 'hermes';
+    const preset = getPreset(agentId);
+    // Use custom command if provided, otherwise use preset's command template
+    const command = options.command || preset?.command || '';
     const issue: Issue = {
       id,
       title: options.title,
       description: options.description || '',
       status: 'todo',
-      command: options.command || '',
+      agent: agentId,
+      command,
       terminalId: null,
       branch: options.branch || null,
       createdAt: now,

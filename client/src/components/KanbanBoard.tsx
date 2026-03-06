@@ -2,17 +2,18 @@ import { useMemo, useState, useCallback } from 'react';
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import { KanbanColumn } from './KanbanColumn';
 import { NewIssueModal } from './NewIssueModal';
-import type { Issue, IssueStatus } from '../types';
+import type { Issue, IssueStatus, AgentPreset } from '../types';
 import { COLUMNS } from '../types';
 
 interface KanbanBoardProps {
   issues: Issue[];
+  agents: AgentPreset[];
   onStatusChange: (id: string, status: IssueStatus) => void;
-  onCreateIssue: (title: string, description: string, command: string, branch: string) => void;
+  onCreateIssue: (title: string, description: string, agent: string, command: string, branch: string) => void;
   onDeleteIssue: (id: string) => void;
 }
 
-export function KanbanBoard({ issues, onStatusChange, onCreateIssue, onDeleteIssue }: KanbanBoardProps) {
+export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onDeleteIssue }: KanbanBoardProps) {
   const [showModal, setShowModal] = useState(false);
 
   const issuesByColumn = useMemo(() => {
@@ -38,8 +39,8 @@ export function KanbanBoard({ issues, onStatusChange, onCreateIssue, onDeleteIss
     }
   }, [issues, onStatusChange]);
 
-  const handleCreate = useCallback((title: string, description: string, command: string, branch: string) => {
-    onCreateIssue(title, description, command, branch);
+  const handleCreate = useCallback((title: string, description: string, agent: string, command: string, branch: string) => {
+    onCreateIssue(title, description, agent, command, branch);
     setShowModal(false);
   }, [onCreateIssue]);
 
@@ -58,6 +59,7 @@ export function KanbanBoard({ issues, onStatusChange, onCreateIssue, onDeleteIss
               columnId={col.id}
               label={col.label}
               issues={issuesByColumn[col.id]}
+              agents={agents}
               onDelete={onDeleteIssue}
             />
           ))}
@@ -65,6 +67,7 @@ export function KanbanBoard({ issues, onStatusChange, onCreateIssue, onDeleteIss
       </DragDropContext>
       {showModal && (
         <NewIssueModal
+          agents={agents}
           onSubmit={handleCreate}
           onClose={() => setShowModal(false)}
         />

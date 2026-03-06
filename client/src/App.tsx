@@ -6,6 +6,7 @@ import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
 import { useTerminals } from './hooks/useTerminals';
 import { useIssues } from './hooks/useIssues';
+import { useAgents } from './hooks/useAgents';
 import { useWebSocket } from './hooks/useWebSocket';
 import './App.css';
 
@@ -18,6 +19,7 @@ export default function App() {
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout } = useTerminals();
   const { issues, createIssue, changeStatus, deleteIssue } = useIssues(subscribe);
+  const agents = useAgents();
   const [view, setView] = useState<ViewMode>('kanban');
 
   const handleAddTerminal = useCallback(() => {
@@ -28,8 +30,8 @@ export default function App() {
     removeTerminal(id);
   }, [removeTerminal]);
 
-  const handleCreateIssue = useCallback((title: string, description: string, command: string, branch: string) => {
-    createIssue(title, description || undefined, command || undefined, branch || undefined);
+  const handleCreateIssue = useCallback((title: string, description: string, agent: string, command: string, branch: string) => {
+    createIssue(title, description || undefined, agent || undefined, command || undefined, branch || undefined);
   }, [createIssue]);
 
   const handleStatusChange = useCallback((id: string, status: any) => {
@@ -71,6 +73,7 @@ export default function App() {
         ) : (
           <KanbanBoard
             issues={issues}
+            agents={agents}
             onStatusChange={handleStatusChange}
             onCreateIssue={handleCreateIssue}
             onDeleteIssue={handleDeleteIssue}

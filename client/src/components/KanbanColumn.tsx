@@ -1,15 +1,16 @@
 import { Droppable } from '@hello-pangea/dnd';
 import { IssueCard } from './IssueCard';
-import type { Issue, IssueStatus } from '../types';
+import type { Issue, IssueStatus, AgentPreset } from '../types';
 
 interface KanbanColumnProps {
   columnId: IssueStatus;
   label: string;
   issues: Issue[];
+  agents: AgentPreset[];
   onDelete: (id: string) => void;
 }
 
-export function KanbanColumn({ columnId, label, issues, onDelete }: KanbanColumnProps) {
+export function KanbanColumn({ columnId, label, issues, agents, onDelete }: KanbanColumnProps) {
   return (
     <div className="kanban-column">
       <div className="kanban-column-header">
@@ -28,6 +29,7 @@ export function KanbanColumn({ columnId, label, issues, onDelete }: KanbanColumn
                 key={issue.id}
                 issue={issue}
                 index={index}
+                agents={agents}
                 onDelete={onDelete}
               />
             ))}

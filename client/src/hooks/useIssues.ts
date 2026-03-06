@@ -39,12 +39,12 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
     return unsub;
   }, [subscribe]);
 
-  const createIssue = useCallback(async (title: string, description?: string, command?: string, branch?: string) => {
+  const createIssue = useCallback(async (title: string, description?: string, agent?: string, command?: string, branch?: string) => {
     try {
       const res = await fetch(`${API}/issues`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description, command, branch }),
+        body: JSON.stringify({ title, description, agent, command, branch }),
       });
       // Issue will be added via WebSocket event
       return await res.json();

@@ -1,20 +1,32 @@
 import { useState } from 'react';
+import type { AgentPreset } from '../types';
 
 interface NewIssueModalProps {
-  onSubmit: (title: string, description: string, command: string, branch: string) => void;
+  agents: AgentPreset[];
+  onSubmit: (title: string, description: string, agent: string, command: string, branch: string) => void;
   onClose: () => void;
 }
 
-export function NewIssueModal({ onSubmit, onClose }: NewIssueModalProps) {
+export function NewIssueModal({ agents, onSubmit, onClose }: NewIssueModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [agent, setAgent] = useState('hermes');
   const [command, setCommand] = useState('');
   const [branch, setBranch] = useState('');
+
+  const selectedAgent = agents.find((a) => a.id === agent);
+  const showCommand = agent === 'custom';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-    onSubmit(title.trim(), description.trim(), command.trim(), branch.trim());
+    onSubmit(
+      title.trim(),
+      description.trim(),
+      agent,
+      showCommand ? command.trim() : '',
+      branch.trim()
+    );
   };
 
   return (
@@ -45,14 +57,36 @@ export function NewIssueModal({ onSubmit, onClose }: NewIssueModalProps) {
             />
           </label>
           <label className="modal-field">
-            <span className="modal-label">command</span>
-            <input
-              type="text"
-              value={command}
-              onChange={(e) => setCommand(e.target.value)}
-              placeholder='e.g. hermes --task "{{title}}"'
-            />
+            <span className="modal-label">agent</span>
+            <select
+              className="modal-select"
+              value={agent}
+              onChange={(e) => setAgent(e.target.value)}
+            >
+              {agents.map((a) => (
+                <option key={a.id} value={a.id} disabled={a.installed === false}>
+                  {a.icon} {a.name}{a.installed === false ? ' (not installed)' : ''}
+                </option>
+              ))}
+            </select>
+            {selectedAgent && (
+              <span className="modal-hint">{selectedAgent.description}</span>
+            )}
           </label>
+          {showCommand && (
+            <label className="modal-field">
+              <span className="modal-label">command</span>
+              <input
+                type="text"
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                placeholder='e.g. my-agent --task "{{title}}"'
+              />
+              <span className="modal-hint">
+                variables: {'{{title}}'}, {'{{description}}'}, {'{{branch}}'}, {'{{id}}'}
+              </span>
+            </label>
+          )}
           <label className="modal-field">
             <span className="modal-label">branch</span>
             <input

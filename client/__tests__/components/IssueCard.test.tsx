@@ -2,13 +2,19 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DragDropContext, Droppable } from '@hello-pangea/dnd';
 import { IssueCard } from '../../src/components/IssueCard';
-import type { Issue } from '../../src/types';
+import type { Issue, AgentPreset } from '../../src/types';
+
+const mockAgents: AgentPreset[] = [
+  { id: 'hermes', name: 'Hermes', icon: '⚗', command: '', description: 'Hermes agent' },
+  { id: 'claude', name: 'Claude Code', icon: '◈', command: '', description: 'Claude agent' },
+];
 
 const mockIssue: Issue = {
   id: 'issue-1',
   title: 'Fix the login bug',
   description: 'Users cant log in on mobile',
   status: 'todo',
+  agent: 'hermes',
   command: '',
   terminalId: null,
   branch: 'fix/login',
@@ -16,14 +22,13 @@ const mockIssue: Issue = {
   updatedAt: Date.now(),
 };
 
-// Wrap IssueCard in required DnD providers
 function renderCard(issue: Issue = mockIssue, onDelete = vi.fn()) {
   return render(
     <DragDropContext onDragEnd={() => {}}>
       <Droppable droppableId="test">
         {(provided) => (
           <div ref={provided.innerRef} {...provided.droppableProps}>
-            <IssueCard issue={issue} index={0} onDelete={onDelete} />
+            <IssueCard issue={issue} index={0} agents={mockAgents} onDelete={onDelete} />
             {provided.placeholder}
           </div>
         )}
@@ -41,6 +46,11 @@ describe('IssueCard', () => {
   it('renders description', () => {
     renderCard();
     expect(screen.getByText('Users cant log in on mobile')).toBeInTheDocument();
+  });
+
+  it('renders agent name', () => {
+    renderCard();
+    expect(screen.getByText(/Hermes/)).toBeInTheDocument();
   });
 
   it('renders branch name', () => {

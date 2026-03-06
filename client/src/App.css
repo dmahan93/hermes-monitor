@@ -537,6 +537,10 @@ body {
   font-family: 'VT323', monospace;
 }
 
+.issue-card-agent {
+  color: var(--warn);
+}
+
 .issue-card-terminal {
   color: var(--accent);
 }
@@ -645,6 +649,41 @@ body {
 .modal-field textarea::placeholder {
   color: var(--text-muted);
   opacity: 0.5;
+}
+
+.modal-select {
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  padding: 4px 6px;
+  outline: none;
+  cursor: pointer;
+}
+
+.modal-select:focus {
+  border-color: var(--accent);
+}
+
+.modal-select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.modal-select option:disabled {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.modal-hint {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
 }
 
 .modal-actions {

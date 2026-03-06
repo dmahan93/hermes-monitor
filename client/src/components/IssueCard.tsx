@@ -1,13 +1,16 @@
 import { Draggable } from '@hello-pangea/dnd';
-import type { Issue } from '../types';
+import type { Issue, AgentPreset } from '../types';
 
 interface IssueCardProps {
   issue: Issue;
   index: number;
+  agents: AgentPreset[];
   onDelete: (id: string) => void;
 }
 
-export function IssueCard({ issue, index, onDelete }: IssueCardProps) {
+export function IssueCard({ issue, index, agents, onDelete }: IssueCardProps) {
+  const agent = agents.find((a) => a.id === issue.agent);
+
   return (
     <Draggable draggableId={issue.id} index={index}>
       {(provided, snapshot) => (
@@ -34,6 +37,11 @@ export function IssueCard({ issue, index, onDelete }: IssueCardProps) {
             <div className="issue-card-desc">{issue.description}</div>
           )}
           <div className="issue-card-meta">
+            {agent && (
+              <span className="issue-card-agent" title={agent.description}>
+                {agent.icon} {agent.name}
+              </span>
+            )}
             {issue.terminalId && (
               <span className="issue-card-terminal" title="Terminal active">
                 ▸ active

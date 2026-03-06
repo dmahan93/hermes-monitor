@@ -24,11 +24,21 @@ export interface Issue {
   title: string;
   description: string;
   status: IssueStatus;
+  agent: string;
   command: string;
   terminalId: string | null;
   branch: string | null;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface AgentPreset {
+  id: string;
+  name: string;
+  icon: string;
+  command: string;
+  description: string;
+  installed?: boolean;
 }
 
 export const COLUMNS: { id: IssueStatus; label: string }[] = [
