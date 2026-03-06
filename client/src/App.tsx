@@ -6,6 +6,8 @@ import { IssueDetail } from './components/IssueDetail';
 import { TaskTerminalPane } from './components/TaskTerminalPane';
 import { AgentTerminalList } from './components/AgentTerminalList';
 import { PRList } from './components/PRList';
+import { GitGraph } from './components/GitGraph';
+import { DiffViewer } from './components/DiffViewer';
 import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
 import { useTerminals } from './hooks/useTerminals';
@@ -13,6 +15,7 @@ import { useIssues } from './hooks/useIssues';
 import { usePRs } from './hooks/usePRs';
 import { useAgents } from './hooks/useAgents';
 import { useWebSocket } from './hooks/useWebSocket';
+import { useGitGraph } from './hooks/useGitGraph';
 import './App.css';
 
 function getWsUrl(): string {
@@ -26,6 +29,8 @@ export default function App() {
   const { issues, createIssue, changeStatus, updateIssue, deleteIssue } = useIssues(subscribe);
   const { prs, addComment, setVerdict, mergePR, refetch: refetchPRs } = usePRs(subscribe);
   const agents = useAgents();
+  const gitGraph = useGitGraph();
+  const [gitPanelOpen, setGitPanelOpen] = useState(true);
   const [view, setView] = useState<ViewMode>('kanban');
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [termViewAgentId, setTermViewAgentId] = useState<string | null>(null);
@@ -134,73 +139,122 @@ export default function App() {
       >
         <ViewSwitcher mode={view} onChange={setView} prCount={prs.length} />
       </Header>
-      <main className="main">
-        <div className={`view-panel ${view === 'terminals' ? 'view-active' : 'view-hidden'}`}>
-          <div className="terminals-layout">
-            <div className="terminals-sidebar">
-              <AgentTerminalList
-                issues={issues}
-                agents={agents}
-                activeTerminalId={termViewAgentIssue?.terminalId || null}
-                onSelect={(issueId) => setTermViewAgentId((prev) => prev === issueId ? null : issueId)}
-              />
+      <div className="app-body">
+        {/* Git Graph Left Sidebar */}
+        <div className={`git-graph-sidebar ${gitPanelOpen ? 'git-graph-open' : 'git-graph-closed'}`}>
+          {gitPanelOpen ? (
+            <GitGraph
+              commits={gitGraph.commits}
+              graph={gitGraph.graph}
+              loading={gitGraph.loading}
+              error={gitGraph.error}
+              selectedSha={gitGraph.selectedSha}
+              files={gitGraph.files}
+              filesLoading={gitGraph.filesLoading}
+              onSelectCommit={gitGraph.selectCommit}
+              onFileClick={gitGraph.viewDiff}
+            />
+          ) : (
+            <button
+              className="git-graph-toggle"
+              onClick={() => setGitPanelOpen(true)}
+              title="Open git graph"
+            >
+              ⎇
+            </button>
+          )}
+          {gitPanelOpen && (
+            <button
+              className="git-graph-collapse"
+              onClick={() => setGitPanelOpen(false)}
+              title="Collapse git graph"
+            >
+              ◂
+            </button>
+          )}
+        </div>
+
+        {/* Main content area */}
+        <main className="main">
+          <div className={`view-panel ${view === 'terminals' ? 'view-active' : 'view-hidden'}`}>
+            <div className="terminals-layout">
+              <div className="terminals-sidebar">
+                <AgentTerminalList
+                  issues={issues}
+                  agents={agents}
+                  activeTerminalId={termViewAgentIssue?.terminalId || null}
+                  onSelect={(issueId) => setTermViewAgentId((prev) => prev === issueId ? null : issueId)}
+                />
+              </div>
+              <div className="terminals-main">
+                {termViewAgentIssue && termViewAgentIssue.terminalId ? (
+                  <TaskTerminalPane
+                    issue={termViewAgentIssue}
+                    send={send}
+                    subscribe={subscribe}
+                    onMinimize={() => setTermViewAgentId(null)}
+                  />
+                ) : (
+                  <TerminalGrid
+                    terminals={terminals}
+                    layout={layout}
+                    onLayoutChange={updateLayout}
+                    send={send}
+                    subscribe={subscribe}
+                    onClose={handleCloseTerminal}
+                  />
+                )}
+              </div>
             </div>
-            <div className="terminals-main">
-              {termViewAgentIssue && termViewAgentIssue.terminalId ? (
-                <TaskTerminalPane
-                  issue={termViewAgentIssue}
-                  send={send}
-                  subscribe={subscribe}
-                  onMinimize={() => setTermViewAgentId(null)}
+          </div>
+          <div className={`view-panel ${view === 'kanban' ? 'view-active' : 'view-hidden'}`}>
+            <div className={`kanban-split ${showTaskTerminal ? 'split-open' : ''}`}>
+              <div className="kanban-split-left">
+                <KanbanBoard
+                  issues={issues}
+                  agents={agents}
+                  onStatusChange={handleStatusChange}
+                  onCreateIssue={handleCreateIssue}
+                  onDeleteIssue={handleDeleteIssue}
+                  onTerminalClick={handleTerminalClick}
+                  onIssueClick={handleIssueClick}
                 />
-              ) : (
-                <TerminalGrid
-                  terminals={terminals}
-                  layout={layout}
-                  onLayoutChange={updateLayout}
-                  send={send}
-                  subscribe={subscribe}
-                  onClose={handleCloseTerminal}
-                />
+              </div>
+              {showTaskTerminal && (
+                <div className="kanban-split-right">
+                  <TaskTerminalPane
+                    issue={expandedIssue}
+                    send={send}
+                    subscribe={subscribe}
+                    onMinimize={() => setExpandedIssueId(null)}
+                  />
+                </div>
               )}
             </div>
           </div>
-        </div>
-        <div className={`view-panel ${view === 'kanban' ? 'view-active' : 'view-hidden'}`}>
-          <div className={`kanban-split ${showTaskTerminal ? 'split-open' : ''}`}>
-            <div className="kanban-split-left">
-              <KanbanBoard
-                issues={issues}
-                agents={agents}
-                onStatusChange={handleStatusChange}
-                onCreateIssue={handleCreateIssue}
-                onDeleteIssue={handleDeleteIssue}
-                onTerminalClick={handleTerminalClick}
-                onIssueClick={handleIssueClick}
-              />
-            </div>
-            {showTaskTerminal && (
-              <div className="kanban-split-right">
-                <TaskTerminalPane
-                  issue={expandedIssue}
-                  send={send}
-                  subscribe={subscribe}
-                  onMinimize={() => setExpandedIssueId(null)}
-                />
-              </div>
-            )}
+          <div className={`view-panel ${view === 'prs' ? 'view-active' : 'view-hidden'}`}>
+            <PRList
+              prs={prs}
+              onComment={addComment}
+              onVerdict={setVerdict}
+              onMerge={mergePR}
+            />
           </div>
-        </div>
-        <div className={`view-panel ${view === 'prs' ? 'view-active' : 'view-hidden'}`}>
-          <PRList
-            prs={prs}
-            onComment={addComment}
-            onVerdict={setVerdict}
-            onMerge={mergePR}
-          />
-        </div>
-      </main>
+        </main>
+      </div>
       <StatusBar connected={connected} terminalCount={terminals.length} issueCount={issues.length} />
+
+      {/* Diff viewer overlay */}
+      {gitGraph.diffFile && gitGraph.diffSha && (
+        <DiffViewer
+          sha={gitGraph.diffSha}
+          file={gitGraph.diffFile}
+          diff={gitGraph.diffContent}
+          loading={gitGraph.diffLoading}
+          onClose={gitGraph.closeDiff}
+        />
+      )}
+
       {detailIssue && (
         <IssueDetail
           issue={detailIssue}
