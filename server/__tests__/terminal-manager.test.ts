@@ -255,18 +255,18 @@ describe('TerminalManager', () => {
     manager.onAwaitingInput((id, awaiting) => {
       events.push({ id, awaiting });
     });
-    // Create a terminal that will produce a prompt-like output
-    const term = manager.create({ command: 'echo "Continue? [Y/n]"' });
+    // Use a command that stays alive long enough for the debounce to fire
+    const term = manager.create({ command: 'bash -c \'echo "Continue? [Y/n]"; sleep 10\'' });
     // Wait for the output + debounce to trigger detection
     await new Promise((r) => setTimeout(r, 3000));
 
-    // If detected, writing stdin should clear it
-    if (manager.isAwaitingInput(term.id)) {
-      manager.write(term.id, 'y\n');
-      expect(manager.isAwaitingInput(term.id)).toBe(false);
-      // Should have emitted false event
-      const lastEvent = events[events.length - 1];
-      expect(lastEvent.awaiting).toBe(false);
-    }
+    // The prompt should be detected while the process is still alive
+    expect(manager.isAwaitingInput(term.id)).toBe(true);
+    // Writing stdin should clear the awaiting input state
+    manager.write(term.id, 'y\n');
+    expect(manager.isAwaitingInput(term.id)).toBe(false);
+    // Should have emitted a false event after the true
+    const lastEvent = events[events.length - 1];
+    expect(lastEvent.awaiting).toBe(false);
   });
 });

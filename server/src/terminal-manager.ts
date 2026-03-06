@@ -46,7 +46,10 @@ const PROMPT_PATTERNS: RegExp[] = [
  * Examines the last non-empty line after stripping ANSI codes.
  */
 export function detectPrompt(scrollback: string): boolean {
-  const clean = stripAnsi(scrollback);
+  // Only examine the tail — the prompt is always at the end, and processing
+  // the full scrollback (up to 50KB) on every check is wasteful.
+  const tail = scrollback.slice(-500);
+  const clean = stripAnsi(tail);
   // Get the last non-empty line (or partial line if no newline at end)
   const lines = clean.split('\n');
   let lastLine = '';
