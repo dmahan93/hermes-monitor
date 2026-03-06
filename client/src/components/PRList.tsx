@@ -45,7 +45,7 @@ export function filterPRs(prs: PullRequest[], view: PRView): PullRequest[] {
   }
 }
 
-export function PRList({ prs, onComment, onVerdict, onMerge, onFixConflicts, onRelaunchReview }: PRListProps) {
+export function PRList({ prs = [], onComment, onVerdict, onMerge, onFixConflicts, onRelaunchReview }: PRListProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<PRView>('open');
 
