@@ -4,7 +4,7 @@ import { TerminalGrid } from './components/TerminalGrid';
 import { KanbanBoard } from './components/KanbanBoard';
 import { IssueDetail } from './components/IssueDetail';
 import { TaskTerminalPane } from './components/TaskTerminalPane';
-import { AgentTerminalList, type AgentListSelection } from './components/AgentTerminalList';
+import { AgentTerminalList, type AgentListSelection, selectionKey } from './components/AgentTerminalList';
 import { PRList } from './components/PRList';
 import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
@@ -37,6 +37,17 @@ export default function App() {
     return issues.find((i) => i.id === expandedIssueId) || null;
   }, [expandedIssueId, issues]);
 
+  // Map PR status to a sensible Issue status for synthetic entries
+  const prStatusToIssueStatus = useCallback((prStatus: string): 'in_progress' | 'review' | 'done' => {
+    switch (prStatus) {
+      case 'reviewing': return 'review';
+      case 'approved':
+      case 'merged':
+      case 'closed': return 'done';
+      default: return 'in_progress';
+    }
+  }, []);
+
   // Get the issue/PR for the terminal view sidebar selection
   const termViewAgentIssue = useMemo(() => {
     if (!termViewSelection) return null;
@@ -50,7 +61,7 @@ export default function App() {
       id: pr.id,
       title: `Review: ${pr.title}`,
       description: '',
-      status: 'in_progress' as const,
+      status: prStatusToIssueStatus(pr.status),
       agent: 'hermes-reviewer',
       command: '',
       terminalId: pr.reviewerTerminalId,
@@ -58,7 +69,7 @@ export default function App() {
       createdAt: pr.createdAt,
       updatedAt: pr.updatedAt,
     };
-  }, [termViewSelection, issues, prs]);
+  }, [termViewSelection, issues, prs, prStatusToIssueStatus]);
 
   // Auto-close panes if issue loses its terminal
   useEffect(() => {
@@ -72,6 +83,14 @@ export default function App() {
       setTermViewSelection(null);
     }
   }, [termViewAgentIssue]);
+
+  // Also clear selection when the resolved issue/PR disappears entirely
+  // (e.g. reviewer terminal goes away — useMemo returns null directly)
+  useEffect(() => {
+    if (termViewSelection && !termViewAgentIssue) {
+      setTermViewSelection(null);
+    }
+  }, [termViewSelection, termViewAgentIssue]);
 
   // Refetch terminals and PRs when issues change
   useEffect(() => {
@@ -161,14 +180,9 @@ export default function App() {
                 agents={agents}
                 activeTerminalId={termViewAgentIssue?.terminalId || null}
                 onSelect={(selection) => {
-                  setTermViewSelection((prev) => {
-                    // Toggle off if clicking the same item
-                    if (prev && prev.kind === selection.kind) {
-                      if (selection.kind === 'agent' && prev.kind === 'agent' && prev.issueId === selection.issueId) return null;
-                      if (selection.kind === 'reviewer' && prev.kind === 'reviewer' && prev.prId === selection.prId) return null;
-                    }
-                    return selection;
-                  });
+                  setTermViewSelection((prev) =>
+                    prev && selectionKey(prev) === selectionKey(selection) ? null : selection
+                  );
                 }}
               />
             </div>

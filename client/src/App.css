@@ -241,11 +241,12 @@ body {
   border: 1px solid transparent;
   color: var(--text-muted);
   font-family: 'VT323', monospace;
-  font-size: 9px;
-  padding: 0 4px;
+  font-size: 11px;
+  padding: 2px 6px;
+  min-height: 24px;
   cursor: pointer;
   letter-spacing: 0.5px;
-  transition: all 0.1s;
+  transition: color 0.1s, border-color 0.1s, background 0.1s;
 }
 
 .agent-list-tab:hover {

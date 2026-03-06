@@ -7,6 +7,10 @@ export type AgentListSelection =
   | { kind: 'agent'; issueId: string }
   | { kind: 'reviewer'; prId: string };
 
+/** Derive a comparable key from a selection for toggle/equality checks */
+export const selectionKey = (s: AgentListSelection): string =>
+  s.kind === 'agent' ? `agent:${s.issueId}` : `reviewer:${s.prId}`;
+
 interface AgentTerminalListProps {
   issues: Issue[];
   prs: PullRequest[];
@@ -36,10 +40,13 @@ export function AgentTerminalList({ issues, prs, agents, activeTerminalId, onSel
     <div className="agent-list">
       <div className="agent-list-header">
         <span>TERMINALS</span>
-        <div className="agent-list-tabs">
+        <div className="agent-list-tabs" role="tablist" aria-label="Terminal filter">
           {FILTERS.map((f) => (
             <button
               key={f.id}
+              type="button"
+              role="tab"
+              aria-selected={filter === f.id}
               className={`agent-list-tab ${filter === f.id ? 'agent-list-tab-active' : ''}`}
               onClick={() => setFilter(f.id)}
             >
