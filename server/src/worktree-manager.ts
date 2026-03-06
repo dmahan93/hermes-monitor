@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
-import { mkdirSync, existsSync, rmSync } from 'fs';
-import { join } from 'path';
+import { mkdirSync, existsSync, rmSync, symlinkSync, lstatSync } from 'fs';
+import { join, resolve } from 'path';
 import { config } from './config.js';
 
 export interface WorktreeInfo {
@@ -61,6 +61,10 @@ export class WorktreeManager {
 
     const info: WorktreeInfo = { branch, path: worktreePath, issueId };
     this.worktrees.set(issueId, info);
+
+    // Auto-setup node_modules so tests can run immediately
+    this.setupDeps(worktreePath, repo);
+
     return info;
   }
 
@@ -90,6 +94,53 @@ export class WorktreeManager {
 
     this.worktrees.delete(issueId);
     return true;
+  }
+
+  /**
+   * Set up node_modules in a worktree by symlinking from the main repo.
+   * This avoids needing `npm install` in every worktree — tests can run
+   * immediately since npm-workspace dependencies are hoisted to root.
+   *
+   * Can also be called standalone on any worktree path.
+   */
+  setupDeps(worktreePath: string, repoPath?: string): void {
+    const repo = repoPath || config.repoPath;
+    const sourceModules = join(repo, 'node_modules');
+    const targetModules = join(worktreePath, 'node_modules');
+
+    // Nothing to link from if the main repo hasn't run npm install
+    if (!existsSync(sourceModules)) {
+      console.warn(
+        `[worktree] node_modules not found in ${repo} — run 'npm install' there first`
+      );
+      return;
+    }
+
+    // Already set up — either a real dir or an existing symlink
+    if (existsSync(targetModules)) {
+      return;
+    }
+
+    // Clean up a broken symlink if one exists
+    try {
+      const stat = lstatSync(targetModules);
+      if (stat.isSymbolicLink()) {
+        rmSync(targetModules);
+      }
+    } catch {
+      // lstat throws if path doesn't exist at all — that's fine
+    }
+
+    try {
+      symlinkSync(resolve(sourceModules), targetModules, 'dir');
+    } catch (err) {
+      console.warn(
+        `[worktree] Failed to symlink node_modules in ${worktreePath}: ${err instanceof Error ? err.message : err}`
+      );
+      console.warn(
+        `[worktree] Run 'npm install' manually in the worktree to set up dependencies`
+      );
+    }
   }
 
   get(issueId: string): WorktreeInfo | undefined {
