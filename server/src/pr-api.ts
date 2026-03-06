@@ -1,8 +1,9 @@
 import { Router, json } from 'express';
 import type { PRManager } from './pr-manager.js';
+import type { IssueManager } from './issue-manager.js';
 import { config, updateConfig } from './config.js';
 
-export function createPRApiRouter(prManager: PRManager): Router {
+export function createPRApiRouter(prManager: PRManager, issueManager?: IssueManager): Router {
   const router = Router();
   router.use(json());
 
@@ -69,12 +70,21 @@ export function createPRApiRouter(prManager: PRManager): Router {
     res.json(pr);
   });
 
-  // Merge PR
+  // Merge PR — also moves the issue to DONE
   router.post('/prs/:id/merge', (req, res) => {
+    const prBefore = prManager.get(req.params.id);
+    if (!prBefore) {
+      res.status(404).json({ error: 'PR not found' });
+      return;
+    }
     const pr = prManager.merge(req.params.id);
     if (!pr) {
-      res.status(404).json({ error: 'PR not found or merge failed' });
+      res.status(500).json({ error: 'Merge failed — possible conflict' });
       return;
+    }
+    // Move the linked issue to DONE
+    if (issueManager) {
+      issueManager.changeStatus(pr.issueId, 'done');
     }
     res.json(pr);
   });

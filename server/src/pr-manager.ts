@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { execSync } from 'child_process';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import type { TerminalManager } from './terminal-manager.js';
@@ -133,7 +134,6 @@ export class PRManager {
     // Write context for the reviewer
     const reviewDir = join(config.reviewBase, prId);
     mkdirSync(reviewDir, { recursive: true });
-
     writeFileSync(join(reviewDir, 'context.md'), [
       `# PR Review: ${pr.title}`,
       '',
@@ -146,6 +146,9 @@ export class PRManager {
       '## How to view the diff',
       `Run: git diff ${pr.targetBranch}...${pr.sourceBranch}`,
       `Or:  git log ${pr.targetBranch}..${pr.sourceBranch} --oneline`,
+      '',
+      '## How to view the diff',
+      `Run: git diff ${pr.targetBranch}...${pr.sourceBranch}`,
       '',
       '## Instructions',
       `Compare branch ${pr.sourceBranch} against ${pr.targetBranch} using git diff.`,
@@ -168,6 +171,7 @@ export class PRManager {
       title: `Review: ${pr.title}`,
       command: reviewCommand,
       cwd: pr.repoPath,
+    });
     });
 
     pr.reviewerTerminalId = terminal.id;
@@ -269,14 +273,27 @@ export class PRManager {
     const pr = this.prs.get(prId);
     if (!pr) return null;
 
-    const success = this.worktreeManager.merge(pr.issueId);
-    if (!success) return null;
+    // Remove worktree FIRST — git won't merge a branch checked out in a worktree
+    this.worktreeManager.remove(pr.issueId, false);
+
+    // Merge using git directly
+    try {
+      execSync(
+        `git merge ${pr.sourceBranch} --no-ff -m "Merge ${pr.sourceBranch}"`,
+        { cwd: pr.repoPath, stdio: 'pipe' }
+      );
+    } catch (err: any) {
+      console.error('Merge failed:', err.stderr?.toString() || err.message);
+      return null;
+    }
 
     pr.status = 'merged';
     pr.updatedAt = Date.now();
 
-    // Clean up worktree
-    this.worktreeManager.remove(pr.issueId, true);
+    // Clean up the branch
+    try {
+      execSync(`git branch -d ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
+    } catch {}
 
     this.persist(pr);
     this.emit('pr:updated', pr);

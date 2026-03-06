@@ -56,7 +56,7 @@ if (issueCount > 0 || prCount > 0) {
 // REST API
 app.use('/api', createApiRouter(terminalManager));
 app.use('/api', createIssueApiRouter(issueManager));
-app.use('/api', createPRApiRouter(prManager));
+app.use('/api', createPRApiRouter(prManager, issueManager));
 app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, worktreeManager));
 
 // WebSocket

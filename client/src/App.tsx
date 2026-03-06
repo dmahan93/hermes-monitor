@@ -23,7 +23,7 @@ export default function App() {
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals();
   const { issues, createIssue, changeStatus, updateIssue, deleteIssue } = useIssues(subscribe);
-  const { prs, addComment, setVerdict, mergePR, refetch: refetchPRs } = usePRs(subscribe);
+const { prs, addComment, setVerdict, mergePR, refetch: refetchPRs } = usePRs(subscribe);
   const agents = useAgents();
   const [view, setView] = useState<ViewMode>('kanban');
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
@@ -47,9 +47,11 @@ export default function App() {
     const unsub = subscribe((msg) => {
       if (msg.type === 'issue:updated' || msg.type === 'issue:deleted') {
         setTimeout(() => {
-          refetchTerminals();
-          refetchPRs();
-        }, 300);
+  // Refetch terminals and PRs when issues change
+  useEffect(() => {
+    const unsub = subscribe((msg) => {
+      if (msg.type === 'issue:updated' || msg.type === 'issue:deleted') {
+        setTimeout(() => { refetchTerminals(); refetchPRs(); }, 300);
       }
       if (msg.type === 'pr:created' || msg.type === 'pr:updated') {
         setTimeout(() => refetchTerminals(), 300);
@@ -67,8 +69,9 @@ export default function App() {
 
   const handleStatusChange = useCallback(async (id: string, status: any) => {
     await changeStatus(id, status);
-    // Status changes can spawn/kill terminals and create PRs
     refetchTerminals();
+    refetchPRs();
+  }, [changeStatus, refetchTerminals, refetchPRs]);
     refetchPRs();
   }, [changeStatus, refetchTerminals, refetchPRs]);
 
