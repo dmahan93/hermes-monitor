@@ -25,12 +25,21 @@ export function setupWebSocket(server: Server, manager: TerminalManager): WebSoc
     broadcast({ type: 'exit', terminalId, exitCode });
   });
 
+  // Notify clients when a terminal is awaiting input
+  manager.onAwaitingInput((terminalId, awaitingInput) => {
+    broadcast({ type: 'terminal:awaitingInput', terminalId, awaitingInput });
+  });
+
   wss.on('connection', (ws) => {
     // Replay scrollback for all active terminals to the new client
     for (const terminal of manager.list()) {
       const scrollback = manager.getScrollback(terminal.id);
       if (scrollback) {
         ws.send(JSON.stringify({ type: 'stdout', terminalId: terminal.id, data: scrollback }));
+      }
+      // Send current awaiting input state for each terminal
+      if (manager.isAwaitingInput(terminal.id)) {
+        ws.send(JSON.stringify({ type: 'terminal:awaitingInput', terminalId: terminal.id, awaitingInput: true }));
       }
     }
 

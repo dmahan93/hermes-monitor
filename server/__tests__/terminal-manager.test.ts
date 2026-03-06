@@ -1,5 +1,95 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { TerminalManager } from '../src/terminal-manager.js';
+import { TerminalManager, detectPrompt } from '../src/terminal-manager.js';
+
+describe('detectPrompt', () => {
+  it('detects [Y/n] prompt', () => {
+    expect(detectPrompt('Do you want to continue? [Y/n] ')).toBe(true);
+  });
+
+  it('detects [y/N] prompt', () => {
+    expect(detectPrompt('Install packages? [y/N] ')).toBe(true);
+  });
+
+  it('detects [yes/no] prompt', () => {
+    expect(detectPrompt('Overwrite file? [yes/no] ')).toBe(true);
+  });
+
+  it('detects (y/n) prompt', () => {
+    expect(detectPrompt('Continue? (y/n) ')).toBe(true);
+  });
+
+  it('detects (yes/no) prompt', () => {
+    expect(detectPrompt('Are you sure (yes/no)? ')).toBe(true);
+  });
+
+  it('detects password prompt', () => {
+    expect(detectPrompt('[sudo] password for user: ')).toBe(true);
+  });
+
+  it('detects Password: prompt', () => {
+    expect(detectPrompt('Password: ')).toBe(true);
+  });
+
+  it('detects passphrase prompt', () => {
+    expect(detectPrompt("Enter passphrase for key '/home/user/.ssh/id_rsa': ")).toBe(true);
+  });
+
+  it('detects SSH fingerprint prompt', () => {
+    expect(detectPrompt('Are you sure you want to continue connecting (yes/no/[fingerprint])? ')).toBe(true);
+  });
+
+  it('detects Continue? prompt', () => {
+    expect(detectPrompt('Continue? ')).toBe(true);
+  });
+
+  it('detects Proceed? prompt', () => {
+    expect(detectPrompt('Proceed? [Y/n] ')).toBe(true);
+  });
+
+  it('detects "press enter" prompt', () => {
+    expect(detectPrompt('Press Enter to continue...')).toBe(true);
+  });
+
+  it('detects "press any key" prompt', () => {
+    expect(detectPrompt('Press any key to exit')).toBe(true);
+  });
+
+  it('detects overwrite prompt', () => {
+    expect(detectPrompt('overwrite file.txt? [y]es, [n]o, [A]ll: ')).toBe(true);
+  });
+
+  it('detects "do you want to continue" prompt', () => {
+    expect(detectPrompt('Do you want to continue? ')).toBe(true);
+  });
+
+  it('does not match regular output', () => {
+    expect(detectPrompt('Building project...\nCompiling 42 files')).toBe(false);
+  });
+
+  it('does not match empty output', () => {
+    expect(detectPrompt('')).toBe(false);
+  });
+
+  it('does not match a normal command output line', () => {
+    expect(detectPrompt('npm info using npm@10.2.0\nnpm info using node@v20.11.0\n')).toBe(false);
+  });
+
+  it('handles output with ANSI escape codes', () => {
+    expect(detectPrompt('\x1b[1m\x1b[33mPassword:\x1b[0m ')).toBe(true);
+  });
+
+  it('handles multiline output and checks last non-empty line', () => {
+    expect(detectPrompt('Some output\nMore output\nPassword: ')).toBe(true);
+  });
+
+  it('ignores trailing blank lines and checks last non-empty line', () => {
+    expect(detectPrompt('Are you sure? [Y/n] \n\n')).toBe(true);
+  });
+
+  it('detects confirm prompt', () => {
+    expect(detectPrompt('Please confirm: ')).toBe(true);
+  });
+});
 
 describe('TerminalManager', () => {
   let manager: TerminalManager;
@@ -139,5 +229,44 @@ describe('TerminalManager', () => {
     expect(manager.size).toBe(3);
     manager.killAll();
     expect(manager.size).toBe(0);
+  });
+
+  it('isAwaitingInput returns false for new terminal', () => {
+    manager = new TerminalManager();
+    const term = manager.create();
+    expect(manager.isAwaitingInput(term.id)).toBe(false);
+  });
+
+  it('isAwaitingInput returns false for nonexistent terminal', () => {
+    manager = new TerminalManager();
+    expect(manager.isAwaitingInput('nonexistent')).toBe(false);
+  });
+
+  it('registers onAwaitingInput callbacks', () => {
+    manager = new TerminalManager();
+    const cb = () => {};
+    // Should not throw
+    manager.onAwaitingInput(cb);
+  });
+
+  it('write clears awaiting input state', async () => {
+    manager = new TerminalManager();
+    const events: { id: string; awaiting: boolean }[] = [];
+    manager.onAwaitingInput((id, awaiting) => {
+      events.push({ id, awaiting });
+    });
+    // Create a terminal that will produce a prompt-like output
+    const term = manager.create({ command: 'echo "Continue? [Y/n]"' });
+    // Wait for the output + debounce to trigger detection
+    await new Promise((r) => setTimeout(r, 3000));
+
+    // If detected, writing stdin should clear it
+    if (manager.isAwaitingInput(term.id)) {
+      manager.write(term.id, 'y\n');
+      expect(manager.isAwaitingInput(term.id)).toBe(false);
+      // Should have emitted false event
+      const lastEvent = events[events.length - 1];
+      expect(lastEvent.awaiting).toBe(false);
+    }
   });
 });

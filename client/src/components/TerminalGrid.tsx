@@ -14,6 +14,7 @@ interface TerminalGridProps {
   send: (msg: any) => void;
   subscribe: (handler: (msg: ServerMessage) => void) => () => void;
   onClose: (id: string) => void;
+  awaitingInputIds?: Set<string>;
 }
 
 export function TerminalGrid({
@@ -23,6 +24,7 @@ export function TerminalGrid({
   send,
   subscribe,
   onClose,
+  awaitingInputIds,
 }: TerminalGridProps) {
   const terminalMap = useMemo(() => {
     const map = new Map<string, TerminalInfo>();
@@ -71,6 +73,7 @@ export function TerminalGrid({
               send={send}
               subscribe={subscribe}
               onClose={onClose}
+              awaitingInput={awaitingInputIds?.has(terminal.id)}
             />
           </div>
         );

@@ -426,6 +426,58 @@ body {
   text-shadow: 0 0 2px #33dd7715;
 }
 
+/* ── Terminal Awaiting Input Alert ── */
+
+@keyframes awaiting-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes awaiting-border-glow {
+  0%, 100% { border-color: var(--warn); box-shadow: 0 0 4px var(--warn); }
+  50% { border-color: #ddaa2260; box-shadow: 0 0 2px #ddaa2240; }
+}
+
+.terminal-pane-awaiting {
+  border-color: var(--warn) !important;
+  animation: awaiting-border-glow 2s ease-in-out infinite;
+}
+
+.terminal-pane-awaiting .terminal-pane-header,
+.terminal-pane-awaiting .task-terminal-header {
+  border-bottom-color: var(--warn);
+}
+
+.terminal-pane-alert {
+  font-family: 'VT323', monospace;
+  font-size: 0.833rem;
+  color: var(--warn);
+  background: #ddaa2218;
+  padding: 0 0.333rem;
+  border: 1px solid var(--warn);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  animation: awaiting-pulse 1.5s ease-in-out infinite;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* Header awaiting input badge */
+.header-awaiting-input {
+  font-family: 'VT323', monospace;
+  font-size: 0.917rem;
+  color: var(--warn);
+  animation: awaiting-pulse 1.5s ease-in-out infinite;
+}
+
+/* Status bar awaiting input */
+.status-bar-awaiting {
+  color: var(--warn);
+  animation: awaiting-pulse 1.5s ease-in-out infinite;
+}
+
 /* ── Status Bar ── */
 
 .status-bar {

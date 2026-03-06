@@ -30,6 +30,37 @@ export default function App() {
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [termViewAgentId, setTermViewAgentId] = useState<string | null>(null);
   const [detailIssueId, setDetailIssueId] = useState<string | null>(null);
+  const [awaitingInputIds, setAwaitingInputIds] = useState<Set<string>>(new Set());
+
+  // Track which terminals are awaiting input
+  useEffect(() => {
+    const unsub = subscribe((msg) => {
+      if (msg.type === 'terminal:awaitingInput') {
+        setAwaitingInputIds((prev) => {
+          const next = new Set(prev);
+          if (msg.awaitingInput) {
+            next.add(msg.terminalId);
+          } else {
+            next.delete(msg.terminalId);
+          }
+          return next;
+        });
+      }
+    });
+    return unsub;
+  }, [subscribe]);
+
+  // Clean up awaiting input state when terminals are removed
+  useEffect(() => {
+    const terminalIds = new Set(terminals.map((t) => t.id));
+    setAwaitingInputIds((prev) => {
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (terminalIds.has(id)) next.add(id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [terminals]);
 
   // Get the expanded issue for the terminal pane
   const expandedIssue = useMemo(() => {
@@ -131,6 +162,7 @@ export default function App() {
         connected={connected}
         terminalCount={terminals.length}
         issueCount={issues.length}
+        awaitingInputCount={awaitingInputIds.size}
       >
         <ViewSwitcher mode={view} onChange={setView} prCount={prs.length} />
       </Header>
@@ -152,6 +184,7 @@ export default function App() {
                   send={send}
                   subscribe={subscribe}
                   onMinimize={() => setTermViewAgentId(null)}
+                  awaitingInput={awaitingInputIds.has(termViewAgentIssue.terminalId)}
                 />
               ) : (
                 <TerminalGrid
@@ -161,6 +194,7 @@ export default function App() {
                   send={send}
                   subscribe={subscribe}
                   onClose={handleCloseTerminal}
+                  awaitingInputIds={awaitingInputIds}
                 />
               )}
             </div>
@@ -186,6 +220,7 @@ export default function App() {
                   send={send}
                   subscribe={subscribe}
                   onMinimize={() => setExpandedIssueId(null)}
+                  awaitingInput={expandedIssue.terminalId ? awaitingInputIds.has(expandedIssue.terminalId) : false}
                 />
               </div>
             )}
@@ -200,7 +235,7 @@ export default function App() {
           />
         </div>
       </main>
-      <StatusBar connected={connected} terminalCount={terminals.length} issueCount={issues.length} />
+      <StatusBar connected={connected} terminalCount={terminals.length} issueCount={issues.length} awaitingInputCount={awaitingInputIds.size} />
       {detailIssue && (
         <IssueDetail
           issue={detailIssue}

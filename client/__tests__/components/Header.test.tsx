@@ -53,4 +53,19 @@ describe('Header', () => {
     );
     expect(screen.getByTestId('child')).toBeInTheDocument();
   });
+
+  it('does not show awaiting input badge when count is 0', () => {
+    render(<Header connected={true} terminalCount={2} awaitingInputCount={0} />);
+    expect(screen.queryByText(/awaiting input/)).not.toBeInTheDocument();
+  });
+
+  it('shows awaiting input badge when count is positive', () => {
+    render(<Header connected={true} terminalCount={2} awaitingInputCount={2} />);
+    expect(screen.getByText(/2 awaiting input/)).toBeInTheDocument();
+  });
+
+  it('does not show awaiting input badge when not provided', () => {
+    render(<Header connected={true} terminalCount={2} />);
+    expect(screen.queryByText(/awaiting input/)).not.toBeInTheDocument();
+  });
 });
