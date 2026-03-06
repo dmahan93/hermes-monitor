@@ -85,12 +85,14 @@ export function TerminalView({ terminalId, send, subscribe, onResize }: Terminal
 
     // Subscribe to server messages for this terminal
     let unsub: (() => void) | null = null;
+    let hasReceivedData = false;
 
     const doSubscribe = () => {
       unsub?.();
       unsub = subscribeRef.current((msg) => {
         if (msg.terminalId !== terminalId) return;
         if (msg.type === 'stdout') {
+          hasReceivedData = true;
           term.write(msg.data);
         } else if (msg.type === 'exit') {
           term.write(`\r\n\x1b[90m[Process exited with code ${msg.exitCode}]\x1b[0m\r\n`);
@@ -99,15 +101,15 @@ export function TerminalView({ terminalId, send, subscribe, onResize }: Terminal
     };
     doSubscribe();
 
-    // Request scrollback replay — catches any output that happened
+    // Request scrollback replay ONCE — catches any output that happened
     // before this component mounted (e.g. terminal spawned by kanban)
     sendRef.current({ type: 'replay', terminalId });
 
-    // Re-subscribe periodically to handle WS reconnects
+    // Re-subscribe periodically to handle WS reconnects.
+    // Only replay scrollback if we haven't received any data yet
+    // (means we lost connection and need to catch up).
     const subInterval = setInterval(() => {
       doSubscribe();
-      // Also re-request scrollback after reconnect
-      sendRef.current({ type: 'replay', terminalId });
     }, 5000);
 
     // ResizeObserver to refit on container size change
