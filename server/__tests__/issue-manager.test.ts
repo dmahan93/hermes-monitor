@@ -219,6 +219,7 @@ describe('IssueManager', () => {
       create: vi.fn().mockReturnValue(fakePr),
       spawnReviewer: vi.fn(),
       relaunchReview: vi.fn(),
+      resetToOpen: vi.fn(),
     } as unknown as PRManager;
 
     issueManager.setPRManager(mockPRManager);
@@ -241,8 +242,11 @@ describe('IssueManager', () => {
     expect(mockPRManager.spawnReviewer).toHaveBeenCalledWith('pr-123');
     expect(mockPRManager.relaunchReview).not.toHaveBeenCalled();
 
-    // Second cycle: review → in_progress → review (relaunches review)
+    // Second cycle: review → in_progress (resets PR) → review (relaunches review)
+    (mockPRManager.getByIssueId as ReturnType<typeof vi.fn>).mockReturnValue(fakePr);
     issueManager.changeStatus(issue.id, 'in_progress');
+    // Moving back to in_progress should reset the PR's verdict/status
+    expect(mockPRManager.resetToOpen).toHaveBeenCalledWith('pr-123');
     const termId2 = issueManager.get(issue.id)!.terminalId;
     if (termId2) terminalManager.kill(termId2);
     issueManager.get(issue.id)!.terminalId = null;

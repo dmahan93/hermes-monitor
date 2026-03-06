@@ -346,10 +346,15 @@ export class PRManager {
     return this.prs.get(id);
   }
 
+  /**
+   * Reset a PR back to open/pending state.
+   * Returns the updated PR on success, or null if the PR doesn't exist
+   * or is in a terminal state (merged/closed) and cannot be reset.
+   */
   resetToOpen(prId: string): PullRequest | null {
     const pr = this.prs.get(prId);
     if (!pr) return null;
-    if (pr.status === 'merged' || pr.status === 'closed') return pr;
+    if (pr.status === 'merged' || pr.status === 'closed') return null;
 
     pr.status = 'open';
     pr.verdict = 'pending';

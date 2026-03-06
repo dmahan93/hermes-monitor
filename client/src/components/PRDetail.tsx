@@ -11,7 +11,7 @@ interface PRDetailProps {
   onVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => void;
   onMerge: (prId: string) => void;
   onRelaunchReview: (prId: string) => void;
-  onMoveToInProgress: (issueId: string) => void;
+  onMoveToInProgress: (issueId: string) => Promise<void>;
 }
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -74,7 +74,7 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
             {issueStatus === 'review' && (
               <button
                 className="pr-action-btn pr-inprogress-btn"
-                onClick={() => { onMoveToInProgress(pr.issueId); onBack(); }}
+                onClick={async () => { await onMoveToInProgress(pr.issueId); onBack(); }}
               >
                 [← BACK TO IN PROGRESS]
               </button>

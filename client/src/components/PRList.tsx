@@ -9,7 +9,7 @@ interface PRListProps {
   onVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => void;
   onMerge: (prId: string) => void;
   onRelaunchReview: (prId: string) => void;
-  onMoveToInProgress: (issueId: string) => void;
+  onMoveToInProgress: (issueId: string) => Promise<void>;
 }
 
 const STATUS_ICONS: Record<string, string> = {
