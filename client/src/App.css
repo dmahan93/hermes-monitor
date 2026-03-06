@@ -196,10 +196,10 @@ body {
 }
 
 .terminals-sidebar {
-  width: 200px;
-  min-width: 160px;
+  width: clamp(220px, 18vw, 420px);
+  min-width: 200px;
   flex-shrink: 0;
-  border-right: 1px solid var(--bevel-dark);
+  border-left: 1px solid var(--bevel-dark);
   overflow-y: auto;
 }
 
@@ -219,18 +219,54 @@ body {
 
 .agent-list-header {
   font-family: 'VT323', monospace;
-  font-size: 11px;
+  font-size: clamp(11px, 0.9vw, 18px);
   color: var(--text-muted);
   letter-spacing: 1px;
-  padding: 4px 8px;
+  padding: clamp(4px, 0.4vw, 8px) clamp(8px, 0.6vw, 14px);
   border-bottom: 1px solid var(--bevel-dark);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.agent-list-tabs {
+  display: flex;
+  gap: 1px;
+}
+
+.agent-list-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  min-height: 24px;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: color 0.1s, border-color 0.1s, background 0.1s;
+}
+
+.agent-list-tab:hover {
+  color: var(--text);
+}
+
+.agent-list-tab-active {
+  color: var(--accent);
+  border-color: var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+  background: var(--accent-dim);
 }
 
 .agent-list-empty {
   color: var(--text-muted);
-  font-size: 10px;
-  padding: 12px 8px;
+  font-size: clamp(10px, 0.8vw, 15px);
+  padding: clamp(12px, 1vw, 20px) clamp(8px, 0.6vw, 14px);
   text-align: center;
 }
 
@@ -243,14 +279,14 @@ body {
 .agent-list-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: clamp(6px, 0.5vw, 10px);
   width: 100%;
-  padding: 6px 8px;
+  padding: clamp(6px, 0.5vw, 12px) clamp(8px, 0.6vw, 14px);
   background: transparent;
   border: 1px solid transparent;
   color: var(--text);
   font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
+  font-size: clamp(11px, 0.85vw, 17px);
   cursor: pointer;
   text-align: left;
   margin-bottom: 1px;
@@ -272,7 +308,7 @@ body {
 }
 
 .agent-list-icon {
-  font-size: 12px;
+  font-size: clamp(12px, 0.95vw, 20px);
   flex-shrink: 0;
 }
 
@@ -285,22 +321,26 @@ body {
 }
 
 .agent-list-item-title {
-  font-size: 11px;
+  font-size: clamp(11px, 0.85vw, 17px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .agent-list-item-meta {
-  font-size: 8px;
+  font-size: clamp(9px, 0.7vw, 14px);
   color: var(--text-muted);
   font-family: 'VT323', monospace;
 }
 
 .agent-list-status {
   color: var(--accent);
-  font-size: 10px;
+  font-size: clamp(10px, 0.8vw, 15px);
   flex-shrink: 0;
+}
+
+.agent-list-status-reviewer {
+  color: var(--text-muted);
 }
 
 /* ── Terminal Grid ── */
@@ -1555,6 +1595,32 @@ body {
 .pr-relaunch-btn:hover { background: #ddaa3320; }
 .pr-merge-btn { color: var(--link); }
 .pr-merge-btn:hover { background: #4488dd20; }
+.pr-fix-btn { color: var(--warn); }
+.pr-fix-btn:hover { background: #ddaa2220; }
+
+.pr-merge-checking {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  padding: 2px 8px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.pr-merge-error {
+  width: 100%;
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--error);
+  background: #dd444415;
+  border: 1px solid var(--error);
+  font-family: 'JetBrains Mono', monospace;
+}
 
 .pr-action-btn:disabled {
   color: var(--text-muted);

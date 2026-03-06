@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DiffViewer } from './DiffViewer';
 import { MarkdownContent } from './MarkdownContent';
 import type { PullRequest } from '../types';
@@ -8,7 +8,8 @@ interface PRDetailProps {
   onBack: () => void;
   onComment: (prId: string, body: string) => void;
   onVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => void;
-  onMerge: (prId: string) => void;
+  onMerge: (prId: string) => Promise<{ error?: string }>;
+  onFixConflicts: (prId: string) => void;
   onRelaunchReview: (prId: string) => void;
 }
 
@@ -21,9 +22,30 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   closed: { label: 'CLOSED', className: 'status-closed' },
 };
 
-export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge, onRelaunchReview }: PRDetailProps) {
+export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge, onFixConflicts, onRelaunchReview }: PRDetailProps) {
   const [comment, setComment] = useState('');
+  const [mergeCheck, setMergeCheck] = useState<{ checking: boolean; canMerge: boolean; hasConflicts: boolean }>({
+    checking: true, canMerge: false, hasConflicts: false,
+  });
+  const [mergeError, setMergeError] = useState<string | null>(null);
   const status = STATUS_LABELS[pr.status] || STATUS_LABELS.open;
+
+  // Check merge status on open
+  useEffect(() => {
+    if (pr.status === 'merged' || pr.status === 'closed') {
+      setMergeCheck({ checking: false, canMerge: false, hasConflicts: false });
+      return;
+    }
+    setMergeCheck({ checking: true, canMerge: false, hasConflicts: false });
+    fetch(`/api/prs/${pr.id}/merge-check`)
+      .then((res) => res.json())
+      .then((data) => {
+        setMergeCheck({ checking: false, canMerge: data.canMerge, hasConflicts: data.hasConflicts });
+      })
+      .catch(() => {
+        setMergeCheck({ checking: false, canMerge: false, hasConflicts: false });
+      });
+  }, [pr.id, pr.status]);
 
   const handleComment = () => {
     if (!comment.trim()) return;
@@ -69,15 +91,42 @@ export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge, onRelaunch
             >
               [⟳ RELAUNCH REVIEW]
             </button>
-            {pr.verdict === 'approved' && (
+            {mergeCheck.checking ? (
+              <span className="pr-merge-checking">checking merge…</span>
+            ) : mergeCheck.hasConflicts ? (
+              <button
+                className="pr-action-btn pr-fix-btn"
+                onClick={() => onFixConflicts(pr.id)}
+              >
+                [🔧 FIX CONFLICTS]
+              </button>
+            ) : pr.verdict === 'approved' ? (
               <button
                 className="pr-action-btn pr-merge-btn"
-                onClick={() => onMerge(pr.id)}
+                onClick={async () => {
+                  setMergeError(null);
+                  const result = await onMerge(pr.id);
+                  if (result.error) setMergeError(result.error);
+                }}
               >
                 [⎇ MERGE]
               </button>
-            )}
+            ) : null}
           </>
+        )}
+        {mergeError && (
+          <div className="pr-merge-error">
+            {mergeError}
+            {mergeError.includes('onflict') && (
+              <button
+                className="pr-action-btn pr-fix-btn"
+                onClick={() => { setMergeError(null); onFixConflicts(pr.id); }}
+                style={{ marginLeft: 8 }}
+              >
+                [🔧 FIX CONFLICTS]
+              </button>
+            )}
+          </div>
         )}
       </div>
 

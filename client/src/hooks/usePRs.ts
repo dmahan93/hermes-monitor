@@ -64,11 +64,25 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
     }
   }, []);
 
-  const mergePR = useCallback(async (prId: string) => {
+  const mergePR = useCallback(async (prId: string): Promise<{ error?: string }> => {
     try {
-      await fetch(`${API}/prs/${prId}/merge`, { method: 'POST' });
+      const res = await fetch(`${API}/prs/${prId}/merge`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        return { error: data?.error || 'Merge failed' };
+      }
+      return {};
     } catch (err) {
       console.error('Failed to merge PR:', err);
+      return { error: 'Network error' };
+    }
+  }, []);
+
+  const fixConflicts = useCallback(async (prId: string) => {
+    try {
+      await fetch(`${API}/prs/${prId}/fix-conflicts`, { method: 'POST' });
+    } catch (err) {
+      console.error('Failed to fix conflicts:', err);
     }
   }, []);
 
@@ -84,5 +98,5 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
     }
   }, []);
 
-  return { prs, loading, addComment, setVerdict, mergePR, relaunchReview, refetch: fetchPRs };
+  return { prs, loading, addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: fetchPRs };
 }

@@ -3,8 +3,9 @@ dist/
 .vite/
 *.log
 *.db
+*.tsbuildinfo
 .DS_Store
 .playwright-cli/
 hermes-monitor.db-shm
 hermes-monitor.db-wal
-*.tsbuildinfo
+
