@@ -82,6 +82,26 @@ describe('Store', () => {
     expect(review.status).toBe('review'); // not reset
   });
 
+  it('resetInProgress clears backlog planning terminals', () => {
+    store.saveIssue({
+      id: 'bl-1', title: 'Planning', description: '', status: 'backlog',
+      agent: 'hermes', command: '', terminalId: 'plan-term-1', branch: null,
+      createdAt: Date.now(), updatedAt: Date.now(),
+    });
+    store.saveIssue({
+      id: 'bl-2', title: 'No terminal', description: '', status: 'backlog',
+      agent: 'hermes', command: '', terminalId: null, branch: null,
+      createdAt: Date.now(), updatedAt: Date.now(),
+    });
+    store.resetInProgress();
+    const issues = store.loadIssues();
+    const planned = issues.find((i) => i.id === 'bl-1')!;
+    expect(planned.status).toBe('backlog'); // stays backlog
+    expect(planned.terminalId).toBeNull(); // terminal ref cleared
+    const noPlan = issues.find((i) => i.id === 'bl-2')!;
+    expect(noPlan.terminalId).toBeNull(); // unchanged
+  });
+
   // ── PR CRUD ──
 
   it('saves and loads a PR with comments', () => {

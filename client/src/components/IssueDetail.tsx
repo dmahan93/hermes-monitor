@@ -14,6 +14,7 @@ interface IssueDetailProps {
 }
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
+  backlog: { label: 'BACKLOG', className: 'issue-status-backlog' },
   todo: { label: 'TODO', className: 'issue-status-todo' },
   in_progress: { label: 'IN PROGRESS', className: 'issue-status-wip' },
   review: { label: 'REVIEW', className: 'issue-status-review' },
@@ -145,6 +146,9 @@ export function IssueDetail({
 
         <div className="issue-detail-footer">
           <div className="issue-detail-status-actions">
+            {issue.status !== 'backlog' && (
+              <button className="modal-btn" onClick={() => onStatusChange(issue.id, 'backlog')}>→ BACKLOG</button>
+            )}
             {issue.status !== 'todo' && (
               <button className="modal-btn" onClick={() => onStatusChange(issue.id, 'todo')}>→ TODO</button>
             )}

@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import { KanbanColumn } from './KanbanColumn';
+import { BacklogSection } from './BacklogSection';
 import { NewIssueModal } from './NewIssueModal';
 import type { Issue, IssueStatus, AgentPreset } from '../types';
 import { COLUMNS } from '../types';
@@ -13,13 +14,15 @@ interface KanbanBoardProps {
   onDeleteIssue: (id: string) => void;
   onTerminalClick?: (issueId: string) => void;
   onIssueClick?: (issueId: string) => void;
+  onPlanClick?: (issueId: string) => void;
 }
 
-export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onDeleteIssue, onTerminalClick, onIssueClick }: KanbanBoardProps) {
+export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onDeleteIssue, onTerminalClick, onIssueClick, onPlanClick }: KanbanBoardProps) {
   const [showModal, setShowModal] = useState(false);
 
   const issuesByColumn = useMemo(() => {
     const grouped: Record<IssueStatus, Issue[]> = {
+      backlog: [],
       todo: [],
       in_progress: [],
       review: [],
@@ -68,6 +71,13 @@ export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onD
             />
           ))}
         </div>
+        <BacklogSection
+          issues={issuesByColumn.backlog}
+          agents={agents}
+          onDelete={onDeleteIssue}
+          onPlanClick={onPlanClick || (() => {})}
+          onIssueClick={onIssueClick}
+        />
       </DragDropContext>
       {showModal && (
         <NewIssueModal

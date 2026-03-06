@@ -98,9 +98,14 @@ export class Store {
 
   /** Reset in_progress issues to todo on startup (terminals don't survive restart) */
   resetInProgress(): number {
+    const now = Date.now();
     const result = this.db.prepare(
       "UPDATE issues SET status = 'todo', terminalId = NULL, updatedAt = ? WHERE status = 'in_progress'"
-    ).run(Date.now());
+    ).run(now);
+    // Also clear planning terminal refs for backlog issues (terminals don't survive restart)
+    this.db.prepare(
+      "UPDATE issues SET terminalId = NULL, updatedAt = ? WHERE status = 'backlog' AND terminalId IS NOT NULL"
+    ).run(now);
     return result.changes;
   }
 

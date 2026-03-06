@@ -21,7 +21,7 @@ const makeIssue = (id: string, title: string, status: Issue['status'] = 'todo'):
 });
 
 describe('KanbanBoard', () => {
-  it('renders 4 columns', () => {
+  it('renders 4 columns and backlog section', () => {
     render(
       <KanbanBoard
         issues={[]}
@@ -35,6 +35,7 @@ describe('KanbanBoard', () => {
     expect(screen.getByText('IN PROGRESS')).toBeInTheDocument();
     expect(screen.getByText('REVIEW')).toBeInTheDocument();
     expect(screen.getByText('DONE')).toBeInTheDocument();
+    expect(screen.getByText('BACKLOG')).toBeInTheDocument();
   });
 
   it('renders issues in correct columns', () => {
@@ -55,6 +56,24 @@ describe('KanbanBoard', () => {
     expect(screen.getByText('Todo task')).toBeInTheDocument();
     expect(screen.getByText('WIP task')).toBeInTheDocument();
     expect(screen.getByText('Review task')).toBeInTheDocument();
+  });
+
+  it('renders backlog issues in backlog section', () => {
+    const issues = [
+      makeIssue('1', 'Backlog task', 'backlog'),
+      makeIssue('2', 'Todo task', 'todo'),
+    ];
+    render(
+      <KanbanBoard
+        issues={issues}
+        agents={mockAgents}
+        onStatusChange={() => {}}
+        onCreateIssue={() => {}}
+        onDeleteIssue={() => {}}
+      />
+    );
+    expect(screen.getByText('Backlog task')).toBeInTheDocument();
+    expect(screen.getByText('Todo task')).toBeInTheDocument();
   });
 
   it('new issue button opens modal', () => {
@@ -82,5 +101,22 @@ describe('KanbanBoard', () => {
       />
     );
     expect(screen.getByText('[+ NEW ISSUE]')).toBeInTheDocument();
+  });
+
+  it('backlog plan button calls onPlanClick', () => {
+    const onPlanClick = vi.fn();
+    const issues = [makeIssue('1', 'Plan me', 'backlog')];
+    render(
+      <KanbanBoard
+        issues={issues}
+        agents={mockAgents}
+        onStatusChange={() => {}}
+        onCreateIssue={() => {}}
+        onDeleteIssue={() => {}}
+        onPlanClick={onPlanClick}
+      />
+    );
+    fireEvent.click(screen.getByText('⚙ plan'));
+    expect(onPlanClick).toHaveBeenCalledWith('1');
   });
 });

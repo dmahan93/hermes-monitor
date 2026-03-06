@@ -21,7 +21,7 @@ describe('IssueManager', () => {
     expect(issue.id).toBeTruthy();
     expect(issue.title).toBe('Fix bug');
     expect(issue.description).toBe('');
-    expect(issue.status).toBe('todo');
+    expect(issue.status).toBe('backlog');
     expect(issue.agent).toBe('hermes');
     expect(issue.command).toContain('hermes');
     expect(issue.terminalId).toBeNull();
@@ -124,7 +124,7 @@ describe('IssueManager', () => {
     expect(terminalManager.size).toBe(0);
   });
 
-  it('status change todo→in_progress→todo kills terminal', () => {
+  it('status change backlog→in_progress→todo kills terminal', () => {
     setup();
     const issue = issueManager.create({ title: 'Bounce' });
     issueManager.changeStatus(issue.id, 'in_progress');
@@ -207,5 +207,77 @@ describe('IssueManager', () => {
       'issue:updated', // status change emits updated
       'issue:deleted',
     ]);
+  });
+
+  // ── Planning terminal tests ──
+
+  it('startPlanning spawns terminal for backlog issue', () => {
+    setup();
+    const issue = issueManager.create({ title: 'Plan this' });
+    expect(issue.status).toBe('backlog');
+    expect(issue.terminalId).toBeNull();
+
+    const planned = issueManager.startPlanning(issue.id);
+    expect(planned).toBeDefined();
+    expect(planned!.terminalId).toBeTruthy();
+    expect(terminalManager.size).toBe(1);
+
+    const terminal = terminalManager.get(planned!.terminalId!);
+    expect(terminal!.title).toBe('[plan] Plan this');
+  });
+
+  it('startPlanning returns undefined for non-backlog issue', () => {
+    setup();
+    const issue = issueManager.create({ title: 'Not backlog' });
+    issueManager.changeStatus(issue.id, 'todo');
+    expect(issueManager.startPlanning(issue.id)).toBeUndefined();
+  });
+
+  it('startPlanning is idempotent', () => {
+    setup();
+    const issue = issueManager.create({ title: 'Idempotent' });
+    const first = issueManager.startPlanning(issue.id);
+    const second = issueManager.startPlanning(issue.id);
+    expect(first!.terminalId).toBe(second!.terminalId);
+    expect(terminalManager.size).toBe(1);
+  });
+
+  it('stopPlanning kills planning terminal', () => {
+    setup();
+    const issue = issueManager.create({ title: 'Stop plan' });
+    issueManager.startPlanning(issue.id);
+    expect(terminalManager.size).toBe(1);
+
+    const stopped = issueManager.stopPlanning(issue.id);
+    expect(stopped!.terminalId).toBeNull();
+    expect(terminalManager.size).toBe(0);
+  });
+
+  it('moving backlog→todo kills planning terminal', () => {
+    setup();
+    const issue = issueManager.create({ title: 'Promote' });
+    issueManager.startPlanning(issue.id);
+    expect(terminalManager.size).toBe(1);
+
+    issueManager.changeStatus(issue.id, 'todo');
+    const updated = issueManager.get(issue.id);
+    expect(updated!.status).toBe('todo');
+    expect(updated!.terminalId).toBeNull();
+    expect(terminalManager.size).toBe(0);
+  });
+
+  it('moving backlog→in_progress kills planning terminal and spawns agent terminal', () => {
+    setup();
+    const issue = issueManager.create({ title: 'Skip to WIP' });
+    issueManager.startPlanning(issue.id);
+    const planTermId = issueManager.get(issue.id)!.terminalId;
+    expect(planTermId).toBeTruthy();
+
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const updated = issueManager.get(issue.id);
+    expect(updated!.status).toBe('in_progress');
+    expect(updated!.terminalId).toBeTruthy();
+    expect(updated!.terminalId).not.toBe(planTermId); // new terminal, not the planning one
+    expect(terminalManager.size).toBe(1); // planning killed, agent spawned
   });
 });

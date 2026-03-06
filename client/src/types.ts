@@ -17,7 +17,7 @@ export interface GridItem {
 }
 
 // Issue types
-export type IssueStatus = 'todo' | 'in_progress' | 'review' | 'done';
+export type IssueStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
 
 export interface Issue {
   id: string;

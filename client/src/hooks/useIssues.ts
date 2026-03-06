@@ -107,5 +107,31 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
     }
   }, [fetchIssues]);
 
-  return { issues, loading, createIssue, updateIssue, changeStatus, deleteIssue };
+  const startPlanning = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`${API}/issues/${id}/plan`, { method: 'POST' });
+      if (!res.ok) return null;
+      const issue = await res.json();
+      setIssues((prev) => prev.map((i) => (i.id === issue.id ? issue : i)));
+      return issue;
+    } catch (err) {
+      console.error('Failed to start planning:', err);
+      return null;
+    }
+  }, []);
+
+  const stopPlanning = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`${API}/issues/${id}/plan`, { method: 'DELETE' });
+      if (!res.ok) return null;
+      const issue = await res.json();
+      setIssues((prev) => prev.map((i) => (i.id === issue.id ? issue : i)));
+      return issue;
+    } catch (err) {
+      console.error('Failed to stop planning:', err);
+      return null;
+    }
+  }, []);
+
+  return { issues, loading, createIssue, updateIssue, changeStatus, deleteIssue, startPlanning, stopPlanning };
 }
