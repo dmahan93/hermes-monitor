@@ -89,8 +89,8 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
     res.json(updated);
   });
 
-  // Check if merge would have conflicts (dry run)
-  router.get('/prs/:id/merge-check', (req, res) => {
+  // Check if merge would have conflicts (dry run, async to not block event loop)
+  router.get('/prs/:id/merge-check', async (req, res) => {
     const pr = prManager.get(req.params.id);
     if (!pr) {
       res.status(404).json({ error: 'PR not found' });
@@ -100,8 +100,12 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
       res.json({ canMerge: true, merged: true });
       return;
     }
-    const result = prManager.checkMerge(req.params.id);
-    res.json(result);
+    try {
+      const result = await prManager.checkMerge(req.params.id);
+      res.json(result);
+    } catch (err: any) {
+      res.json({ canMerge: false, hasConflicts: false, error: err.message });
+    }
   });
 
   // Fix merge conflicts — spawns an agent to resolve them

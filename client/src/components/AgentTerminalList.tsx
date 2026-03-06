@@ -28,8 +28,15 @@ const FILTERS: { id: AgentListFilter; label: string }[] = [
 export function AgentTerminalList({ issues, prs, agents, activeTerminalId, onSelect }: AgentTerminalListProps) {
   const [filter, setFilter] = useState<AgentListFilter>('all');
 
-  const activeIssues = issues.filter((i) => i.terminalId);
-  const activeReviewers = prs.filter((p) => p.reviewerTerminalId);
+  // Only show issues where the agent is actively running (in_progress).
+  // Issues in 'review' or 'done' may retain a stale terminalId but the agent has finished.
+  const activeIssues = issues.filter((i) => i.terminalId && i.status === 'in_progress');
+  // Only show PRs where a reviewer or conflict-fixer is actively running.
+  // 'reviewing' = review agent running; 'open' = conflict-fixer agent running.
+  // Completed statuses (approved, changes_requested, merged, closed) are filtered out.
+  const activeReviewers = prs.filter(
+    (p) => p.reviewerTerminalId && (p.status === 'reviewing' || p.status === 'open'),
+  );
 
   const showAgents = filter === 'all' || filter === 'agents';
   const showReviewers = filter === 'all' || filter === 'reviewers';

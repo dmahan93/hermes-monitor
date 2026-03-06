@@ -72,6 +72,19 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
     }
   }, []);
 
+  // Real-time terminal removal via WebSocket
+  useEffect(() => {
+    if (!subscribe) return;
+    const unsub = subscribe((msg) => {
+      if (msg.type === 'terminal:removed') {
+        const removedId = msg.terminalId;
+        setTerminals((prev) => prev.filter((t) => t.id !== removedId));
+        setLayout((prev) => prev.filter((l) => l.i !== removedId));
+      }
+    });
+    return unsub;
+  }, [subscribe]);
+
   const updateLayout = useCallback((newLayout: GridItem[]) => {
     setLayout(newLayout);
   }, []);

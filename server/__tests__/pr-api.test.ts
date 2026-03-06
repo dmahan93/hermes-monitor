@@ -132,6 +132,87 @@ describe('PRManager.resetToOpen', () => {
   });
 });
 
+describe('PRManager.handleReviewerExit — terminal cleanup', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+
+  beforeEach(() => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+  });
+
+  afterEach(() => {
+    terminalManager.killAll();
+  });
+
+  it('clears reviewerTerminalId when reviewer terminal exits', async () => {
+    // Create a terminal that exits immediately
+    const term = terminalManager.create({ command: '/bin/true' });
+    const pr = insertTestPR(prManager, {
+      id: 'cleanup-pr-1',
+      status: 'reviewing',
+      reviewerTerminalId: term.id,
+    });
+
+    // Write a review file so handleReviewerExit can process it
+    const reviewDir = join(config.reviewBase, pr.id);
+    mkdirSync(reviewDir, { recursive: true });
+    writeFileSync(join(reviewDir, 'review.md'), 'VERDICT: APPROVED\nLooks great!');
+
+    // Wait for the terminal to exit and trigger handleReviewerExit
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // reviewerTerminalId should be cleared
+    const updated = prManager.get(pr.id);
+    expect(updated).toBeDefined();
+    expect(updated!.reviewerTerminalId).toBeNull();
+  });
+
+  it('removes reviewer terminal from terminal manager after exit', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    insertTestPR(prManager, {
+      id: 'cleanup-pr-2',
+      status: 'reviewing',
+      reviewerTerminalId: term.id,
+    });
+
+    const reviewDir = join(config.reviewBase, 'cleanup-pr-2');
+    mkdirSync(reviewDir, { recursive: true });
+    writeFileSync(join(reviewDir, 'review.md'), 'VERDICT: CHANGES_REQUESTED\nNeeds work.');
+
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // Terminal should be removed from the manager
+    expect(terminalManager.get(term.id)).toBeUndefined();
+  });
+
+  it('emits pr:updated with null reviewerTerminalId after exit', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    insertTestPR(prManager, {
+      id: 'cleanup-pr-3',
+      status: 'reviewing',
+      reviewerTerminalId: term.id,
+    });
+
+    const reviewDir = join(config.reviewBase, 'cleanup-pr-3');
+    mkdirSync(reviewDir, { recursive: true });
+    writeFileSync(join(reviewDir, 'review.md'), 'VERDICT: APPROVED\nAll good.');
+
+    const events: Array<{ event: string; reviewerTerminalId: string | null }> = [];
+    prManager.onEvent((event, pr) => {
+      events.push({ event, reviewerTerminalId: pr.reviewerTerminalId });
+    });
+
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const updateEvent = events.find((e) => e.event === 'pr:updated');
+    expect(updateEvent).toBeDefined();
+    expect(updateEvent!.reviewerTerminalId).toBeNull();
+  });
+});
+
 describe('PR API — Relaunch Review', () => {
   let terminalManager: TerminalManager;
   let worktreeManager: WorktreeManager;

@@ -143,6 +143,20 @@ describe('AgentTerminalList', () => {
       expect(screen.getByText('Active task')).toBeInTheDocument();
       expect(screen.queryByText('No terminal')).not.toBeInTheDocument();
     });
+
+    it('only shows in_progress issues (filters out review/done with stale terminalId)', () => {
+      const issues = [
+        makeIssue('1', 'Working agent', { status: 'in_progress' }),
+        makeIssue('2', 'Review stale', { status: 'review', terminalId: 'term-stale' }),
+        makeIssue('3', 'Done stale', { status: 'done', terminalId: 'term-done' }),
+        makeIssue('4', 'Todo stale', { status: 'todo', terminalId: 'term-todo' }),
+      ];
+      render(<AgentTerminalList {...defaultProps} issues={issues} />);
+      expect(screen.getByText('Working agent')).toBeInTheDocument();
+      expect(screen.queryByText('Review stale')).not.toBeInTheDocument();
+      expect(screen.queryByText('Done stale')).not.toBeInTheDocument();
+      expect(screen.queryByText('Todo stale')).not.toBeInTheDocument();
+    });
   });
 
   describe('rendering reviewer items', () => {
@@ -174,6 +188,24 @@ describe('AgentTerminalList', () => {
       render(<AgentTerminalList {...defaultProps} prs={prs} />);
       expect(screen.getByText('Active review')).toBeInTheDocument();
       expect(screen.queryByText('No terminal')).not.toBeInTheDocument();
+    });
+
+    it('only shows PRs with active status (reviewing or open)', () => {
+      const prs = [
+        makePR('1', 'Reviewing PR', { status: 'reviewing' }),
+        makePR('2', 'Conflict fixer', { status: 'open' }),
+        makePR('3', 'Approved PR', { status: 'approved' }),
+        makePR('4', 'Changes requested PR', { status: 'changes_requested' }),
+        makePR('5', 'Merged PR', { status: 'merged' }),
+        makePR('6', 'Closed PR', { status: 'closed' }),
+      ];
+      render(<AgentTerminalList {...defaultProps} prs={prs} />);
+      expect(screen.getByText('Reviewing PR')).toBeInTheDocument();
+      expect(screen.getByText('Conflict fixer')).toBeInTheDocument();
+      expect(screen.queryByText('Approved PR')).not.toBeInTheDocument();
+      expect(screen.queryByText('Changes requested PR')).not.toBeInTheDocument();
+      expect(screen.queryByText('Merged PR')).not.toBeInTheDocument();
+      expect(screen.queryByText('Closed PR')).not.toBeInTheDocument();
     });
   });
 
