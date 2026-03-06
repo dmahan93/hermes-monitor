@@ -196,7 +196,7 @@ body {
 }
 
 .terminals-sidebar {
-  width: clamp(220px, 18vw, 360px);
+  width: clamp(220px, 18vw, 420px);
   min-width: 200px;
   flex-shrink: 0;
   border-left: 1px solid var(--bevel-dark);
@@ -219,7 +219,7 @@ body {
 
 .agent-list-header {
   font-family: 'VT323', monospace;
-  font-size: clamp(11px, 0.9vw, 16px);
+  font-size: clamp(11px, 0.9vw, 18px);
   color: var(--text-muted);
   letter-spacing: 1px;
   padding: clamp(4px, 0.4vw, 8px) clamp(8px, 0.6vw, 14px);
@@ -250,7 +250,7 @@ body {
   border: 1px solid transparent;
   color: var(--text);
   font-family: 'JetBrains Mono', monospace;
-  font-size: clamp(11px, 0.85vw, 15px);
+  font-size: clamp(11px, 0.85vw, 17px);
   cursor: pointer;
   text-align: left;
   margin-bottom: 1px;
@@ -272,7 +272,7 @@ body {
 }
 
 .agent-list-icon {
-  font-size: clamp(12px, 0.95vw, 18px);
+  font-size: clamp(12px, 0.95vw, 20px);
   flex-shrink: 0;
 }
 
@@ -285,14 +285,14 @@ body {
 }
 
 .agent-list-item-title {
-  font-size: clamp(11px, 0.85vw, 15px);
+  font-size: clamp(11px, 0.85vw, 17px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .agent-list-item-meta {
-  font-size: clamp(9px, 0.7vw, 13px);
+  font-size: clamp(9px, 0.7vw, 14px);
   color: var(--text-muted);
   font-family: 'VT323', monospace;
 }
