@@ -116,6 +116,11 @@ export default function App() {
     return issues.find((i) => i.id === detailIssueId) || null;
   }, [detailIssueId, issues]);
 
+  const closeDetail = useCallback(() => {
+    setDetailIssueId(null);
+    setDetailEditing(false);
+  }, []);
+
   const detailPR = useMemo(() => {
     if (!detailIssueId) return undefined;
     return prs.find((p) => p.issueId === detailIssueId);
@@ -212,16 +217,17 @@ export default function App() {
       <StatusBar connected={connected} terminalCount={terminals.length} issueCount={issues.length} />
       {detailIssue && (
         <IssueDetail
+          key={detailIssueId}
           issue={detailIssue}
           agents={agents}
           pr={detailPR}
           initialEditing={detailEditing}
-          onClose={() => { setDetailIssueId(null); setDetailEditing(false); }}
+          onClose={closeDetail}
           onUpdate={(id, updates) => updateIssue(id, updates)}
-          onStatusChange={(id, status) => { handleStatusChange(id, status); setDetailIssueId(null); setDetailEditing(false); }}
-          onDelete={(id) => { handleDeleteIssue(id); setDetailIssueId(null); setDetailEditing(false); }}
-          onTerminalClick={(issueId) => { setDetailIssueId(null); setDetailEditing(false); handleTerminalClick(issueId); }}
-          onPRClick={() => { setDetailIssueId(null); setDetailEditing(false); setView('prs'); }}
+          onStatusChange={(id, status) => { handleStatusChange(id, status); closeDetail(); }}
+          onDelete={(id) => { handleDeleteIssue(id); closeDetail(); }}
+          onTerminalClick={(issueId) => { closeDetail(); handleTerminalClick(issueId); }}
+          onPRClick={() => { closeDetail(); setView('prs'); }}
         />
       )}
     </div>

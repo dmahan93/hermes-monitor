@@ -1037,7 +1037,9 @@ body {
   transition: opacity 0.15s;
 }
 
-.issue-card:hover .issue-card-edit {
+.issue-card:hover .issue-card-edit,
+.issue-card:focus-within .issue-card-edit,
+.issue-card-edit:focus-visible {
   opacity: 1;
 }
 

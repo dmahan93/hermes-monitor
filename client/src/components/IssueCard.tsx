@@ -31,16 +31,19 @@ export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalCl
               {issue.title}
             </span>
             <div className="issue-card-actions">
-              <button
-                className="issue-card-edit"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit?.(issue.id);
-                }}
-                title="Edit issue"
-              >
-                ✎
-              </button>
+              {onEdit && (
+                <button
+                  className="issue-card-edit"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(issue.id);
+                  }}
+                  title="Edit issue"
+                  aria-label="Edit issue"
+                >
+                  ✎
+                </button>
+              )}
               <button
                 className="issue-card-delete"
                 onClick={(e) => {

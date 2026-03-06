@@ -5,7 +5,6 @@ dist/
 *.db
 .DS_Store
 .playwright-cli/
-.playwright-cli/
 hermes-monitor.db-shm
 hermes-monitor.db-wal
-client/tsconfig.tsbuildinfo
+*.tsbuildinfo
