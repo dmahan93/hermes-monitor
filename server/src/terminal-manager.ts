@@ -55,7 +55,7 @@ export class TerminalManager {
       name: 'xterm-256color',
       cols,
       rows,
-      cwd: process.env.HOME || '/tmp',
+      cwd: options.cwd || process.env.HOME || '/tmp',
       env: process.env as Record<string, string>,
     });
 

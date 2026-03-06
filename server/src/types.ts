@@ -11,6 +11,7 @@ export interface TerminalInfo {
 export interface CreateTerminalOptions {
   title?: string;
   command?: string;
+  cwd?: string;
   cols?: number;
   rows?: number;
 }

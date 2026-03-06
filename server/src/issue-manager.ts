@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { TerminalManager } from './terminal-manager.js';
+import type { WorktreeManager } from './worktree-manager.js';
+import type { PRManager } from './pr-manager.js';
 import { getPreset } from './agents.js';
 
 export type IssueStatus = 'todo' | 'in_progress' | 'review' | 'done';
@@ -37,10 +39,21 @@ export type IssueEventCallback = (event: string, issue: Issue) => void;
 export class IssueManager {
   private issues = new Map<string, Issue>();
   private terminalManager: TerminalManager;
+  private worktreeManager: WorktreeManager | null = null;
+  private prManager: PRManager | null = null;
   private eventCallbacks: IssueEventCallback[] = [];
 
   constructor(terminalManager: TerminalManager) {
     this.terminalManager = terminalManager;
+  }
+
+  /** Set managers after construction (avoids circular deps) */
+  setWorktreeManager(wm: WorktreeManager): void {
+    this.worktreeManager = wm;
+  }
+
+  setPRManager(pm: PRManager): void {
+    this.prManager = pm;
   }
 
   onEvent(cb: IssueEventCallback): void {
@@ -126,22 +139,57 @@ export class IssueManager {
   }
 
   private handleTransition(issue: Issue, from: IssueStatus, to: IssueStatus): void {
-    // Spawn terminal when moving TO in_progress (and no terminal exists)
+    // Spawn terminal + worktree when moving TO in_progress
     if (to === 'in_progress' && !issue.terminalId) {
+      let cwd: string | undefined;
+
+      // Create worktree if we have a worktree manager
+      if (this.worktreeManager) {
+        try {
+          const worktree = this.worktreeManager.create(issue.id, issue.title);
+          issue.branch = worktree.branch;
+          cwd = worktree.path;
+        } catch (err) {
+          console.error('Failed to create worktree:', err);
+        }
+      }
+
       const command = issue.command
         ? this.interpolateCommand(issue.command, issue)
         : undefined;
       const terminal = this.terminalManager.create({
         title: issue.title,
         command,
+        cwd,
       });
       issue.terminalId = terminal.id;
+    }
+
+    // Create PR + spawn reviewer when moving TO review
+    if (to === 'review' && this.prManager) {
+      const existingPr = this.prManager.getByIssueId(issue.id);
+      if (!existingPr) {
+        const pr = this.prManager.create({
+          issueId: issue.id,
+          title: issue.title,
+          description: issue.description,
+        });
+        if (pr) {
+          // Spawn adversarial reviewer
+          this.prManager.spawnReviewer(pr.id);
+        }
+      }
     }
 
     // Kill terminal when moving TO todo or done
     if ((to === 'todo' || to === 'done') && issue.terminalId) {
       this.terminalManager.kill(issue.terminalId);
       issue.terminalId = null;
+    }
+
+    // Clean up worktree when moving to done (after merge)
+    if (to === 'done' && this.worktreeManager) {
+      this.worktreeManager.remove(issue.id, false); // keep branch for history
     }
   }
 

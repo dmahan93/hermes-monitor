@@ -2,10 +2,12 @@ import { useCallback, useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { TerminalGrid } from './components/TerminalGrid';
 import { KanbanBoard } from './components/KanbanBoard';
+import { PRList } from './components/PRList';
 import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
 import { useTerminals } from './hooks/useTerminals';
 import { useIssues } from './hooks/useIssues';
+import { usePRs } from './hooks/usePRs';
 import { useAgents } from './hooks/useAgents';
 import { useWebSocket } from './hooks/useWebSocket';
 import './App.css';
@@ -19,14 +21,15 @@ export default function App() {
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals();
   const { issues, createIssue, changeStatus, deleteIssue } = useIssues(subscribe);
+  const { prs, addComment, setVerdict, mergePR } = usePRs(subscribe);
   const agents = useAgents();
   const [view, setView] = useState<ViewMode>('kanban');
 
-  // Refetch terminals when issues change (status changes can spawn/kill terminals)
+  // Refetch terminals when issues or PRs change (status changes can spawn/kill terminals)
   useEffect(() => {
     const unsub = subscribe((msg) => {
-      if (msg.type === 'issue:updated' || msg.type === 'issue:deleted') {
-        // Small delay to let the server finish spawning/killing the terminal
+      if (msg.type === 'issue:updated' || msg.type === 'issue:deleted' ||
+          msg.type === 'pr:created' || msg.type === 'pr:updated') {
         setTimeout(() => refetchTerminals(), 300);
       }
     });
@@ -47,13 +50,11 @@ export default function App() {
 
   const handleStatusChange = useCallback(async (id: string, status: any) => {
     await changeStatus(id, status);
-    // Status changes can spawn/kill terminals — refetch terminal list
     refetchTerminals();
   }, [changeStatus, refetchTerminals]);
 
   const handleDeleteIssue = useCallback(async (id: string) => {
     await deleteIssue(id);
-    // Deleting issue may kill its terminal — refetch
     refetchTerminals();
   }, [deleteIssue, refetchTerminals]);
 
@@ -73,7 +74,7 @@ export default function App() {
         terminalCount={terminals.length}
         issueCount={issues.length}
       >
-        <ViewSwitcher mode={view} onChange={setView} />
+        <ViewSwitcher mode={view} onChange={setView} prCount={prs.length} />
       </Header>
       <main className="main">
         {view === 'terminals' ? (
@@ -85,13 +86,20 @@ export default function App() {
             subscribe={subscribe}
             onClose={handleCloseTerminal}
           />
-        ) : (
+        ) : view === 'kanban' ? (
           <KanbanBoard
             issues={issues}
             agents={agents}
             onStatusChange={handleStatusChange}
             onCreateIssue={handleCreateIssue}
             onDeleteIssue={handleDeleteIssue}
+          />
+        ) : (
+          <PRList
+            prs={prs}
+            onComment={addComment}
+            onVerdict={setVerdict}
+            onMerge={mergePR}
           />
         )}
       </main>

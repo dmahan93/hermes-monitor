@@ -41,6 +41,37 @@ export interface AgentPreset {
   installed?: boolean;
 }
 
+// PR types
+export type PRStatus = 'open' | 'reviewing' | 'approved' | 'changes_requested' | 'merged' | 'closed';
+
+export interface PRComment {
+  id: string;
+  prId: string;
+  author: string;
+  body: string;
+  file?: string;
+  line?: number;
+  createdAt: number;
+}
+
+export interface PullRequest {
+  id: string;
+  issueId: string;
+  title: string;
+  description: string;
+  sourceBranch: string;
+  targetBranch: string;
+  repoPath: string;
+  status: PRStatus;
+  diff: string;
+  changedFiles: string[];
+  verdict: string;
+  reviewerTerminalId: string | null;
+  comments: PRComment[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export const COLUMNS: { id: IssueStatus; label: string }[] = [
   { id: 'todo', label: 'TODO' },
   { id: 'in_progress', label: 'IN PROGRESS' },
@@ -59,4 +90,6 @@ export type ServerMessage =
   | { type: 'error'; terminalId: string; message: string }
   | { type: 'issue:created'; issue: Issue }
   | { type: 'issue:updated'; issue: Issue }
-  | { type: 'issue:deleted'; issueId: string };
+  | { type: 'issue:deleted'; issueId: string }
+  | { type: 'pr:created'; pr: PullRequest }
+  | { type: 'pr:updated'; pr: PullRequest };

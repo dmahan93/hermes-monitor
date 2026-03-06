@@ -1,11 +1,12 @@
-export type ViewMode = 'terminals' | 'kanban';
+export type ViewMode = 'kanban' | 'terminals' | 'prs';
 
 interface ViewSwitcherProps {
   mode: ViewMode;
   onChange: (mode: ViewMode) => void;
+  prCount?: number;
 }
 
-export function ViewSwitcher({ mode, onChange }: ViewSwitcherProps) {
+export function ViewSwitcher({ mode, onChange, prCount }: ViewSwitcherProps) {
   return (
     <div className="view-switcher">
       <button
@@ -19,6 +20,12 @@ export function ViewSwitcher({ mode, onChange }: ViewSwitcherProps) {
         onClick={() => onChange('terminals')}
       >
         [TERMINALS]
+      </button>
+      <button
+        className={`view-switcher-btn ${mode === 'prs' ? 'active' : ''}`}
+        onClick={() => onChange('prs')}
+      >
+        [PRs{prCount ? ` ${prCount}` : ''}]
       </button>
     </div>
   );

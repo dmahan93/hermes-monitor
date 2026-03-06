@@ -430,8 +430,171 @@ App
 
 ---
 
+## Phase 3: PR System + Adversarial Review
+
+### Overview
+
+When an issue moves to IN PROGRESS, a git worktree + branch is created and the agent works there. When it moves to REVIEW, a PR is auto-created from the diff and an adversarial hermes reviewer agent is spawned to tear apart the code before human review. A new PR tab shows diffs and review comments.
+
+### Flow
+
+```
+Issue IN PROGRESS:
+  1. Create branch: issue/<id>-<slugified-title>
+  2. Create worktree: /tmp/hermes-worktrees/<issue-id>/
+  3. Spawn agent terminal with cwd = worktree path
+
+Issue → REVIEW:
+  1. Collect diff: git diff main...branch
+  2. Create PR record with diff
+  3. Write diff + context to /tmp/hermes-reviews/<pr-id>/
+  4. Spawn adversarial reviewer (hermes chat -q with review prompt)
+  5. On reviewer exit, read review file → create PR comments + verdict
+
+PR approved by human → merge branch → issue to DONE
+```
+
+### Data Model
+
+PullRequest: id, issueId, title, description, sourceBranch, targetBranch, repoPath, status (open|reviewing|approved|changes_requested|merged|closed), diff, verdict (pending|approved|changes_requested), reviewerTerminalId, createdAt, updatedAt
+
+PRComment: id, prId, author (hermes-reviewer|human), body, file (optional), line (optional), createdAt
+
+### Config
+
+- Global default repo path (env: HERMES_REPO_PATH or set via API)
+- Per-issue repo override
+- Worktree base dir: /tmp/hermes-worktrees/
+
+### API
+
+| Method | Path                      | Body               | Response    |
+|--------|---------------------------|---------------------|-------------|
+| GET    | /api/config               | —                   | Config      |
+| PATCH  | /api/config               | { repoPath?, ... }  | Config      |
+| GET    | /api/prs                  | —                   | PR[]        |
+| GET    | /api/prs/:id              | —                   | PR + comments|
+| POST   | /api/prs/:id/comments     | { body, file?, line? } | PRComment |
+| POST   | /api/prs/:id/verdict      | { verdict }         | PR          |
+| POST   | /api/prs/:id/merge        | —                   | PR          |
+
+### WebSocket Additions
+
+```
+Server -> Client:
+  { type: "pr:created", pr: PullRequest }
+  { type: "pr:updated", pr: PullRequest }
+  { type: "pr:comment", prId: string, comment: PRComment }
+```
+
+### Frontend: PR Tab
+
+```
+App
+├── Header
+├── ViewSwitcher      — terminal grid / kanban / PRs
+├── PRList
+│   └── PRCard (×N)
+│       ├── title, source→target branch
+│       ├── status badge (open/reviewing/approved/merged)
+│       └── verdict indicator
+├── PRDetail
+│   ├── DiffViewer    — unified diff with line numbers
+│   │   └── InlineComment (×N)
+│   ├── ReviewPanel   — all comments listed
+│   ├── ApproveButton / RejectButton
+│   └── MergeButton   — enabled after approval
+├── KanbanBoard       — (existing, from Phase 2)
+├── TerminalGrid      — (existing, from Phase 1)
+└── StatusBar
+```
+
+- PR list (open/reviewing/approved/merged)
+- PR detail view with unified diff viewer
+- Review comments inline on diff
+- Approve/Reject buttons
+- Merge button (after approval)
+
+### Reviewer Prompt Template
+
+The adversarial reviewer gets: diff file path, issue title/description, instructions to be critical. Writes review to a markdown file. Server reads it on exit and creates comments.
+
+### Test Plan: Phase 3
+
+#### Server Tests: WorktreeManager
+
+| # | Test                                          |
+|---|-----------------------------------------------|
+| 1 | creates branch from issue id and title        |
+| 2 | creates worktree at expected path             |
+| 3 | removes worktree on cleanup                   |
+| 4 | handles existing branch gracefully            |
+| 5 | handles missing repo path                     |
+| 6 | lists active worktrees                        |
+
+#### Server Tests: PRManager
+
+| # | Test                                          |
+|---|-----------------------------------------------|
+| 1 | creates PR from issue with diff               |
+| 2 | lists all PRs                                 |
+| 3 | gets PR by id with comments                   |
+| 4 | adds comment to PR                            |
+| 5 | sets verdict on PR                            |
+| 6 | merges PR and updates status                  |
+| 7 | spawns reviewer terminal                      |
+| 8 | handles reviewer exit and creates comments    |
+
+#### Server Tests: PR API
+
+| # | Test                                          |
+|---|-----------------------------------------------|
+| 1 | GET /api/prs lists PRs                        |
+| 2 | GET /api/prs/:id returns PR with comments     |
+| 3 | POST /api/prs/:id/comments adds comment       |
+| 4 | POST /api/prs/:id/verdict sets verdict        |
+| 5 | POST /api/prs/:id/merge merges PR             |
+| 6 | merge without approval returns 400            |
+| 7 | operations on nonexistent PR return 404       |
+| 8 | GET/PATCH /api/config works                   |
+
+#### Server Tests: Reviewer Spawn
+
+| # | Test                                          |
+|---|-----------------------------------------------|
+| 1 | spawns reviewer with correct prompt           |
+| 2 | reads review file on exit                     |
+| 3 | creates comments from review output           |
+
+#### Client Tests: PR Tab
+
+| # | Test                                          |
+|---|-----------------------------------------------|
+| 1 | PRList renders PR cards                       |
+| 2 | PRCard shows status badge                     |
+| 3 | PRDetail renders diff viewer                  |
+| 4 | Approve/Reject buttons call API               |
+| 5 | Merge button enabled only after approval      |
+
+#### Client Tests: Diff Viewer
+
+| # | Test                                          |
+|---|-----------------------------------------------|
+| 1 | renders unified diff with line numbers        |
+| 2 | highlights added/removed lines                |
+| 3 | shows inline comments at correct lines        |
+
+#### Client Tests: Comment Rendering
+
+| # | Test                                          |
+|---|-----------------------------------------------|
+| 1 | renders reviewer comments                     |
+| 2 | renders human comments                        |
+| 3 | comment form submits and clears               |
+
+---
+
 ## Future Phases (not in scope yet)
 
-- **Phase 3:** Custom PR system (worktrees/docker, branch management)
 - **Phase 4:** Git viewer (diff, log, blame, file browser)
 - **Phase 5:** Full agent orchestration
