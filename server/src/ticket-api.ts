@@ -1,9 +1,21 @@
-import { Router, json } from 'express';
+import { Router, json, raw } from 'express';
+import { mkdirSync, writeFileSync, readdirSync } from 'fs';
+import { join, extname } from 'path';
+import { v4 as uuidv4 } from 'uuid';
 import type { IssueManager } from './issue-manager.js';
 import type { PRManager } from './pr-manager.js';
 import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
 import { config } from './config.js';
+
+const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+const MIME_TO_EXT: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/svg+xml': '.svg',
+};
 
 interface TicketGuidelines {
   screenshots: string;
@@ -24,6 +36,8 @@ interface TicketInfoResponse {
     createdAt: number;
   }>;
   reviewUrl: string;
+  screenshotUploadUrl: string;
+  screenshotUploadInstructions: string;
   guidelines: TicketGuidelines;
 }
 
@@ -63,6 +77,18 @@ export function createTicketApiRouter(
     const port = process.env.PORT || '4000';
     const baseUrl = `http://localhost:${port}`;
 
+    const screenshotUploadUrl = `${baseUrl}/ticket/${issue.id}/screenshots`;
+    const screenshotUploadInstructions = [
+      'To upload a screenshot, POST the image file to the upload URL:',
+      '',
+      `  curl -X POST --data-binary @screenshot.png \\`,
+      `    -H 'Content-Type: image/png' \\`,
+      `    '${screenshotUploadUrl}?filename=my-screenshot.png&description=Before+changes'`,
+      '',
+      'The response includes a markdown snippet you can paste into your PR description.',
+      'To list existing screenshots: GET ' + screenshotUploadUrl,
+    ].join('\n');
+
     const response: TicketInfoResponse = {
       id: issue.id,
       title: issue.title,
@@ -73,11 +99,101 @@ export function createTicketApiRouter(
       targetBranch: config.targetBranch,
       previousReviews,
       reviewUrl: `${baseUrl}/ticket/${issue.id}/review`,
+      screenshotUploadUrl,
+      screenshotUploadInstructions,
       guidelines: {
-        screenshots: 'If your changes modify UI components (.tsx, .css, .html files), include before/after screenshots in the PR description using markdown image syntax: ![description](url). The PR view renders these inline. Screenshots are required for UI changes and will be checked during review.',
+        screenshots: 'If your changes modify UI components (.tsx, .css, .html files), upload before/after screenshots using the screenshotUploadUrl and include the returned markdown in your PR description. Screenshots are required for UI changes and will be checked during review.',
       },
     };
     res.json(response);
+  });
+
+  // Agent uploads a screenshot for its ticket
+  router.post('/ticket/:id/screenshots', raw({ type: 'image/*', limit: '10mb' }), (req, res) => {
+    const issue = issueManager.get(req.params.id);
+    if (!issue) {
+      res.status(404).json({ error: 'Issue not found' });
+      return;
+    }
+
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      res.status(400).json({
+        error: 'No image data received. Send the image as the raw request body with Content-Type: image/*',
+        example: "curl -X POST --data-binary @screenshot.png -H 'Content-Type: image/png' '<url>?filename=name.png'",
+      });
+      return;
+    }
+
+    // Determine file extension from Content-Type or filename query param
+    const contentType = req.headers['content-type'] || '';
+    const queryFilename = req.query.filename as string | undefined;
+    const description = (req.query.description as string | undefined) || '';
+
+    let ext = MIME_TO_EXT[contentType];
+    if (!ext && queryFilename) {
+      ext = extname(queryFilename).toLowerCase();
+    }
+    if (!ext || !ALLOWED_EXTENSIONS.has(ext)) {
+      res.status(400).json({
+        error: `Unsupported image type. Content-Type: ${contentType}. Allowed: ${Array.from(ALLOWED_EXTENSIONS).join(', ')}`,
+      });
+      return;
+    }
+
+    // Build filename: use provided name (sanitized) or generate one
+    const id = uuidv4().slice(0, 8);
+    let basename: string;
+    if (queryFilename) {
+      // Sanitize: strip extension, keep only safe chars
+      const rawName = queryFilename.replace(extname(queryFilename), '').replace(/[^a-zA-Z0-9_-]/g, '_');
+      basename = `${rawName}-${id}${ext}`;
+    } else {
+      basename = `screenshot-${id}${ext}`;
+    }
+
+    // Save to disk
+    const screenshotDir = join(config.screenshotBase, issue.id);
+    mkdirSync(screenshotDir, { recursive: true });
+    const filePath = join(screenshotDir, basename);
+    writeFileSync(filePath, req.body);
+
+    const port = process.env.PORT || '4000';
+    const url = `/screenshots/${issue.id}/${basename}`;
+    const fullUrl = `http://localhost:${port}${url}`;
+    const alt = description || basename;
+    const markdown = `![${alt}](${fullUrl})`;
+
+    res.status(201).json({ url, fullUrl, markdown, filename: basename });
+  });
+
+  // Agent lists its uploaded screenshots
+  router.get('/ticket/:id/screenshots', (req, res) => {
+    const issue = issueManager.get(req.params.id);
+    if (!issue) {
+      res.status(404).json({ error: 'Issue not found' });
+      return;
+    }
+
+    const screenshotDir = join(config.screenshotBase, issue.id);
+    let files: string[] = [];
+    try {
+      files = readdirSync(screenshotDir).filter((f) => {
+        const ext = extname(f).toLowerCase();
+        return ALLOWED_EXTENSIONS.has(ext);
+      });
+    } catch {
+      // Directory doesn't exist yet — no screenshots
+    }
+
+    const port = process.env.PORT || '4000';
+    const screenshots = files.map((f) => ({
+      filename: f,
+      url: `/screenshots/${issue.id}/${f}`,
+      fullUrl: `http://localhost:${port}/screenshots/${issue.id}/${f}`,
+      markdown: `![${f}](http://localhost:${port}/screenshots/${issue.id}/${f})`,
+    }));
+
+    res.json({ screenshots });
   });
 
   // Agent calls this when done — kills terminal, moves issue to review
