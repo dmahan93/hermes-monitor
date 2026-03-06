@@ -66,13 +66,19 @@ export class IssueManager {
     }
   }
 
-  /** Interpolate {{var}} placeholders in command template */
+  /** Escape a string for safe use inside single-quoted shell arguments */
+  private shellEscape(s: string): string {
+    // Replace ' with '\'' (end quote, literal quote via \', start new quote)
+    return s.replace(/'/g, "'\\''");
+  }
+
+  /** Interpolate {{var}} placeholders in command template (shell-safe) */
   interpolateCommand(template: string, issue: Issue): string {
     return template
-      .replace(/\{\{id\}\}/g, issue.id)
-      .replace(/\{\{title\}\}/g, issue.title)
-      .replace(/\{\{description\}\}/g, issue.description)
-      .replace(/\{\{branch\}\}/g, issue.branch || '');
+      .replace(/\{\{id\}\}/g, this.shellEscape(issue.id))
+      .replace(/\{\{title\}\}/g, this.shellEscape(issue.title))
+      .replace(/\{\{description\}\}/g, this.shellEscape(issue.description))
+      .replace(/\{\{branch\}\}/g, this.shellEscape(issue.branch || ''));
   }
 
   create(options: CreateIssueOptions): Issue {

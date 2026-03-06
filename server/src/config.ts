@@ -22,12 +22,9 @@ function detectDefaultBranch(repoPath: string): string {
 }
 
 // Default to parent of server/ dir (project root), or HERMES_REPO_PATH env var
-import { dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const projectRoot = dirname(dirname(__dirname)); // server/src/ -> server/ -> project root
-const defaultRepo = process.env.HERMES_REPO_PATH || projectRoot;
+const defaultRepo = process.env.HERMES_REPO_PATH || resolve(process.cwd(), '..');
 
 export const config: AppConfig = {
   repoPath: defaultRepo,

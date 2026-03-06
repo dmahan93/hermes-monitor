@@ -155,12 +155,30 @@ describe('IssueManager', () => {
     const issue = issueManager.create({
       title: 'Fix login',
       description: 'The login page is broken',
+      agent: 'custom',
       command: '/bin/echo "{{title}} - {{branch}}"',
       branch: 'fix/login',
     });
 
     const interpolated = issueManager.interpolateCommand(issue.command, issue);
     expect(interpolated).toBe('/bin/echo "Fix login - fix/login"');
+  });
+
+  it('command template escapes single quotes in values', () => {
+    setup();
+    const issue = issueManager.create({
+      title: "Don't break things",
+      description: "It's broken",
+      agent: 'custom',
+      command: "echo '{{title}}: {{description}}'",
+    });
+
+    const interpolated = issueManager.interpolateCommand(issue.command, issue);
+    // Single quotes in values get escaped as '\'' (end quote, escaped quote, start quote)
+    expect(interpolated).toContain("Don'\\''t");
+    expect(interpolated).toContain("It'\\''s");
+    // Result should be valid bash: echo 'Don'\''t break things: It'\''s broken'
+    expect(interpolated).toBe("echo 'Don'\\''t break things: It'\\''s broken'");
   });
 
   it('deleting issue with active terminal kills it', () => {
