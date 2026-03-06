@@ -172,7 +172,7 @@ export class PRManager {
     ].join('\n'));
 
     // Spawn reviewer — give it the repo, branch info, and let it git diff itself
-    const reviewCommand = `hermes chat -q 'You are an adversarial code reviewer. Do NOT stop to summarize or ask for confirmation — complete the entire review autonomously. You are reviewing branch ${pr.sourceBranch} against ${pr.targetBranch} in repo ${pr.repoPath}. Run git diff ${pr.targetBranch}...${pr.sourceBranch} in the repo to see the changes. Read ${reviewDir}/context.md for context. Write a thorough critical review to ${reviewDir}/review.md. Start with VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED. Be rigorous. Do not stop until the review file is written.'`;
+    const reviewCommand = `hermes chat -q 'You are an adversarial code reviewer. If a summarization step occurs, always continue working afterward — do not treat it as a stopping point. You are reviewing branch ${pr.sourceBranch} against ${pr.targetBranch} in repo ${pr.repoPath}. Run git diff ${pr.targetBranch}...${pr.sourceBranch} in the repo to see the changes. Read ${reviewDir}/context.md for context. Write a thorough critical review to ${reviewDir}/review.md. Start with VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED. Be rigorous. Do not stop until the review file is written.'`;
 
     const terminal = this.terminalManager.create({
       title: `Review: ${pr.title}`,
@@ -336,7 +336,7 @@ export class PRManager {
     }
 
     // Spawn agent to merge target branch in and resolve conflicts
-    const fixCommand = `hermes chat -q 'You are an autonomous conflict resolution agent. Do NOT stop to summarize or ask for confirmation — just fix the conflicts start to finish. You are in a git worktree on branch ${pr.sourceBranch}. Run: git merge ${pr.targetBranch} — this will have conflicts. Resolve ALL conflicts by editing the files intelligently, keeping functionality from both sides. Then git add the resolved files and git commit. Do not stop until all conflicts are resolved and committed.'`;
+    const fixCommand = `hermes chat -q 'You are an autonomous conflict resolution agent. If a summarization step occurs, always continue working afterward — do not treat it as a stopping point. You are in a git worktree on branch ${pr.sourceBranch}. Run: git merge ${pr.targetBranch} — this will have conflicts. Resolve ALL conflicts by editing the files intelligently, keeping functionality from both sides. Then git add the resolved files and git commit. Do not stop until all conflicts are resolved and committed.'`;
 
     const terminal = this.terminalManager.create({
       title: `Fix conflicts: ${pr.title}`,
