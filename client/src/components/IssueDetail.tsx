@@ -25,7 +25,8 @@ export function IssueDetail({
   issue, agents, pr, initialEditing, onClose, onUpdate, onStatusChange, onDelete, onTerminalClick, onPRClick,
 }: IssueDetailProps) {
   // initialEditing is only read at mount. This works because App.tsx renders
-  // <IssueDetail key={detailIssueId}>, forcing a full remount when switching issues.
+  // <IssueDetail key={`${detailIssueId}-${detailEditing}`}>, forcing a full
+  // remount when switching issues OR when toggling between view/edit mode.
   const [editing, setEditing] = useState(initialEditing ?? false);
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(issue.description);
@@ -161,7 +162,7 @@ export function IssueDetail({
               <button className="modal-btn" onClick={() => onStatusChange(issue.id, 'done')}>→ DONE</button>
             )}
           </div>
-          <button className="modal-btn issue-detail-delete-btn" onClick={() => { onDelete(issue.id); onClose(); }}>
+          <button className="modal-btn issue-detail-delete-btn" onClick={() => { onDelete(issue.id); onClose(); }} aria-label="Delete issue">
             [DELETE]
           </button>
         </div>

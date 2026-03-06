@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { IssueDetail } from '../../src/components/IssueDetail';
 import type { Issue, AgentPreset } from '../../src/types';
@@ -20,16 +20,27 @@ const mockIssue: Issue = {
   updatedAt: Date.now(),
 };
 
-const defaultProps = {
-  issue: mockIssue,
-  agents: mockAgents,
-  onClose: vi.fn(),
-  onUpdate: vi.fn(),
-  onStatusChange: vi.fn(),
-  onDelete: vi.fn(),
+let defaultProps: {
+  issue: typeof mockIssue;
+  agents: typeof mockAgents;
+  onClose: ReturnType<typeof vi.fn>;
+  onUpdate: ReturnType<typeof vi.fn>;
+  onStatusChange: ReturnType<typeof vi.fn>;
+  onDelete: ReturnType<typeof vi.fn>;
 };
 
 describe('IssueDetail', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    defaultProps = {
+      issue: mockIssue,
+      agents: mockAgents,
+      onClose: vi.fn(),
+      onUpdate: vi.fn(),
+      onStatusChange: vi.fn(),
+      onDelete: vi.fn(),
+    };
+  });
   it('renders in view mode by default (initialEditing omitted)', () => {
     render(<IssueDetail {...defaultProps} />);
     expect(screen.getByText('Test issue title')).toBeInTheDocument();
@@ -84,11 +95,14 @@ describe('IssueDetail', () => {
     });
   });
 
-  it('delete button has aria-label for accessibility', () => {
+  it('delete button calls onDelete with correct id', () => {
     render(<IssueDetail {...defaultProps} />);
-    // The delete button in IssueCard has aria-label; verify the detail panel's
-    // delete button exists and calls the handler
     fireEvent.click(screen.getByText('[DELETE]'));
     expect(defaultProps.onDelete).toHaveBeenCalledWith('issue-1');
+  });
+
+  it('delete button has aria-label for accessibility', () => {
+    render(<IssueDetail {...defaultProps} />);
+    expect(screen.getByLabelText('Delete issue')).toBeInTheDocument();
   });
 });

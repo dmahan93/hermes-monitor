@@ -217,7 +217,7 @@ export default function App() {
       <StatusBar connected={connected} terminalCount={terminals.length} issueCount={issues.length} />
       {detailIssue && (
         <IssueDetail
-          key={detailIssueId}
+          key={`${detailIssueId}-${detailEditing}`}
           issue={detailIssue}
           agents={agents}
           pr={detailPR}
