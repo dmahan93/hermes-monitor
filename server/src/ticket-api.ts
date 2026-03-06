@@ -51,6 +51,9 @@ export function createTicketApiRouter(
       targetBranch: config.targetBranch,
       previousReviews,
       reviewUrl: `${baseUrl}/ticket/${issue.id}/review`,
+      guidelines: {
+        screenshots: 'If your changes modify UI components (.tsx, .css, .html files), include before/after screenshots in the PR description using markdown image syntax: ![description](url). The PR view renders these inline. Screenshots are required for UI changes and will be checked during review.',
+      },
     });
   });
 

@@ -159,13 +159,20 @@ export class PRManager {
       '- Code style and readability issues',
       '- Missing tests or documentation',
       '',
+      '## Screenshots for UI Changes',
+      'If the PR modifies UI components (.tsx, .css, .html files), check that:',
+      '- The PR description includes before/after screenshots showing the visual changes',
+      '- Screenshots use markdown image syntax: ![description](url)',
+      '- If screenshots are missing for UI changes, flag this in your review',
+      '  and request them with VERDICT: CHANGES_REQUESTED',
+      '',
       'Write your complete review to review.md in this directory.',
       'Start with a verdict line: VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED',
       'Then provide detailed feedback.',
     ].join('\n'));
 
     // Spawn reviewer — give it the repo, branch info, and let it git diff itself
-    const reviewCommand = `hermes chat -q 'You are an adversarial code reviewer. You are reviewing branch ${pr.sourceBranch} against ${pr.targetBranch} in repo ${pr.repoPath}. Run git diff ${pr.targetBranch}...${pr.sourceBranch} in the repo to see the changes. Read ${reviewDir}/context.md for context. Write a thorough critical review to ${reviewDir}/review.md. Start with VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED. Be rigorous.'`;
+    const reviewCommand = `hermes chat -q 'You are an adversarial code reviewer. You are reviewing branch ${pr.sourceBranch} against ${pr.targetBranch} in repo ${pr.repoPath}. Run git diff ${pr.targetBranch}...${pr.sourceBranch} in the repo to see the changes. Read ${reviewDir}/context.md for context. If the PR touches UI files (.tsx, .css, .html), verify that screenshots are included in the description — request them if missing. Write a thorough critical review to ${reviewDir}/review.md. Start with VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED. Be rigorous.'`;
 
     const terminal = this.terminalManager.create({
       title: `Review: ${pr.title}`,
