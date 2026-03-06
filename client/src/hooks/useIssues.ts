@@ -27,7 +27,14 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
   useEffect(() => {
     const unsub = subscribe((msg) => {
       if (msg.type === 'issue:created') {
-        setIssues((prev) => [...prev, msg.issue]);
+        // Deduplicate: only add if not already present (might have been added optimistically)
+        setIssues((prev) => {
+          if (prev.some((i) => i.id === msg.issue.id)) {
+            // Update in place in case server changed anything
+            return prev.map((i) => (i.id === msg.issue.id ? msg.issue : i));
+          }
+          return [...prev, msg.issue];
+        });
       } else if (msg.type === 'issue:updated') {
         setIssues((prev) =>
           prev.map((i) => (i.id === msg.issue.id ? msg.issue : i))
@@ -46,8 +53,13 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, description, agent, command, branch }),
       });
-      // Issue will be added via WebSocket event
-      return await res.json();
+      const issue = await res.json();
+      // Optimistically add the issue immediately (WS event will deduplicate)
+      setIssues((prev) => {
+        if (prev.some((i) => i.id === issue.id)) return prev;
+        return [...prev, issue];
+      });
+      return issue;
     } catch (err) {
       console.error('Failed to create issue:', err);
       return null;
@@ -67,6 +79,10 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
   }, []);
 
   const changeStatus = useCallback(async (id: string, status: IssueStatus) => {
+    // Optimistic update
+    setIssues((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, status } : i))
+    );
     try {
       await fetch(`${API}/issues/${id}/status`, {
         method: 'PATCH',
@@ -75,16 +91,21 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
       });
     } catch (err) {
       console.error('Failed to change issue status:', err);
+      // Revert on failure — refetch
+      fetchIssues();
     }
-  }, []);
+  }, [fetchIssues]);
 
   const deleteIssue = useCallback(async (id: string) => {
+    // Optimistic removal
+    setIssues((prev) => prev.filter((i) => i.id !== id));
     try {
       await fetch(`${API}/issues/${id}`, { method: 'DELETE' });
     } catch (err) {
       console.error('Failed to delete issue:', err);
+      fetchIssues();
     }
-  }, []);
+  }, [fetchIssues]);
 
   return { issues, loading, createIssue, updateIssue, changeStatus, deleteIssue };
 }
