@@ -1580,7 +1580,8 @@ body {
 }
 
 .pr-comment-body pre,
-.pr-comment-body > div {
+.pr-comment-body > .markdown-plain,
+.pr-comment-body > .markdown-content {
   margin: 0;
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.917rem;
@@ -1665,6 +1666,15 @@ body {
   display: block;
   cursor: zoom-in;
   image-rendering: auto;
+}
+
+.pr-screenshot-error {
+  display: block;
+  padding: 1rem;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.833rem;
+  text-align: center;
 }
 
 .pr-screenshot-caption {

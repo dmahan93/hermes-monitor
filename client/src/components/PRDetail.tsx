@@ -43,9 +43,7 @@ export function PRDetail({ pr, onBack, onComment, onVerdict, onMerge }: PRDetail
           <span>{pr.changedFiles.length} file{pr.changedFiles.length !== 1 ? 's' : ''} changed</span>
         </div>
         {pr.description && (
-          <div className="pr-detail-desc">
-            <MarkdownContent text={pr.description} />
-          </div>
+          <MarkdownContent text={pr.description} className="pr-detail-desc" />
         )}
       </div>
 

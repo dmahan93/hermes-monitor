@@ -154,12 +154,25 @@ describe('MarkdownContent', () => {
     expect(container.querySelector('pre')).not.toBeInTheDocument();
   });
 
-  it('passes className to the plain text div', () => {
+  it('plain text div has markdown-plain class', () => {
+    const { container } = render(<MarkdownContent text="hello" />);
+    expect(container.querySelector('.markdown-plain')).toBeInTheDocument();
+  });
+
+  it('passes className to the plain text div alongside markdown-plain', () => {
     const { container } = render(
       <MarkdownContent text="hello" className="pr-detail-desc" />
     );
     const div = container.querySelector('div.pr-detail-desc');
     expect(div).toBeInTheDocument();
+    expect(div).toHaveClass('markdown-plain');
+    expect(div).toHaveClass('pr-detail-desc');
+  });
+
+  it('does not produce trailing space in className when no custom class', () => {
+    const { container } = render(<MarkdownContent text="hello" />);
+    const div = container.querySelector('.markdown-plain');
+    expect(div?.className).toBe('markdown-plain');
   });
 
   it('renders images when markdown image syntax is present', () => {
@@ -179,10 +192,21 @@ describe('MarkdownContent', () => {
   });
 
   it('does not render figcaption for empty alt text', () => {
+    const { container } = render(
+      <MarkdownContent text="![](https://example.com/img.png)" />
+    );
+    // Query for the <figcaption> element, not text content "figcaption"
+    expect(container.querySelector('figcaption')).not.toBeInTheDocument();
+  });
+
+  it('uses fallback alt text "screenshot" for accessibility on empty-alt images', () => {
     render(
       <MarkdownContent text="![](https://example.com/img.png)" />
     );
-    expect(screen.queryByText('figcaption')).not.toBeInTheDocument();
+    // Alt attribute should still be set for accessibility
+    const img = screen.getByAltText('screenshot');
+    expect(img).toBeInTheDocument();
+    expect(img).toHaveAttribute('aria-label', 'View screenshot full size');
   });
 
   it('opens zoom overlay on image click', () => {
@@ -313,5 +337,25 @@ describe('MarkdownContent', () => {
     );
     const img = screen.getByAltText('test');
     expect(img).toHaveAttribute('loading', 'lazy');
+  });
+
+  it('shows error fallback when image fails to load', () => {
+    render(
+      <MarkdownContent text="![broken](https://example.com/404.png)" />
+    );
+    const img = screen.getByAltText('broken');
+    fireEvent.error(img);
+    expect(screen.getByText('[image failed to load]')).toBeInTheDocument();
+  });
+
+  it('does not show zoom button when image has load error', () => {
+    render(
+      <MarkdownContent text="![broken](https://example.com/404.png)" />
+    );
+    const img = screen.getByAltText('broken');
+    fireEvent.error(img);
+    // After error, the img should be replaced with error text
+    expect(screen.queryByAltText('broken')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /View.*full size/ })).not.toBeInTheDocument();
   });
 });

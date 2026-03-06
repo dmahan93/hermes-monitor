@@ -65,8 +65,9 @@ export function parseMarkdownImages(text: string): ContentPart[] {
   return parts;
 }
 
-function ImageWithZoom({ src, alt }: { src: string; alt: string }) {
+function ImageWithZoom({ src, alt, showCaption }: { src: string; alt: string; showCaption: boolean }) {
   const [zoomed, setZoomed] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLImageElement>(null);
 
@@ -94,19 +95,24 @@ function ImageWithZoom({ src, alt }: { src: string; alt: string }) {
   return (
     <>
       <figure className="pr-screenshot">
-        <img
-          ref={triggerRef}
-          src={src}
-          alt={alt}
-          className="pr-screenshot-img"
-          onClick={() => setZoomed(true)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setZoomed(true); } }}
-          tabIndex={0}
-          role="button"
-          aria-label={`View ${alt || 'screenshot'} full size`}
-          loading="lazy"
-        />
-        {alt && <figcaption className="pr-screenshot-caption">{alt}</figcaption>}
+        {loadError ? (
+          <span className="pr-screenshot-error">[image failed to load]</span>
+        ) : (
+          <img
+            ref={triggerRef}
+            src={src}
+            alt={alt}
+            className="pr-screenshot-img"
+            onClick={() => setZoomed(true)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setZoomed(true); } }}
+            onError={() => setLoadError(true)}
+            tabIndex={0}
+            role="button"
+            aria-label={`View ${alt || 'screenshot'} full size`}
+            loading="lazy"
+          />
+        )}
+        {showCaption && alt && <figcaption className="pr-screenshot-caption">{alt}</figcaption>}
       </figure>
       {zoomed && (
         <div
@@ -136,14 +142,14 @@ export function MarkdownContent({ text, className }: MarkdownContentProps) {
 
   // No images found — render as plain div (backwards compatible with pr-detail-desc styling)
   if (parts.length <= 1 && parts.every((p) => p.type === 'text')) {
-    return <div className={className}>{text}</div>;
+    return <div className={['markdown-plain', className].filter(Boolean).join(' ')}>{text}</div>;
   }
 
   return (
-    <div className={`markdown-content ${className || ''}`}>
+    <div className={['markdown-content', className].filter(Boolean).join(' ')}>
       {parts.map((part, i) =>
         part.type === 'image' ? (
-          <ImageWithZoom key={i} src={part.content} alt={part.alt || 'screenshot'} />
+          <ImageWithZoom key={i} src={part.content} alt={part.alt || 'screenshot'} showCaption={!!part.alt} />
         ) : (
           <pre key={i} className="markdown-text-block">{part.content}</pre>
         )
