@@ -172,7 +172,6 @@ export class PRManager {
       command: reviewCommand,
       cwd: pr.repoPath,
     });
-    });
 
     pr.reviewerTerminalId = terminal.id;
     pr.status = 'reviewing';
