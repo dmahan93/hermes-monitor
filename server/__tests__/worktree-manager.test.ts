@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { WorktreeManager } from '../src/worktree-manager.js';
 import { config } from '../src/config.js';
-import { existsSync } from 'fs';
+import { existsSync, lstatSync } from 'fs';
 import { execSync } from 'child_process';
+import { join } from 'path';
 
 // These tests need a real git repo — skip if not available
 const isGitRepo = (() => {
@@ -66,5 +67,38 @@ describe('WorktreeManager', () => {
     expect(info!.issueId).toBe(id);
     expect(info!.branch).toBeTruthy();
     expect(info!.path).toBeTruthy();
+  });
+
+  it('creates worktree with node_modules symlink', { skip: !isGitRepo }, () => {
+    manager = new WorktreeManager();
+    const id = 'test-wt-deps-' + Date.now();
+    createdIds.push(id);
+    const info = manager.create(id, 'Deps test');
+    const nodeModulesPath = join(info.path, 'node_modules');
+
+    // node_modules should exist (either symlink or real directory)
+    const mainRepoModules = join(config.repoPath, 'node_modules');
+    if (existsSync(mainRepoModules)) {
+      expect(existsSync(nodeModulesPath)).toBe(true);
+      // Should be a symlink pointing to the main repo
+      const stat = lstatSync(nodeModulesPath);
+      expect(stat.isSymbolicLink()).toBe(true);
+    }
+  });
+
+  it('setupDeps is idempotent', { skip: !isGitRepo }, () => {
+    manager = new WorktreeManager();
+    const id = 'test-wt-idempotent-' + Date.now();
+    createdIds.push(id);
+    const info = manager.create(id, 'Idempotent test');
+    const nodeModulesPath = join(info.path, 'node_modules');
+
+    // Call setupDeps again — should not throw
+    manager.setupDeps(info.path);
+
+    const mainRepoModules = join(config.repoPath, 'node_modules');
+    if (existsSync(mainRepoModules)) {
+      expect(existsSync(nodeModulesPath)).toBe(true);
+    }
   });
 });
