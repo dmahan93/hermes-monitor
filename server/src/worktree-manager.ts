@@ -110,6 +110,9 @@ export class WorktreeManager {
 
     // Nothing to link from if the main repo hasn't run npm install
     if (!existsSync(sourceModules)) {
+      console.warn(
+        `[worktree] node_modules not found in ${repo} — run 'npm install' there first`
+      );
       return;
     }
 
@@ -130,17 +133,13 @@ export class WorktreeManager {
 
     try {
       symlinkSync(resolve(sourceModules), targetModules, 'dir');
-    } catch {
-      // Symlink failed (permissions, cross-device, etc.) — fall back to npm install
-      try {
-        execSync('npm install --ignore-scripts', {
-          cwd: worktreePath,
-          stdio: 'pipe',
-          timeout: 120_000,
-        });
-      } catch {
-        // Best effort — don't crash worktree creation over this
-      }
+    } catch (err) {
+      console.warn(
+        `[worktree] Failed to symlink node_modules in ${worktreePath}: ${err instanceof Error ? err.message : err}`
+      );
+      console.warn(
+        `[worktree] Run 'npm install' manually in the worktree to set up dependencies`
+      );
     }
   }
 

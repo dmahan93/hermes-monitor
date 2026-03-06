@@ -23,6 +23,12 @@ fi
 SOURCE="$MAIN_REPO/node_modules"
 TARGET="$WORKTREE_PATH/node_modules"
 
+# Guard against running from the main repo itself
+if [ "$WORKTREE_PATH" = "$MAIN_REPO" ]; then
+  echo "error: already in the main repo ($MAIN_REPO), not a worktree" >&2
+  exit 1
+fi
+
 if [ ! -d "$SOURCE" ]; then
   echo "Main repo node_modules not found at $SOURCE"
   echo "Run 'npm install' in $MAIN_REPO first."
