@@ -7,6 +7,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': 'http://localhost:4000',
+      '/ticket': 'http://localhost:4000',
       '/ws': {
         target: 'ws://localhost:4000',
         ws: true,

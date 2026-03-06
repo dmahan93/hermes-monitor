@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
+import type { Store } from './store.js';
 import { config } from './config.js';
 
 export type PRStatus = 'open' | 'reviewing' | 'approved' | 'changes_requested' | 'merged' | 'closed';
@@ -48,6 +49,7 @@ export class PRManager {
   private prs = new Map<string, PullRequest>();
   private terminalManager: TerminalManager;
   private worktreeManager: WorktreeManager;
+  private store: Store | null = null;
   private eventCallbacks: PREventCallback[] = [];
 
   constructor(terminalManager: TerminalManager, worktreeManager: WorktreeManager) {
@@ -58,6 +60,22 @@ export class PRManager {
     this.terminalManager.onExit((terminalId, _exitCode) => {
       this.handleReviewerExit(terminalId);
     });
+  }
+
+  setStore(store: Store): void {
+    this.store = store;
+  }
+
+  loadFromStore(): void {
+    if (!this.store) return;
+    const prs = this.store.loadPRs();
+    for (const pr of prs) {
+      this.prs.set(pr.id, pr);
+    }
+  }
+
+  private persist(pr: PullRequest): void {
+    this.store?.savePR(pr);
   }
 
   onEvent(cb: PREventCallback): void {
@@ -100,6 +118,7 @@ export class PRManager {
     };
 
     this.prs.set(id, pr);
+    this.persist(pr);
     this.emit('pr:created', pr);
     return pr;
   }
@@ -149,6 +168,7 @@ export class PRManager {
     pr.status = 'reviewing';
     pr.updatedAt = Date.now();
 
+    this.persist(pr);
     this.emit('pr:updated', pr);
     return pr;
   }
@@ -202,6 +222,7 @@ export class PRManager {
     }
 
     pr.updatedAt = Date.now();
+    this.persist(pr);
     this.emit('pr:updated', pr);
   }
 
@@ -221,6 +242,7 @@ export class PRManager {
 
     pr.comments.push(comment);
     pr.updatedAt = Date.now();
+    this.persist(pr);
     this.emit('pr:updated', pr);
     return comment;
   }
@@ -232,6 +254,7 @@ export class PRManager {
     pr.verdict = verdict;
     pr.status = verdict === 'approved' ? 'approved' : 'changes_requested';
     pr.updatedAt = Date.now();
+    this.persist(pr);
     this.emit('pr:updated', pr);
     return pr;
   }
@@ -249,6 +272,7 @@ export class PRManager {
     // Clean up worktree
     this.worktreeManager.remove(pr.issueId, true);
 
+    this.persist(pr);
     this.emit('pr:updated', pr);
     return pr;
   }

@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
 import type { PRManager } from './pr-manager.js';
+import type { Store } from './store.js';
 import { getPreset } from './agents.js';
 
 export type IssueStatus = 'todo' | 'in_progress' | 'review' | 'done';
@@ -41,10 +42,32 @@ export class IssueManager {
   private terminalManager: TerminalManager;
   private worktreeManager: WorktreeManager | null = null;
   private prManager: PRManager | null = null;
+  private store: Store | null = null;
   private eventCallbacks: IssueEventCallback[] = [];
 
   constructor(terminalManager: TerminalManager) {
     this.terminalManager = terminalManager;
+  }
+
+  setStore(store: Store): void {
+    this.store = store;
+  }
+
+  /** Load issues from persistent store */
+  loadFromStore(): void {
+    if (!this.store) return;
+    const issues = this.store.loadIssues();
+    for (const issue of issues) {
+      this.issues.set(issue.id, issue);
+    }
+  }
+
+  private persist(issue: Issue): void {
+    this.store?.saveIssue(issue);
+  }
+
+  private persistDelete(id: string): void {
+    this.store?.deleteIssue(id);
   }
 
   /** Set managers after construction (avoids circular deps) */
@@ -101,6 +124,7 @@ export class IssueManager {
       updatedAt: now,
     };
     this.issues.set(id, issue);
+    this.persist(issue);
     this.emit('issue:created', issue);
     return issue;
   }
@@ -123,6 +147,7 @@ export class IssueManager {
     if (options.branch !== undefined) issue.branch = options.branch;
     issue.updatedAt = Date.now();
 
+    this.persist(issue);
     this.emit('issue:updated', issue);
     return issue;
   }
@@ -140,6 +165,7 @@ export class IssueManager {
     // Status transition side effects
     this.handleTransition(issue, oldStatus, newStatus);
 
+    this.persist(issue);
     this.emit('issue:updated', issue);
     return issue;
   }
@@ -209,6 +235,7 @@ export class IssueManager {
     }
 
     this.issues.delete(id);
+    this.persistDelete(id);
     this.emit('issue:deleted', issue);
     return true;
   }

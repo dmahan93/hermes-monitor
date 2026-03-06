@@ -4,9 +4,11 @@ import { TerminalManager } from './terminal-manager.js';
 import { IssueManager } from './issue-manager.js';
 import { WorktreeManager } from './worktree-manager.js';
 import { PRManager } from './pr-manager.js';
+import { Store } from './store.js';
 import { createApiRouter } from './api.js';
 import { createIssueApiRouter } from './issue-api.js';
 import { createPRApiRouter } from './pr-api.js';
+import { createTicketApiRouter } from './ticket-api.js';
 import { setupWebSocket } from './ws.js';
 import { config, isGitRepo } from './config.js';
 
@@ -15,15 +17,28 @@ const PORT = parseInt(process.env.PORT || '4000', 10);
 const app = express();
 const server = createServer(app);
 
+// Persistent store
+const store = new Store();
+
 // Core managers
 const terminalManager = new TerminalManager();
 const worktreeManager = new WorktreeManager();
 const prManager = new PRManager(terminalManager, worktreeManager);
 const issueManager = new IssueManager(terminalManager);
 
-// Wire up cross-references (avoids circular constructor deps)
+// Wire up cross-references
 issueManager.setWorktreeManager(worktreeManager);
 issueManager.setPRManager(prManager);
+issueManager.setStore(store);
+prManager.setStore(store);
+
+// Load persisted state
+const resetCount = store.resetInProgress();
+if (resetCount > 0) {
+  console.log(`Reset ${resetCount} in-progress issue(s) to todo`);
+}
+issueManager.loadFromStore();
+prManager.loadFromStore();
 
 // Log repo config
 if (isGitRepo(config.repoPath)) {
@@ -32,10 +47,17 @@ if (isGitRepo(config.repoPath)) {
   console.log(`Warning: ${config.repoPath} is not a git repo — worktrees disabled`);
 }
 
+const issueCount = issueManager.list().length;
+const prCount = prManager.list().length;
+if (issueCount > 0 || prCount > 0) {
+  console.log(`Loaded ${issueCount} issue(s), ${prCount} PR(s) from database`);
+}
+
 // REST API
 app.use('/api', createApiRouter(terminalManager));
 app.use('/api', createIssueApiRouter(issueManager));
 app.use('/api', createPRApiRouter(prManager));
+app.use('/', createTicketApiRouter(issueManager, prManager, worktreeManager));
 
 // WebSocket
 const wss = setupWebSocket(server, terminalManager);
@@ -66,6 +88,7 @@ prManager.onEvent((event, pr) => {
 const shutdown = () => {
   console.log('\nShutting down...');
   terminalManager.killAll();
+  store.close();
   server.close();
   process.exit(0);
 };
@@ -76,4 +99,4 @@ server.listen(PORT, () => {
   console.log(`Hermes Monitor server listening on :${PORT}`);
 });
 
-export { app, server, terminalManager, issueManager, worktreeManager, prManager };
+export { app, server, terminalManager, issueManager, worktreeManager, prManager, store };

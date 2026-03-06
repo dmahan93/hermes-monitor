@@ -594,7 +594,111 @@ The adversarial reviewer gets: diff file path, issue title/description, instruct
 
 ---
 
+## Phase 4: Persistence, Agent API, and UX Polish
+
+### Overview
+
+Major improvements to make the system production-ready: persistent storage so state survives restarts, an agent communication API so agents know where to work and can self-manage their lifecycle, and UX improvements for terminal management.
+
+### 4.1 Persistent Store
+
+SQLite database for issues, PRs, and reviews. On server startup, any issues stuck in `in_progress` get reset to `todo` (since their terminals are gone).
+
+**What's stored:**
+- Issues (all fields)
+- Pull requests (all fields including comments)
+- App config (repo path, etc.)
+
+**What's NOT stored (ephemeral):**
+- Terminal sessions (recreated on demand)
+- WebSocket connections
+- Scrollback buffers
+
+**Startup behavior:**
+- Load all issues from DB
+- Reset `in_progress` → `todo` (terminals don't survive restart)
+- `review` and `done` issues keep their status
+- Load all PRs and their comments
+
+### 4.2 Agent Communication API
+
+Agents need to know where to work and how to signal completion. Two new endpoints the agent calls during its work:
+
+**GET /ticket/:id/info**
+Returns everything the agent needs:
+```json
+{
+  "id": "uuid",
+  "title": "Fix the login bug",
+  "description": "Users can't log in on mobile",
+  "branch": "issue/abc123-fix-the-login-bug",
+  "worktreePath": "/tmp/hermes-worktrees/uuid/",
+  "repoPath": "/home/user/project",
+  "targetBranch": "main",
+  "previousReviews": [
+    { "verdict": "changes_requested", "body": "Missing error handling..." }
+  ],
+  "reviewUrl": "http://localhost:4000/ticket/uuid/review"
+}
+```
+
+**POST /ticket/:id/review**
+Agent calls this when done working. Server:
+1. Closes/kills the agent's terminal
+2. Collects git diff from the branch
+3. Creates PR
+4. Spawns adversarial reviewer
+5. Moves issue to `review` status
+
+The agent command template should include the ticket info URL so the agent knows how to get its context and signal completion:
+```
+hermes chat -q 'You are working on a task. First GET http://localhost:4000/ticket/{{id}}/info to get your task details, worktree path, and any previous review feedback. Work in the worktree. When done, POST to the review URL from the info response.'
+```
+
+### 4.3 Worktree Fix
+
+Current worktree creation is broken — agent commits to main. Fix:
+- Ensure worktree is actually created and checked out on the issue branch
+- Agent command template tells agent to GET /ticket/:id/info for the worktree path
+- Agent works in the worktree directory, commits to the issue branch
+- The terminal's cwd is set to the worktree path
+
+### 4.4 Task-Attached Terminal Panes
+
+Instead of terminals being a separate view, task terminals appear as a collapsible pane on the right side of the kanban board:
+- When an issue is in_progress, a small terminal indicator appears on the card
+- Clicking it opens a terminal pane on the right side of the screen (split view)
+- Terminal pane has a "minimize" button that collapses it back
+- Multiple task terminals can be open but only one expanded at a time
+- Manual terminals (from [+ ADD TERMINAL]) still go to the grid view
+
+### 4.5 Close Terminal on Review
+
+When the agent calls POST /ticket/:id/review:
+1. Kill the agent's terminal
+2. Set issue.terminalId = null
+3. Terminal pane auto-minimizes/closes
+
+### 4.6 Snapping Grid
+
+Terminal grid uses snap-to-grid positioning:
+- Define grid cells (e.g., 4 columns)
+- Terminals snap to nearest cell boundary when dragged/resized
+- Clean, aligned layouts instead of pixel-perfect positioning
+- react-grid-layout already supports this — just need to tune the settings
+
+### Test Plan
+
+| Area | Tests |
+|------|-------|
+| SQLite store | 8 (CRUD for issues + PRs, startup reset, persistence across restart) |
+| Agent API | 6 (GET /ticket/:id/info, POST /ticket/:id/review, review with previous feedback) |
+| Worktree | 4 (branch creation, worktree path, agent cwd, diff collection) |
+| Terminal pane UX | 4 (expand, minimize, close on review, multiple panes) |
+| Snapping grid | 2 (snap positioning, resize snapping) |
+
+---
+
 ## Future Phases (not in scope yet)
 
-- **Phase 4:** Git viewer (diff, log, blame, file browser)
 - **Phase 5:** Full agent orchestration
