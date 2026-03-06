@@ -12,6 +12,14 @@ interface TerminalViewProps {
   onResize?: (cols: number, rows: number) => void;
 }
 
+// Match the CSS clamp: clamp(12px, calc(8px + 0.278vw), 18px)
+// Returns a scaled font size (base 13px at 1440w, ~19px at 4K)
+function getTerminalFontSize(base = 13): number {
+  const vw = window.innerWidth;
+  const scale = Math.min(Math.max(8 + 0.278 * vw / 100, 12), 18) / 12;
+  return Math.round(base * scale);
+}
+
 export function TerminalView({ terminalId, send, subscribe, onResize }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -31,7 +39,7 @@ export function TerminalView({ terminalId, send, subscribe, onResize }: Terminal
     const term = new Terminal({
       cursorBlink: true,
       fontFamily: "'JetBrains Mono', 'IBM Plex Mono', 'Fira Code', monospace",
-      fontSize: 13,
+      fontSize: getTerminalFontSize(),
       lineHeight: 1.2,
       theme: {
         background: '#0a0b12',
@@ -120,11 +128,22 @@ export function TerminalView({ terminalId, send, subscribe, onResize }: Terminal
     });
     ro.observe(containerRef.current);
 
+    // Update terminal font size on window resize (for 4K scaling)
+    const handleWindowResize = () => {
+      const newSize = getTerminalFontSize();
+      if (term.options.fontSize !== newSize) {
+        term.options.fontSize = newSize;
+        try { fitAddon.fit(); } catch {}
+      }
+    };
+    window.addEventListener('resize', handleWindowResize);
+
     return () => {
       clearTimeout(fitTimer);
       clearInterval(subInterval);
       unsub?.();
       ro.disconnect();
+      window.removeEventListener('resize', handleWindowResize);
       term.dispose();
     };
   }, [terminalId]); // Only re-run if terminalId changes
