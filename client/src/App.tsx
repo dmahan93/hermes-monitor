@@ -30,6 +30,7 @@ export default function App() {
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [termViewAgentId, setTermViewAgentId] = useState<string | null>(null);
   const [detailIssueId, setDetailIssueId] = useState<string | null>(null);
+  const [detailEditing, setDetailEditing] = useState(false);
 
   // Get the expanded issue for the terminal pane
   const expandedIssue = useMemo(() => {
@@ -102,6 +103,12 @@ export default function App() {
 
   const handleIssueClick = useCallback((issueId: string) => {
     setDetailIssueId(issueId);
+    setDetailEditing(false);
+  }, []);
+
+  const handleEditIssue = useCallback((issueId: string) => {
+    setDetailIssueId(issueId);
+    setDetailEditing(true);
   }, []);
 
   const detailIssue = useMemo(() => {
@@ -175,6 +182,7 @@ export default function App() {
                 onStatusChange={handleStatusChange}
                 onCreateIssue={handleCreateIssue}
                 onDeleteIssue={handleDeleteIssue}
+                onEditIssue={handleEditIssue}
                 onTerminalClick={handleTerminalClick}
                 onIssueClick={handleIssueClick}
               />
@@ -207,12 +215,13 @@ export default function App() {
           issue={detailIssue}
           agents={agents}
           pr={detailPR}
-          onClose={() => setDetailIssueId(null)}
+          initialEditing={detailEditing}
+          onClose={() => { setDetailIssueId(null); setDetailEditing(false); }}
           onUpdate={(id, updates) => updateIssue(id, updates)}
-          onStatusChange={(id, status) => { handleStatusChange(id, status); setDetailIssueId(null); }}
-          onDelete={(id) => { handleDeleteIssue(id); setDetailIssueId(null); }}
-          onTerminalClick={(issueId) => { setDetailIssueId(null); handleTerminalClick(issueId); }}
-          onPRClick={() => { setDetailIssueId(null); setView('prs'); }}
+          onStatusChange={(id, status) => { handleStatusChange(id, status); setDetailIssueId(null); setDetailEditing(false); }}
+          onDelete={(id) => { handleDeleteIssue(id); setDetailIssueId(null); setDetailEditing(false); }}
+          onTerminalClick={(issueId) => { setDetailIssueId(null); setDetailEditing(false); handleTerminalClick(issueId); }}
+          onPRClick={() => { setDetailIssueId(null); setDetailEditing(false); setView('prs'); }}
         />
       )}
     </div>

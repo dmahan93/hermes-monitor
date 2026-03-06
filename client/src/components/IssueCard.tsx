@@ -6,11 +6,12 @@ interface IssueCardProps {
   index: number;
   agents: AgentPreset[];
   onDelete: (id: string) => void;
+  onEdit?: (issueId: string) => void;
   onTerminalClick?: (issueId: string) => void;
   onClick?: (issueId: string) => void;
 }
 
-export function IssueCard({ issue, index, agents, onDelete, onTerminalClick, onClick }: IssueCardProps) {
+export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalClick, onClick }: IssueCardProps) {
   const agent = agents.find((a) => a.id === issue.agent);
 
   return (
@@ -29,16 +30,28 @@ export function IssueCard({ issue, index, agents, onDelete, onTerminalClick, onC
             >
               {issue.title}
             </span>
-            <button
-              className="issue-card-delete"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(issue.id);
-              }}
-              title="Delete issue"
-            >
-              ×
-            </button>
+            <div className="issue-card-actions">
+              <button
+                className="issue-card-edit"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit?.(issue.id);
+                }}
+                title="Edit issue"
+              >
+                ✎
+              </button>
+              <button
+                className="issue-card-delete"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(issue.id);
+                }}
+                title="Delete issue"
+              >
+                ×
+              </button>
+            </div>
           </div>
           {issue.description && (
             <div className="issue-card-desc">{issue.description}</div>

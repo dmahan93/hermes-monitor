@@ -5,6 +5,7 @@ interface IssueDetailProps {
   issue: Issue;
   agents: AgentPreset[];
   pr?: PullRequest;
+  initialEditing?: boolean;
   onClose: () => void;
   onUpdate: (id: string, updates: Partial<Issue>) => void;
   onStatusChange: (id: string, status: string) => void;
@@ -21,9 +22,9 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
 };
 
 export function IssueDetail({
-  issue, agents, pr, onClose, onUpdate, onStatusChange, onDelete, onTerminalClick, onPRClick,
+  issue, agents, pr, initialEditing, onClose, onUpdate, onStatusChange, onDelete, onTerminalClick, onPRClick,
 }: IssueDetailProps) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(initialEditing ?? false);
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(issue.description);
   const agent = agents.find((a) => a.id === issue.agent);

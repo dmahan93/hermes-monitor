@@ -1018,6 +1018,33 @@ body {
   color: var(--accent);
 }
 
+.issue-card-actions {
+  display: flex;
+  gap: 0.167rem;
+  flex-shrink: 0;
+}
+
+.issue-card-edit {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.833rem;
+  cursor: pointer;
+  padding: 0 0.167rem;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.issue-card:hover .issue-card-edit {
+  opacity: 1;
+}
+
+.issue-card-edit:hover {
+  color: var(--accent);
+}
+
 .issue-card-delete {
   background: transparent;
   border: none;
