@@ -314,13 +314,17 @@ export class PRManager {
   /**
    * Dry-run merge check — test if merge would succeed without actually doing it.
    */
-  checkMerge(prId: string): { canMerge: boolean; hasConflicts: boolean; error?: string } {
+  async checkMerge(prId: string): Promise<{ canMerge: boolean; hasConflicts: boolean; error?: string }> {
     const pr = this.prs.get(prId);
     if (!pr) return { canMerge: false, hasConflicts: false, error: 'PR not found' };
 
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
+
     // Check branch exists
     try {
-      execSync(`git rev-parse --verify ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
+      await execAsync(`git rev-parse --verify ${pr.sourceBranch}`, { cwd: pr.repoPath });
     } catch {
       return { canMerge: false, hasConflicts: false, error: `Branch ${pr.sourceBranch} not found` };
     }
@@ -328,9 +332,9 @@ export class PRManager {
     // Stash if dirty
     let stashed = false;
     try {
-      const status = execSync('git status --porcelain', { cwd: pr.repoPath, stdio: 'pipe' }).toString().trim();
-      if (status) {
-        execSync('git stash', { cwd: pr.repoPath, stdio: 'pipe' });
+      const { stdout } = await execAsync('git status --porcelain', { cwd: pr.repoPath });
+      if (stdout.trim()) {
+        await execAsync('git stash', { cwd: pr.repoPath });
         stashed = true;
       }
     } catch {}
@@ -339,9 +343,9 @@ export class PRManager {
     let canMerge = false;
     let hasConflicts = false;
     try {
-      execSync(
+      await execAsync(
         `git merge --no-commit --no-ff ${pr.sourceBranch}`,
-        { cwd: pr.repoPath, stdio: 'pipe' }
+        { cwd: pr.repoPath }
       );
       canMerge = true;
     } catch (err: any) {
@@ -350,11 +354,11 @@ export class PRManager {
     }
 
     // Always abort the test merge
-    try { execSync('git merge --abort', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+    try { await execAsync('git merge --abort', { cwd: pr.repoPath }); } catch {}
 
     // Restore stash
     if (stashed) {
-      try { execSync('git stash pop', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+      try { await execAsync('git stash pop', { cwd: pr.repoPath }); } catch {}
     }
 
     return { canMerge, hasConflicts };
