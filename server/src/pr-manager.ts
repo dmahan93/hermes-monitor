@@ -312,6 +312,55 @@ export class PRManager {
   }
 
   /**
+   * Dry-run merge check — test if merge would succeed without actually doing it.
+   */
+  checkMerge(prId: string): { canMerge: boolean; hasConflicts: boolean; error?: string } {
+    const pr = this.prs.get(prId);
+    if (!pr) return { canMerge: false, hasConflicts: false, error: 'PR not found' };
+
+    // Check branch exists
+    try {
+      execSync(`git rev-parse --verify ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
+    } catch {
+      return { canMerge: false, hasConflicts: false, error: `Branch ${pr.sourceBranch} not found` };
+    }
+
+    // Stash if dirty
+    let stashed = false;
+    try {
+      const status = execSync('git status --porcelain', { cwd: pr.repoPath, stdio: 'pipe' }).toString().trim();
+      if (status) {
+        execSync('git stash', { cwd: pr.repoPath, stdio: 'pipe' });
+        stashed = true;
+      }
+    } catch {}
+
+    // Try dry-run merge
+    let canMerge = false;
+    let hasConflicts = false;
+    try {
+      execSync(
+        `git merge --no-commit --no-ff ${pr.sourceBranch}`,
+        { cwd: pr.repoPath, stdio: 'pipe' }
+      );
+      canMerge = true;
+    } catch (err: any) {
+      const msg = err.stderr?.toString() || err.stdout?.toString() || '';
+      hasConflicts = msg.toLowerCase().includes('conflict') || msg.includes('CONFLICT');
+    }
+
+    // Always abort the test merge
+    try { execSync('git merge --abort', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+
+    // Restore stash
+    if (stashed) {
+      try { execSync('git stash pop', { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+    }
+
+    return { canMerge, hasConflicts };
+  }
+
+  /**
    * Spawn an agent to fix merge conflicts by merging target into the source branch.
    */
   fixConflicts(prId: string): { pr?: PullRequest; error?: string } {

@@ -89,6 +89,21 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
     res.json(updated);
   });
 
+  // Check if merge would have conflicts (dry run)
+  router.get('/prs/:id/merge-check', (req, res) => {
+    const pr = prManager.get(req.params.id);
+    if (!pr) {
+      res.status(404).json({ error: 'PR not found' });
+      return;
+    }
+    if (pr.status === 'merged') {
+      res.json({ canMerge: true, merged: true });
+      return;
+    }
+    const result = prManager.checkMerge(req.params.id);
+    res.json(result);
+  });
+
   // Fix merge conflicts — spawns an agent to resolve them
   router.post('/prs/:id/fix-conflicts', (req, res) => {
     const pr = prManager.get(req.params.id);

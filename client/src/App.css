@@ -1566,6 +1566,19 @@ body {
 .pr-fix-btn { color: var(--warn); }
 .pr-fix-btn:hover { background: #ddaa2220; }
 
+.pr-merge-checking {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  padding: 2px 8px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
 .pr-merge-error {
   width: 100%;
   margin-top: 6px;
