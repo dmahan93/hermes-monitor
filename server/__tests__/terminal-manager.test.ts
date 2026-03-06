@@ -116,6 +116,21 @@ describe('TerminalManager', () => {
     expect(result).toBe(false);
   });
 
+  it('buffers scrollback data', async () => {
+    manager = new TerminalManager();
+    const term = manager.create();
+    // Wait for shell prompt to generate some output
+    await new Promise((r) => setTimeout(r, 500));
+    const scrollback = manager.getScrollback(term.id);
+    expect(scrollback).toBeDefined();
+    expect(scrollback!.length).toBeGreaterThan(0);
+  });
+
+  it('returns undefined scrollback for nonexistent terminal', () => {
+    manager = new TerminalManager();
+    expect(manager.getScrollback('nope')).toBeUndefined();
+  });
+
   it('cleans up all terminals on killAll', () => {
     manager = new TerminalManager();
     manager.create({ title: 'A' });

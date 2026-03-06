@@ -4,6 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "echo 'E2E tests use playwright-cli — run manually for now'"
+    "test": "bash run-e2e.sh"
   }
 }

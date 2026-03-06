@@ -5,9 +5,12 @@ import type { TerminalInfo, CreateTerminalOptions } from './types.js';
 export type DataCallback = (terminalId: string, data: string) => void;
 export type ExitCallback = (terminalId: string, exitCode: number) => void;
 
+const SCROLLBACK_LIMIT = 50000; // chars to buffer per terminal
+
 interface ManagedTerminal {
   info: TerminalInfo;
   process: pty.IPty;
+  scrollback: string;
 }
 
 export class TerminalManager {
@@ -61,10 +64,15 @@ export class TerminalManager {
       createdAt: Date.now(),
     };
 
-    const managed: ManagedTerminal = { info, process: proc };
+    const managed: ManagedTerminal = { info, process: proc, scrollback: '' };
     this.terminals.set(id, managed);
 
     proc.onData((data: string) => {
+      // Buffer scrollback for late-joining clients
+      managed.scrollback += data;
+      if (managed.scrollback.length > SCROLLBACK_LIMIT) {
+        managed.scrollback = managed.scrollback.slice(-SCROLLBACK_LIMIT);
+      }
       this.emitData(id, data);
     });
 
@@ -82,6 +90,10 @@ export class TerminalManager {
 
   get(id: string): TerminalInfo | undefined {
     return this.terminals.get(id)?.info;
+  }
+
+  getScrollback(id: string): string | undefined {
+    return this.terminals.get(id)?.scrollback;
   }
 
   write(id: string, data: string): boolean {
@@ -109,9 +121,9 @@ export class TerminalManager {
   }
 
   killAll(): void {
-    for (const [id, terminal] of this.terminals) {
+    this.terminals.forEach((terminal) => {
       terminal.process.kill();
-    }
+    });
     this.terminals.clear();
   }
 

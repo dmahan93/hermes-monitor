@@ -8,11 +8,11 @@ export function setupWebSocket(server: Server, manager: TerminalManager): WebSoc
 
   const broadcast = (msg: ServerMessage) => {
     const payload = JSON.stringify(msg);
-    for (const client of wss.clients) {
+    wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(payload);
       }
-    }
+    });
   };
 
   // Forward PTY output to all connected clients
@@ -26,6 +26,14 @@ export function setupWebSocket(server: Server, manager: TerminalManager): WebSoc
   });
 
   wss.on('connection', (ws) => {
+    // Replay scrollback for all active terminals to the new client
+    for (const terminal of manager.list()) {
+      const scrollback = manager.getScrollback(terminal.id);
+      if (scrollback) {
+        ws.send(JSON.stringify({ type: 'stdout', terminalId: terminal.id, data: scrollback }));
+      }
+    }
+
     ws.on('message', (raw) => {
       let msg: ClientMessage;
       try {
@@ -56,7 +64,8 @@ export function setupWebSocket(server: Server, manager: TerminalManager): WebSoc
           break;
         }
         default: {
-          ws.send(JSON.stringify({ type: 'error', terminalId: msg.terminalId || '', message: `Unknown message type: ${(msg as any).type}` }));
+          const m = msg as any;
+          ws.send(JSON.stringify({ type: 'error', terminalId: m.terminalId || '', message: `Unknown message type: ${m.type}` }));
         }
       }
     });
