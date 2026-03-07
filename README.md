@@ -102,7 +102,9 @@ client/src/
     PRList.tsx          PR list view
     PRDetail.tsx        PR detail with diff viewer
     DiffViewer.tsx      Unified diff rendering
+    DiffViewer.css      Diff viewer styles
     GitGraph.tsx        Git commit graph visualization
+    GitGraph.css        Git graph styles
     ResearchView.tsx    Research/exploration view
     ConfigView.tsx      App configuration UI
     MarkdownContent.tsx Markdown rendering utility

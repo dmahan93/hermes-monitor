@@ -267,7 +267,7 @@ Update configuration.
 
 **Request body:**
 ```json
-{ "repoPath": "/path/to/repo", "worktreeBase": "/tmp/hermes-worktrees", "reviewBase": "/tmp/hermes-reviews", "targetBranch": "main", "requireScreenshotsForUiChanges": true }
+{ "repoPath": "/path/to/repo", "worktreeBase": "/tmp/hermes-worktrees", "reviewBase": "/tmp/hermes-reviews", "screenshotBase": "/tmp/hermes-screenshots", "targetBranch": "main", "requireScreenshotsForUiChanges": true }
 ```
 
 ---
