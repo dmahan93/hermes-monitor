@@ -185,7 +185,7 @@ export class Store {
       repoPath: r.repoPath,
       status: r.status as PRStatus,
       diff: r.diff,
-      changedFiles: JSON.parse(r.changedFiles),
+      changedFiles: (() => { try { return JSON.parse(r.changedFiles); } catch { return []; } })(),
       verdict: r.verdict as Verdict,
       reviewerTerminalId: r.reviewerTerminalId,
       comments: commentsByPr.get(r.id) || [],
