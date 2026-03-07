@@ -9,6 +9,7 @@ interface ResearchViewProps {
   send: (msg: any) => void;
   subscribe: (handler: (msg: ServerMessage) => void) => () => void;
   onTerminalIdChange?: (id: string | null) => void;
+  reconnectCount?: number;
 }
 
 /**
@@ -16,7 +17,7 @@ interface ResearchViewProps {
  * Lazily creates a dedicated terminal on first visit. The terminal ID is
  * persisted in localStorage so it survives page reloads.
  */
-export function ResearchView({ send, subscribe, onTerminalIdChange }: ResearchViewProps) {
+export function ResearchView({ send, subscribe, onTerminalIdChange, reconnectCount }: ResearchViewProps) {
   const [terminalId, setTerminalId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -182,6 +183,7 @@ export function ResearchView({ send, subscribe, onTerminalIdChange }: ResearchVi
           terminalId={terminalId}
           send={send}
           subscribe={subscribe}
+          reconnectCount={reconnectCount}
         />
       </div>
     </div>

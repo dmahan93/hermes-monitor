@@ -11,6 +11,16 @@ describe('useWebSocket', () => {
     });
   });
 
+  it('reconnectCount starts at 0', async () => {
+    const { result } = renderHook(() => useWebSocket('ws://localhost:4000/ws'));
+
+    await waitFor(() => {
+      expect(result.current.connected).toBe(true);
+    });
+
+    expect(result.current.reconnectCount).toBe(0);
+  });
+
   it('subscribe receives messages', async () => {
     const { result } = renderHook(() => useWebSocket('ws://localhost:4000/ws'));
     const received: any[] = [];

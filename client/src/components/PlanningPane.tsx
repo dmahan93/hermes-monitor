@@ -12,11 +12,13 @@ interface PlanningPaneProps {
   onStartPlanning: (id: string) => void;
   onStopPlanning: (id: string) => void;
   onClose: () => void;
+  reconnectCount?: number;
 }
 
 export function PlanningPane({
   issue, agents, send, subscribe,
   onUpdate, onPromote, onStartPlanning, onStopPlanning, onClose,
+  reconnectCount,
 }: PlanningPaneProps) {
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(issue.description);
@@ -146,6 +148,7 @@ export function PlanningPane({
                   terminalId={issue.terminalId}
                   send={send}
                   subscribe={subscribe}
+                  reconnectCount={reconnectCount}
                 />
               </div>
             </>

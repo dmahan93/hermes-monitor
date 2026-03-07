@@ -7,9 +7,10 @@ interface TerminalPaneProps {
   subscribe: (handler: (msg: ServerMessage) => void) => () => void;
   onClose: (id: string) => void;
   awaitingInput?: boolean;
+  reconnectCount?: number;
 }
 
-export function TerminalPane({ terminal, send, subscribe, onClose, awaitingInput }: TerminalPaneProps) {
+export function TerminalPane({ terminal, send, subscribe, onClose, awaitingInput, reconnectCount }: TerminalPaneProps) {
   return (
     <div className={`terminal-pane${awaitingInput ? ' terminal-pane-awaiting' : ''}`}>
       <div className="terminal-pane-header">
@@ -34,6 +35,7 @@ export function TerminalPane({ terminal, send, subscribe, onClose, awaitingInput
           terminalId={terminal.id}
           send={send}
           subscribe={subscribe}
+          reconnectCount={reconnectCount}
         />
       </div>
     </div>

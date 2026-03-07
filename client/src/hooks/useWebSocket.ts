@@ -7,6 +7,8 @@ export function useWebSocket(url: string) {
   const wsRef = useRef<WebSocket | null>(null);
   const handlersRef = useRef<Set<MessageHandler>>(new Set());
   const [connected, setConnected] = useState(false);
+  const [reconnectCount, setReconnectCount] = useState(0);
+  const hasConnectedRef = useRef(false);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const connect = useCallback(() => {
@@ -15,7 +17,14 @@ export function useWebSocket(url: string) {
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
-    ws.onopen = () => setConnected(true);
+    ws.onopen = () => {
+      if (hasConnectedRef.current) {
+        // This is a reconnect, not the initial connection
+        setReconnectCount((c) => c + 1);
+      }
+      hasConnectedRef.current = true;
+      setConnected(true);
+    };
 
     ws.onclose = () => {
       setConnected(false);
@@ -60,5 +69,5 @@ export function useWebSocket(url: string) {
     };
   }, []);
 
-  return { connected, send, subscribe };
+  return { connected, reconnectCount, send, subscribe };
 }

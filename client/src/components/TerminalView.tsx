@@ -10,6 +10,8 @@ interface TerminalViewProps {
   send: (msg: any) => void;
   subscribe: (handler: (msg: ServerMessage) => void) => () => void;
   onResize?: (cols: number, rows: number) => void;
+  /** Incremented by useWebSocket on each reconnect; triggers re-subscribe + replay */
+  reconnectCount?: number;
 }
 
 // Match the CSS clamp: clamp(12px, calc(8px + 0.278vw), 18px)
@@ -20,7 +22,7 @@ function getTerminalFontSize(base = 13): number {
   return Math.round(base * scale);
 }
 
-export function TerminalView({ terminalId, send, subscribe, onResize }: TerminalViewProps) {
+export function TerminalView({ terminalId, send, subscribe, onResize, reconnectCount = 0 }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -92,33 +94,18 @@ export function TerminalView({ terminalId, send, subscribe, onResize }: Terminal
     });
 
     // Subscribe to server messages for this terminal
-    let unsub: (() => void) | null = null;
-    let hasReceivedData = false;
-
-    const doSubscribe = () => {
-      unsub?.();
-      unsub = subscribeRef.current((msg) => {
-        if (!('terminalId' in msg) || msg.terminalId !== terminalId) return;
-        if (msg.type === 'stdout') {
-          hasReceivedData = true;
-          term.write(msg.data);
-        } else if (msg.type === 'exit') {
-          term.write(`\r\n\x1b[90m[Process exited with code ${msg.exitCode}]\x1b[0m\r\n`);
-        }
-      });
-    };
-    doSubscribe();
+    const unsub = subscribeRef.current((msg) => {
+      if (!('terminalId' in msg) || msg.terminalId !== terminalId) return;
+      if (msg.type === 'stdout') {
+        term.write(msg.data);
+      } else if (msg.type === 'exit') {
+        term.write(`\r\n\x1b[90m[Process exited with code ${msg.exitCode}]\x1b[0m\r\n`);
+      }
+    });
 
     // Request scrollback replay ONCE — catches any output that happened
     // before this component mounted (e.g. terminal spawned by kanban)
     sendRef.current({ type: 'replay', terminalId });
-
-    // Re-subscribe periodically to handle WS reconnects.
-    // Only replay scrollback if we haven't received any data yet
-    // (means we lost connection and need to catch up).
-    const subInterval = setInterval(() => {
-      doSubscribe();
-    }, 5000);
 
     // ResizeObserver to refit on container size change
     const ro = new ResizeObserver(() => {
@@ -140,13 +127,21 @@ export function TerminalView({ terminalId, send, subscribe, onResize }: Terminal
 
     return () => {
       clearTimeout(fitTimer);
-      clearInterval(subInterval);
-      unsub?.();
+      unsub();
       ro.disconnect();
       window.removeEventListener('resize', handleWindowResize);
       term.dispose();
     };
   }, [terminalId]); // Only re-run if terminalId changes
+
+  // Re-request scrollback replay after WS reconnects.
+  // The subscription handlers persist across reconnects (stored in a ref set
+  // inside useWebSocket), so only the replay needs to be re-sent.
+  useEffect(() => {
+    if (reconnectCount > 0) {
+      sendRef.current({ type: 'replay', terminalId });
+    }
+  }, [reconnectCount, terminalId]);
 
   return (
     <div
