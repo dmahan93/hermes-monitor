@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { ResearchView } from '../../src/components/ResearchView';
+import { API_BASE } from '../../src/config';
 
 // Mock TerminalView
 vi.mock('../../src/components/TerminalView', () => ({
@@ -202,7 +203,7 @@ describe('ResearchView', () => {
     // Verify the DELETE was called for the old terminal
     const fetchCalls = (global.fetch as any).mock.calls;
     const deleteCall = fetchCalls.find(
-      (call: any[]) => call[0] === '/api/terminals/first-term' && call[1]?.method === 'DELETE'
+      (call: any[]) => call[0] === `${API_BASE}/terminals/first-term` && call[1]?.method === 'DELETE'
     );
     expect(deleteCall).toBeDefined();
 

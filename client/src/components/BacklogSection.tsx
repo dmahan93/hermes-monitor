@@ -63,7 +63,12 @@ export function BacklogSection({ issues, agents, onDelete, onPlanClick, onIssueC
                           </span>
                           <button
                             className="issue-card-delete"
-                            onClick={(e) => { e.stopPropagation(); onDelete(issue.id); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Delete "${issue.title}"?`)) {
+                                onDelete(issue.id);
+                              }
+                            }}
                             title="Delete issue"
                           >
                             ×

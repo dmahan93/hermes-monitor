@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DragDropContext } from '@hello-pangea/dnd';
 import { BacklogSection } from '../../src/components/BacklogSection';
@@ -102,12 +102,46 @@ describe('BacklogSection', () => {
     expect(onPlanClick).toHaveBeenCalledWith('abc-123');
   });
 
-  it('delete button calls onDelete with issue id', () => {
-    const onDelete = vi.fn();
-    const issues = [makeIssue('del-1', 'Delete me')];
-    renderBacklog(issues, { onDelete });
-    fireEvent.click(screen.getByTitle('Delete issue'));
-    expect(onDelete).toHaveBeenCalledWith('del-1');
+  describe('delete confirmation', () => {
+    let originalConfirm: typeof window.confirm;
+
+    beforeEach(() => {
+      originalConfirm = window.confirm;
+    });
+
+    afterEach(() => {
+      window.confirm = originalConfirm;
+    });
+
+    it('shows confirmation dialog before deleting', () => {
+      window.confirm = vi.fn(() => true);
+      const onDelete = vi.fn();
+      const issues = [makeIssue('del-1', 'Delete me')];
+      renderBacklog(issues, { onDelete });
+      fireEvent.click(screen.getByTitle('Delete issue'));
+      expect(window.confirm).toHaveBeenCalledWith(
+        expect.stringContaining('Delete me'),
+      );
+    });
+
+    it('calls onDelete when user confirms', () => {
+      window.confirm = vi.fn(() => true);
+      const onDelete = vi.fn();
+      const issues = [makeIssue('del-1', 'Delete me')];
+      renderBacklog(issues, { onDelete });
+      fireEvent.click(screen.getByTitle('Delete issue'));
+      expect(onDelete).toHaveBeenCalledWith('del-1');
+    });
+
+    it('does not call onDelete when user cancels', () => {
+      window.confirm = vi.fn(() => false);
+      const onDelete = vi.fn();
+      const issues = [makeIssue('del-1', 'Delete me')];
+      renderBacklog(issues, { onDelete });
+      fireEvent.click(screen.getByTitle('Delete issue'));
+      expect(window.confirm).toHaveBeenCalled();
+      expect(onDelete).not.toHaveBeenCalled();
+    });
   });
 
   it('issue title click calls onIssueClick', () => {

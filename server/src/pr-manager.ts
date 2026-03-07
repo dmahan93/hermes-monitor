@@ -10,6 +10,7 @@ import { buildScreenshotSection } from './screenshot-utils.js';
 
 export type PRStatus = 'open' | 'reviewing' | 'approved' | 'changes_requested' | 'merged' | 'closed';
 export type Verdict = 'pending' | 'approved' | 'changes_requested';
+export type PREvent = 'pr:created' | 'pr:updated';
 
 export interface PRComment {
   id: string;
@@ -47,7 +48,7 @@ export interface CreatePROptions {
   submitterNotes?: string;
 }
 
-export type PREventCallback = (event: string, pr: PullRequest) => void;
+export type PREventCallback = (event: PREvent, pr: PullRequest) => void;
 
 export class PRManager {
   private prs = new Map<string, PullRequest>();
@@ -116,7 +117,7 @@ export class PRManager {
     this.pendingRemovalTimers.clear();
   }
 
-  private emit(event: string, pr: PullRequest): void {
+  private emit(event: PREvent, pr: PullRequest): void {
     for (const cb of this.eventCallbacks) {
       cb(event, pr);
     }
@@ -358,7 +359,7 @@ export class PRManager {
 
     // Re-generate the diff in case there were new changes
     const diff = this.worktreeManager.getDiff(pr.issueId);
-    if (diff !== null) {
+    if (diff !== undefined) {
       pr.diff = diff;
       pr.changedFiles = this.worktreeManager.getChangedFiles(pr.issueId);
     }

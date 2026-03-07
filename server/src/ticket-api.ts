@@ -99,7 +99,7 @@ export function createTicketApiRouter(
       id: issue.id,
       title: issue.title,
       description: issue.description,
-      branch: issue.branch,
+      branch: issue.branch ?? undefined,
       worktreePath: worktree?.path || null,
       repoPath: config.repoPath,
       targetBranch: config.targetBranch,

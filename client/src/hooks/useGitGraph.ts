@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { API_BASE } from '../config';
 
 export interface GitCommit {
   hash: string;
@@ -94,7 +95,7 @@ export function useGitGraph() {
     const signal = newAbort(logAbortRef);
     try {
       setLoading(true);
-      const res = await fetch('/api/git/log?limit=80', { signal });
+      const res = await fetch(`${API_BASE}/git/log?limit=80`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: GitLogResponse = await res.json();
       setCommits(data.commits);
@@ -123,7 +124,7 @@ export function useGitGraph() {
     setFilesLoading(true);
     const signal = newAbort(filesAbortRef);
     try {
-      const res = await fetch(`/api/git/show/${sha}`, { signal });
+      const res = await fetch(`${API_BASE}/git/show/${sha}`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: GitShowResponse = await res.json();
       setFiles(data.files);
@@ -141,7 +142,7 @@ export function useGitGraph() {
     setDiffSha(sha);
     const signal = newAbort(diffAbortRef);
     try {
-      const res = await fetch(`/api/git/diff/${sha}?file=${encodeURIComponent(filePath)}`, { signal });
+      const res = await fetch(`${API_BASE}/git/diff/${sha}?file=${encodeURIComponent(filePath)}`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: GitDiffResponse = await res.json();
       setDiffContent(data.diff);

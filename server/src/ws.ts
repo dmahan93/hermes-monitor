@@ -8,7 +8,7 @@ import type { ClientMessage, ServerMessage } from './types.js';
  * Shared helper used by both terminal events (ws.ts) and
  * issue/PR events (index.ts).
  */
-export function broadcastToAll(wss: WebSocketServer, msg: object): void {
+export function broadcastToAll(wss: WebSocketServer, msg: ServerMessage): void {
   const payload = JSON.stringify(msg);
   wss.clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {

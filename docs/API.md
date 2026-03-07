@@ -159,6 +159,8 @@ Stop the planning terminal.
 
 ## Agents API
 
+Defined in `server/src/issue-api.ts`.
+
 ### GET /api/agents
 
 List available agent presets with install status.
@@ -253,6 +255,8 @@ List screenshots associated with a PR (via its linked issue).
 
 ## Config API
 
+Defined in `server/src/pr-api.ts`.
+
 ### GET /api/config
 
 Get current app configuration.
@@ -263,7 +267,7 @@ Update configuration.
 
 **Request body:**
 ```json
-{ "repoPath": "/path/to/repo", "targetBranch": "main", "requireScreenshotsForUiChanges": true }
+{ "repoPath": "/path/to/repo", "worktreeBase": "/tmp/hermes-worktrees", "reviewBase": "/tmp/hermes-reviews", "screenshotBase": "/tmp/hermes-screenshots", "targetBranch": "main", "requireScreenshotsForUiChanges": true }
 ```
 
 ---
@@ -308,14 +312,20 @@ Connect to `ws://localhost:4000/ws`
 ```json
 { "type": "stdin",  "terminalId": "uuid", "data": "ls\n" }
 { "type": "resize", "terminalId": "uuid", "cols": 120, "rows": 40 }
+{ "type": "replay", "terminalId": "uuid" }
 ```
+
+`replay` requests scrollback replay for a specific terminal (e.g. on component mount).
+On new connections, the server automatically replays scrollback for all active terminals.
 
 ### Server → Client
 
 ```json
-{ "type": "stdout", "terminalId": "uuid", "data": "..." }
-{ "type": "exit",   "terminalId": "uuid", "exitCode": 0 }
-{ "type": "error",  "terminalId": "uuid", "message": "..." }
+{ "type": "stdout",              "terminalId": "uuid", "data": "..." }
+{ "type": "exit",                "terminalId": "uuid", "exitCode": 0 }
+{ "type": "terminal:removed",    "terminalId": "uuid" }
+{ "type": "error",               "terminalId": "uuid", "message": "..." }
+{ "type": "terminal:awaitingInput", "terminalId": "uuid", "awaitingInput": true }
 
 { "type": "issue:created", "issue": Issue }
 { "type": "issue:updated", "issue": Issue }
@@ -323,5 +333,4 @@ Connect to `ws://localhost:4000/ws`
 
 { "type": "pr:created", "pr": PullRequest }
 { "type": "pr:updated", "pr": PullRequest }
-{ "type": "pr:comment", "prId": "uuid", "comment": PRComment }
 ```
