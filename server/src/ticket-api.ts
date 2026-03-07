@@ -9,6 +9,28 @@ import type { WorktreeManager } from './worktree-manager.js';
 import { config } from './config.js';
 
 const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+
+/** File extensions that indicate UI changes requiring screenshots */
+const UI_FILE_EXTENSIONS = new Set([
+  '.tsx', '.jsx', '.css', '.scss', '.less', '.html', '.vue', '.svelte',
+]);
+/**
+ * Get uploaded screenshot filenames for an issue.
+ * Returns an array of filenames (images only), or empty array if none exist.
+ */
+function getUploadedScreenshots(issueId: string): string[] {
+  const screenshotDir = join(config.screenshotBase, issueId);
+  try {
+    return readdirSync(screenshotDir).filter((f) => {
+      const ext = extname(f).toLowerCase();
+      return ALLOWED_EXTENSIONS.has(ext);
+    });
+  } catch {
+    // Directory doesn't exist — no screenshots
+    return [];
+  }
+}
+
 const MIME_TO_EXT: Record<string, string> = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
@@ -19,6 +41,7 @@ const MIME_TO_EXT: Record<string, string> = {
 
 interface TicketGuidelines {
   screenshots: string;
+  requireScreenshotsForUiChanges: boolean;
 }
 
 interface TicketInfoResponse {
@@ -102,7 +125,10 @@ export function createTicketApiRouter(
       screenshotUploadUrl,
       screenshotUploadInstructions,
       guidelines: {
-        screenshots: 'If your changes modify UI components (.tsx, .css, .html files), upload before/after screenshots using the screenshotUploadUrl and include the returned markdown in your PR description. Screenshots are required for UI changes and will be checked during review.',
+        screenshots: config.requireScreenshotsForUiChanges
+          ? 'Screenshots are REQUIRED when your changes modify UI files (.tsx, .jsx, .css, .scss, .less, .html, .vue, .svelte). Upload before/after screenshots using the screenshotUploadUrl BEFORE calling /review. If you did not make visual changes, bypass with: POST /ticket/:id/review?no_ui_changes=true or send {"noUiChanges": true} in the request body.'
+          : 'If your changes modify UI components (.tsx, .css, .html files), upload before/after screenshots using the screenshotUploadUrl and include the returned markdown in your PR description.',
+        requireScreenshotsForUiChanges: config.requireScreenshotsForUiChanges,
       },
     };
     res.json(response);
@@ -174,16 +200,7 @@ export function createTicketApiRouter(
       return;
     }
 
-    const screenshotDir = join(config.screenshotBase, issue.id);
-    let files: string[] = [];
-    try {
-      files = readdirSync(screenshotDir).filter((f) => {
-        const ext = extname(f).toLowerCase();
-        return ALLOWED_EXTENSIONS.has(ext);
-      });
-    } catch {
-      // Directory doesn't exist yet — no screenshots
-    }
+    const files = getUploadedScreenshots(issue.id);
 
     const port = process.env.PORT || '4000';
     const screenshots = files.map((f) => ({
@@ -207,6 +224,48 @@ export function createTicketApiRouter(
     if (issue.status !== 'in_progress') {
       res.status(400).json({ error: `Issue is ${issue.status}, not in_progress` });
       return;
+    }
+
+    // Check screenshot requirement for UI changes
+    if (config.requireScreenshotsForUiChanges) {
+      const noUiChanges = req.query.no_ui_changes === 'true'
+        || req.body?.noUiChanges === true
+        || req.body?.noUiChanges === 'true';
+
+      if (!noUiChanges) {
+        // Check if changed files include UI files
+        const changedFiles = worktreeManager.getChangedFiles(issue.id);
+        const uiFiles = changedFiles.filter((f) => {
+          const ext = extname(f).toLowerCase();
+          return UI_FILE_EXTENSIONS.has(ext);
+        });
+
+        if (uiFiles.length > 0) {
+          // Check if screenshots have been uploaded
+          const hasScreenshots = getUploadedScreenshots(issue.id).length > 0;
+
+          if (!hasScreenshots) {
+            res.status(400).json({
+              error: 'Screenshots required for UI changes',
+              message: [
+                'Your changes include UI files but no screenshots were uploaded.',
+                '',
+                'UI files changed:',
+                ...uiFiles.map((f) => `  - ${f}`),
+                '',
+                'To fix: upload screenshots using the screenshotUploadUrl from /ticket/:id/info',
+                '',
+                'To bypass (if no visual changes): resubmit with ?no_ui_changes=true',
+                '  curl -s -X POST http://localhost:' + (process.env.PORT || '4000') + '/ticket/' + issue.id + '/review?no_ui_changes=true',
+                '',
+                'Or send JSON body: { "noUiChanges": true }',
+              ].join('\n'),
+              uiFilesChanged: uiFiles,
+            });
+            return;
+          }
+        }
+      }
     }
 
     // Kill the agent's terminal BEFORE moving to review

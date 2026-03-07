@@ -6,6 +6,7 @@ import { IssueDetail } from './components/IssueDetail';
 import { TaskTerminalPane } from './components/TaskTerminalPane';
 import { AgentTerminalList, type AgentListSelection, selectionKey } from './components/AgentTerminalList';
 import { PRList } from './components/PRList';
+import { ConfigView } from './components/ConfigView';
 import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
 import { useTerminals } from './hooks/useTerminals';
@@ -260,6 +261,11 @@ export default function App() {
             onRelaunchReview={relaunchReview}
             onMoveToInProgress={(issueId) => handleStatusChange(issueId, 'in_progress')}
           />
+        </div>
+
+        {/* Config view */}
+        <div className={`view-panel ${view === 'config' ? 'view-active' : 'view-hidden'}`}>
+          <ConfigView />
         </div>
       </main>
       <StatusBar connected={connected} terminalCount={terminals.length} issueCount={issues.length} />
