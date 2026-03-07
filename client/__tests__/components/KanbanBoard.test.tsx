@@ -16,6 +16,7 @@ const makeIssue = (id: string, title: string, status: Issue['status'] = 'todo'):
   command: '',
   terminalId: null,
   branch: null,
+  parentId: null,
   createdAt: Date.now(),
   updatedAt: Date.now(),
 });
@@ -26,7 +27,7 @@ describe('KanbanBoard', () => {
       <KanbanBoard
         issues={[]}
         agents={mockAgents}
-        onStatusChange={() => {}}
+        onStatusChange={async () => null}
         onCreateIssue={() => {}}
         onDeleteIssue={() => {}}
       />
@@ -48,7 +49,7 @@ describe('KanbanBoard', () => {
       <KanbanBoard
         issues={issues}
         agents={mockAgents}
-        onStatusChange={() => {}}
+        onStatusChange={async () => null}
         onCreateIssue={() => {}}
         onDeleteIssue={() => {}}
       />
@@ -67,7 +68,7 @@ describe('KanbanBoard', () => {
       <KanbanBoard
         issues={issues}
         agents={mockAgents}
-        onStatusChange={() => {}}
+        onStatusChange={async () => null}
         onCreateIssue={() => {}}
         onDeleteIssue={() => {}}
       />
@@ -81,7 +82,7 @@ describe('KanbanBoard', () => {
       <KanbanBoard
         issues={[]}
         agents={mockAgents}
-        onStatusChange={() => {}}
+        onStatusChange={async () => null}
         onCreateIssue={() => {}}
         onDeleteIssue={() => {}}
       />
@@ -95,7 +96,7 @@ describe('KanbanBoard', () => {
       <KanbanBoard
         issues={[]}
         agents={mockAgents}
-        onStatusChange={() => {}}
+        onStatusChange={async () => null}
         onCreateIssue={() => {}}
         onDeleteIssue={() => {}}
       />
@@ -110,7 +111,7 @@ describe('KanbanBoard', () => {
       <KanbanBoard
         issues={issues}
         agents={mockAgents}
-        onStatusChange={() => {}}
+        onStatusChange={async () => null}
         onCreateIssue={() => {}}
         onDeleteIssue={() => {}}
         onPlanClick={onPlanClick}

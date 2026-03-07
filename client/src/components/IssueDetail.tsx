@@ -14,7 +14,7 @@ interface IssueDetailProps {
   onDelete: (id: string) => void;
   onTerminalClick?: (issueId: string) => void;
   onPRClick?: (prId: string) => void;
-  onCreateSubtask?: (parentId: string, title: string, description?: string) => Promise<unknown | null>;
+  onCreateSubtask?: (parentId: string, title: string, description?: string) => Promise<Issue | null>;
   onSubtaskClick?: (issueId: string) => void;
   onParentClick?: (issueId: string) => void;
 }

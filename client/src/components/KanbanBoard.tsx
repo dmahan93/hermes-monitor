@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { DragDropContext, type DropResult } from '@hello-pangea/dnd';
 import { KanbanColumn } from './KanbanColumn';
 import { BacklogSection } from './BacklogSection';
@@ -11,7 +11,7 @@ const noop = () => {};
 interface KanbanBoardProps {
   issues: Issue[];
   agents: AgentPreset[];
-  onStatusChange: (id: string, status: IssueStatus) => void;
+  onStatusChange: (id: string, status: IssueStatus) => Promise<string | null>;
   onCreateIssue: (title: string, description: string, agent: string, command: string, branch: string) => void;
   onDeleteIssue: (id: string) => void;
   onEditIssue?: (issueId: string) => void;
@@ -22,6 +22,14 @@ interface KanbanBoardProps {
 
 export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onDeleteIssue, onEditIssue, onTerminalClick, onIssueClick, onPlanClick }: KanbanBoardProps) {
   const [showModal, setShowModal] = useState(false);
+  const [dragError, setDragError] = useState<string | null>(null);
+
+  // Auto-dismiss drag error toast after 4 seconds
+  useEffect(() => {
+    if (!dragError) return;
+    const timer = setTimeout(() => setDragError(null), 4000);
+    return () => clearTimeout(timer);
+  }, [dragError]);
 
   const issuesByColumn = useMemo(() => {
     const grouped: Record<IssueStatus, Issue[]> = {
@@ -37,13 +45,16 @@ export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onD
     return grouped;
   }, [issues]);
 
-  const onDragEnd = useCallback((result: DropResult) => {
+  const onDragEnd = useCallback(async (result: DropResult) => {
     if (!result.destination) return;
     const { draggableId, destination } = result;
     const newStatus = destination.droppableId as IssueStatus;
     const issue = issues.find((i) => i.id === draggableId);
     if (issue && issue.status !== newStatus) {
-      onStatusChange(draggableId, newStatus);
+      const error = await onStatusChange(draggableId, newStatus);
+      if (error) {
+        setDragError(error);
+      }
     }
   }, [issues, onStatusChange]);
 
@@ -59,6 +70,11 @@ export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onD
           [+ NEW ISSUE]
         </button>
       </div>
+      {dragError && (
+        <div className="kanban-drag-error" onClick={() => setDragError(null)}>
+          ⚠ {dragError}
+        </div>
+      )}
       <DragDropContext onDragEnd={onDragEnd}>
         <div className="kanban-columns">
           {COLUMNS.map((col) => (
