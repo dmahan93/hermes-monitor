@@ -59,6 +59,7 @@ export interface PullRequest {
   issueId: string;
   title: string;
   description: string;
+  submitterNotes: string;
   sourceBranch: string;
   targetBranch: string;
   repoPath: string;

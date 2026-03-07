@@ -95,6 +95,15 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
         )}
       </div>
 
+      {pr.submitterNotes && (
+        <div className="pr-section">
+          <h3 className="pr-section-title">SUBMITTER NOTES</h3>
+          <div className="pr-submitter-notes">
+            <MarkdownContent text={pr.submitterNotes} />
+          </div>
+        </div>
+      )}
+
       {screenshots.length > 0 && (
         <div className="pr-section">
           <h3 className="pr-section-title">SCREENSHOTS ({screenshots.length})</h3>

@@ -87,6 +87,7 @@ describe('Store', () => {
   it('saves and loads a PR with comments', () => {
     const pr = {
       id: 'pr-1', issueId: 'issue-1', title: 'Fix bug', description: '',
+      submitterNotes: '',
       sourceBranch: 'issue/fix', targetBranch: 'main', repoPath: '/tmp',
       status: 'open' as const, diff: '+hello', changedFiles: ['a.ts'],
       verdict: 'pending' as const, reviewerTerminalId: null,
@@ -105,9 +106,41 @@ describe('Store', () => {
     expect(loaded[0].comments[0].body).toBe('Looks bad');
   });
 
+  it('saves and loads submitterNotes on a PR', () => {
+    const pr = {
+      id: 'pr-notes', issueId: 'issue-notes', title: 'With notes', description: '',
+      submitterNotes: 'I refactored auth and added edge case tests.',
+      sourceBranch: 'issue/notes', targetBranch: 'main', repoPath: '/tmp',
+      status: 'open' as const, diff: '', changedFiles: ['auth.ts'],
+      verdict: 'pending' as const, reviewerTerminalId: null,
+      comments: [],
+      createdAt: Date.now(), updatedAt: Date.now(),
+    };
+    store.savePR(pr);
+    const loaded = store.loadPRs();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].submitterNotes).toBe('I refactored auth and added edge case tests.');
+  });
+
+  it('defaults submitterNotes to empty string when not set', () => {
+    const pr = {
+      id: 'pr-no-notes', issueId: 'issue-nn', title: 'No notes', description: '',
+      submitterNotes: '',
+      sourceBranch: 'issue/nn', targetBranch: 'main', repoPath: '/tmp',
+      status: 'open' as const, diff: '', changedFiles: [],
+      verdict: 'pending' as const, reviewerTerminalId: null,
+      comments: [],
+      createdAt: Date.now(), updatedAt: Date.now(),
+    };
+    store.savePR(pr);
+    const loaded = store.loadPRs();
+    expect(loaded[0].submitterNotes).toBe('');
+  });
+
   it('updates PR comments on re-save', () => {
     const pr = {
       id: 'pr-2', issueId: 'i-2', title: 'PR', description: '',
+      submitterNotes: '',
       sourceBranch: 'b', targetBranch: 'main', repoPath: '/tmp',
       status: 'open' as const, diff: '', changedFiles: [],
       verdict: 'pending' as const, reviewerTerminalId: null,
@@ -125,6 +158,7 @@ describe('Store', () => {
   it('deletes a PR and its comments', () => {
     store.savePR({
       id: 'pr-del', issueId: 'i', title: 'Del', description: '',
+      submitterNotes: '',
       sourceBranch: 'b', targetBranch: 'main', repoPath: '/tmp',
       status: 'open' as const, diff: '', changedFiles: [],
       verdict: 'pending' as const, reviewerTerminalId: null,

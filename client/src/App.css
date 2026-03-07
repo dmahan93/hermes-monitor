@@ -1646,6 +1646,26 @@ body {
   border-bottom: 1px solid var(--bevel-dark);
 }
 
+/* ── PR Submitter Notes ── */
+
+.pr-submitter-notes {
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  border-left: 2px solid var(--accent);
+  padding: 0.5rem 0.667rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.917rem;
+  color: var(--text);
+}
+
+.pr-submitter-notes pre,
+.pr-submitter-notes > .markdown-plain,
+.pr-submitter-notes > .markdown-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ── PR Comments ── */
 
 .pr-comments {

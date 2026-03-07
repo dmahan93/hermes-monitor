@@ -9,6 +9,7 @@ function makePR(overrides: Partial<PullRequest> = {}): PullRequest {
     issueId: 'issue-1',
     title: 'Test PR',
     description: '',
+    submitterNotes: '',
     sourceBranch: 'feature',
     targetBranch: 'main',
     repoPath: '/repo',
@@ -121,6 +122,58 @@ describe('PRDetail — Back to In Progress button', () => {
 
     // Verify order: move first, then back
     expect(callOrder).toEqual(['moveToInProgress', 'onBack']);
+  });
+});
+
+describe('PRDetail — Submitter Notes section', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    // Default mock: empty screenshots + no-merge
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ screenshots: [], canMerge: false, hasConflicts: false }),
+      } as Response)
+    ) as any;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('renders SUBMITTER NOTES section when submitterNotes is present', async () => {
+    const props = defaultProps();
+    props.pr = makePR({ submitterNotes: 'I refactored the auth module and added tests.' });
+    render(<PRDetail {...props} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('SUBMITTER NOTES')).toBeInTheDocument();
+    });
+  });
+
+  it('does not render SUBMITTER NOTES section when submitterNotes is empty', async () => {
+    const props = defaultProps();
+    props.pr = makePR({ submitterNotes: '' });
+    render(<PRDetail {...props} />);
+
+    // Wait for any async effects
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalled();
+    });
+
+    expect(screen.queryByText('SUBMITTER NOTES')).not.toBeInTheDocument();
+  });
+
+  it('renders the submitter notes content', async () => {
+    const props = defaultProps();
+    props.pr = makePR({ submitterNotes: 'Fixed the edge case in user validation' });
+    render(<PRDetail {...props} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Fixed the edge case in user validation')).toBeInTheDocument();
+    });
   });
 });
 
