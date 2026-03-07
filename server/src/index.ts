@@ -6,7 +6,7 @@ import { IssueManager } from './issue-manager.js';
 import { WorktreeManager } from './worktree-manager.js';
 import { PRManager } from './pr-manager.js';
 import { Store } from './store.js';
-import { createApiRouter } from './api.js';
+import { createApiRouter } from './terminal-api.js';
 import { createIssueApiRouter } from './issue-api.js';
 import { createPRApiRouter } from './pr-api.js';
 import { createTicketApiRouter } from './ticket-api.js';

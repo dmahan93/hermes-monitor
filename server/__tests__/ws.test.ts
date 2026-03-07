@@ -5,7 +5,7 @@ import type { Server } from 'http';
 import WebSocket from 'ws';
 import { TerminalManager } from '../src/terminal-manager.js';
 import { setupWebSocket } from '../src/ws.js';
-import { createApiRouter } from '../src/api.js';
+import { createApiRouter } from '../src/terminal-api.js';
 
 function connectWs(server: Server): Promise<WebSocket> {
   const addr = server.address() as any;
