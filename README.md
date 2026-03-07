@@ -73,6 +73,7 @@ server/src/
   screenshot-utils.ts   Screenshot upload/serving utilities
 
 client/src/
+  main.tsx              Entry point (React root)
   App.tsx               Main app (view switching, state management)
   types.ts              Client-side type definitions
   hooks/
@@ -83,17 +84,28 @@ client/src/
     useAgents.ts        Agent preset fetching
     useGitGraph.ts      Git log/graph data
   components/
+    Header.tsx          Top navigation bar
+    ViewSwitcher.tsx    View tab switching
+    StatusBar.tsx       Bottom status bar
     KanbanBoard.tsx     Kanban board (columns + drag-drop)
     KanbanColumn.tsx    Single kanban column
+    BacklogSection.tsx  Backlog issue list
     IssueCard.tsx       Issue card in kanban
     IssueDetail.tsx     Issue detail modal
+    NewIssueModal.tsx   Issue creation modal
+    PlanningPane.tsx    Planning terminal for backlog issues
     TerminalGrid.tsx    Resizable terminal grid
     TerminalPane.tsx    Terminal pane wrapper
     TerminalView.tsx    xterm.js terminal instance
+    TaskTerminalPane.tsx  Agent terminal with task context
+    AgentTerminalList.tsx Agent terminal sidebar
     PRList.tsx          PR list view
     PRDetail.tsx        PR detail with diff viewer
-    NewIssueModal.tsx   Issue creation modal
-    ...
+    DiffViewer.tsx      Unified diff rendering
+    GitGraph.tsx        Git commit graph visualization
+    ResearchView.tsx    Research/exploration view
+    ConfigView.tsx      App configuration UI
+    MarkdownContent.tsx Markdown rendering utility
 ```
 
 ## API Overview
