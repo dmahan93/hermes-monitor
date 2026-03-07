@@ -55,7 +55,12 @@ export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalCl
                 className="issue-card-delete"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDelete(issue.id);
+                  const subtaskWarning = subtaskInfo && subtaskInfo.total > 0
+                    ? ` This will also delete ${subtaskInfo.total} subtask${subtaskInfo.total !== 1 ? 's' : ''}.`
+                    : ' This will also delete all subtasks.';
+                  if (window.confirm(`Delete "${issue.title}"?${subtaskWarning}`)) {
+                    onDelete(issue.id);
+                  }
                 }}
                 title="Delete issue"
                 aria-label="Delete issue"

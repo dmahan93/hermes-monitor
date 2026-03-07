@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import type { SubtaskInfo } from '../../src/components/IssueCard';
 import { DragDropContext, Droppable } from '@hello-pangea/dnd';
 import { IssueCard } from '../../src/components/IssueCard';
 import type { Issue, AgentPreset } from '../../src/types';
@@ -25,14 +26,14 @@ const mockIssue: Issue = {
 function renderCard(
   issue: Issue = mockIssue,
   onDelete = vi.fn(),
-  { onEdit }: { onEdit?: (issueId: string) => void } = {},
+  { onEdit, subtaskInfo }: { onEdit?: (issueId: string) => void; subtaskInfo?: SubtaskInfo } = {},
 ) {
   return render(
     <DragDropContext onDragEnd={() => {}}>
       <Droppable droppableId="test">
         {(provided) => (
           <div ref={provided.innerRef} {...provided.droppableProps}>
-            <IssueCard issue={issue} index={0} agents={mockAgents} onDelete={onDelete} onEdit={onEdit} />
+            <IssueCard issue={issue} index={0} agents={mockAgents} onDelete={onDelete} onEdit={onEdit} subtaskInfo={subtaskInfo} />
             {provided.placeholder}
           </div>
         )}
@@ -67,11 +68,70 @@ describe('IssueCard', () => {
     expect(screen.getByText(/active/)).toBeInTheDocument();
   });
 
-  it('delete button calls onDelete', () => {
-    const onDelete = vi.fn();
-    renderCard(mockIssue, onDelete);
-    fireEvent.click(screen.getByTitle('Delete issue'));
-    expect(onDelete).toHaveBeenCalledWith('issue-1');
+  describe('delete confirmation', () => {
+    let originalConfirm: typeof window.confirm;
+
+    beforeEach(() => {
+      originalConfirm = window.confirm;
+    });
+
+    afterEach(() => {
+      window.confirm = originalConfirm;
+    });
+
+    it('calls onDelete when user confirms', () => {
+      window.confirm = vi.fn(() => true);
+      const onDelete = vi.fn();
+      renderCard(mockIssue, onDelete);
+      fireEvent.click(screen.getByTitle('Delete issue'));
+      expect(window.confirm).toHaveBeenCalled();
+      expect(onDelete).toHaveBeenCalledWith('issue-1');
+    });
+
+    it('does not call onDelete when user cancels', () => {
+      window.confirm = vi.fn(() => false);
+      const onDelete = vi.fn();
+      renderCard(mockIssue, onDelete);
+      fireEvent.click(screen.getByTitle('Delete issue'));
+      expect(window.confirm).toHaveBeenCalled();
+      expect(onDelete).not.toHaveBeenCalled();
+    });
+
+    it('shows issue title in confirmation message', () => {
+      window.confirm = vi.fn(() => false);
+      renderCard(mockIssue);
+      fireEvent.click(screen.getByTitle('Delete issue'));
+      expect(window.confirm).toHaveBeenCalledWith(
+        expect.stringContaining('Fix the login bug'),
+      );
+    });
+
+    it('shows subtask count when subtaskInfo is provided', () => {
+      window.confirm = vi.fn(() => false);
+      renderCard(mockIssue, vi.fn(), { subtaskInfo: { total: 3, done: 1 } });
+      fireEvent.click(screen.getByTitle('Delete issue'));
+      expect(window.confirm).toHaveBeenCalledWith(
+        expect.stringContaining('3 subtasks'),
+      );
+    });
+
+    it('shows singular subtask when count is 1', () => {
+      window.confirm = vi.fn(() => false);
+      renderCard(mockIssue, vi.fn(), { subtaskInfo: { total: 1, done: 0 } });
+      fireEvent.click(screen.getByTitle('Delete issue'));
+      const msg = (window.confirm as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(msg).toContain('1 subtask');
+      expect(msg).not.toContain('1 subtasks');
+    });
+
+    it('shows generic subtask warning when no subtaskInfo', () => {
+      window.confirm = vi.fn(() => false);
+      renderCard(mockIssue);
+      fireEvent.click(screen.getByTitle('Delete issue'));
+      expect(window.confirm).toHaveBeenCalledWith(
+        expect.stringContaining('delete all subtasks'),
+      );
+    });
   });
 
   it('edit button renders when onEdit is provided', () => {
