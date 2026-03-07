@@ -2,7 +2,7 @@ import { Router, json } from 'express';
 import type { PRManager } from './pr-manager.js';
 import type { IssueManager } from './issue-manager.js';
 import { config, updateConfig } from './config.js';
-import { getUploadedScreenshots } from './screenshot-utils.js';
+import { enrichPRWithScreenshots, getScreenshotInfos } from './screenshot-utils.js';
 
 export function createPRApiRouter(prManager: PRManager, issueManager?: IssueManager): Router {
   const router = Router();
@@ -23,7 +23,7 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
   // ── Pull Requests ──
 
   router.get('/prs', (_req, res) => {
-    res.json(prManager.list());
+    res.json(prManager.list().map(enrichPRWithScreenshots));
   });
 
   router.get('/prs/:id', (req, res) => {
@@ -32,7 +32,7 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
       res.status(404).json({ error: 'PR not found' });
       return;
     }
-    res.json(pr);
+    res.json(enrichPRWithScreenshots(pr));
   });
 
   // Add comment to PR
@@ -98,13 +98,7 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
       return;
     }
 
-    const files = getUploadedScreenshots(pr.issueId);
-
-    const screenshots = files.map((f) => ({
-      filename: f,
-      url: `/screenshots/${pr.issueId}/${f}`,
-    }));
-
+    const screenshots = getScreenshotInfos(pr.issueId);
     res.json({ screenshots });
   });
 
