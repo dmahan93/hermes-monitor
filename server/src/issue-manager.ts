@@ -54,6 +54,8 @@ export class IssueManager {
   private resumeAttempts = new Map<string, { count: number; lastAttempt: number }>();
   private resumeTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private resumeDelayMs = RESUME_DELAY_MS;
+  private resumeWindowMs = RESUME_WINDOW_MS;
+  private autoResumeActive = false;
 
   constructor(terminalManager: TerminalManager, repoPath?: string) {
     this.terminalManager = terminalManager;
@@ -332,6 +334,8 @@ export class IssueManager {
    * after a short delay, with retry limits to prevent infinite loops.
    */
   setupAutoResume(): void {
+    if (this.autoResumeActive) return;
+    this.autoResumeActive = true;
     this.terminalManager.onExit((terminalId, exitCode) => {
       this.handleAgentExit(terminalId, exitCode);
     });
@@ -357,7 +361,7 @@ export class IssueManager {
 
     // Check resume attempts (with sliding window)
     const attempts = this.getOrCreateResumeAttempts(issue.id);
-    if (Date.now() - attempts.lastAttempt > RESUME_WINDOW_MS) {
+    if (Date.now() - attempts.lastAttempt > this.resumeWindowMs) {
       attempts.count = 0; // Reset counter after quiet period
     }
 
@@ -366,6 +370,15 @@ export class IssueManager {
         `[auto-resume] Max retries (${MAX_RESUME_ATTEMPTS}) reached for "${issue.title}" — not resuming`
       );
       return;
+    }
+
+    // Log last few lines of terminal output for debugging
+    const scrollback = this.terminalManager.getScrollback(terminalId);
+    if (scrollback) {
+      const lastLines = scrollback.split('\n').filter(Boolean).slice(-10).join('\n');
+      if (lastLines) {
+        console.log(`[auto-resume] Last output from "${issue.title}":\n${lastLines}`);
+      }
     }
 
     console.log(
@@ -453,7 +466,7 @@ export class IssueManager {
   }
 
   /** Reset resume attempt tracking for an issue (e.g., on status change) */
-  resetResumeAttempts(issueId: string): void {
+  private resetResumeAttempts(issueId: string): void {
     this.resumeAttempts.delete(issueId);
     const timer = this.resumeTimers.get(issueId);
     if (timer) {
@@ -471,5 +484,10 @@ export class IssueManager {
   /** Override resume delay (for testing) */
   setResumeDelay(ms: number): void {
     this.resumeDelayMs = ms;
+  }
+
+  /** Override resume window (for testing) */
+  setResumeWindow(ms: number): void {
+    this.resumeWindowMs = ms;
   }
 }
