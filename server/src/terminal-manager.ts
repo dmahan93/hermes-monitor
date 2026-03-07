@@ -155,7 +155,7 @@ export class TerminalManager {
     // If a command is provided, run it through bash -c so the full command
     // line (with args, pipes, quotes, etc.) works correctly.
     // Otherwise just spawn an interactive shell.
-    const shell = options.command ? defaultShell : defaultShell;
+    const shell = defaultShell;
     const args = options.command ? ['-c', options.command] : [];
 
     const proc = pty.spawn(shell, args, {
