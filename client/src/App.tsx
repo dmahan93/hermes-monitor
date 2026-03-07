@@ -23,7 +23,7 @@ function getWsUrl(): string {
 
 export default function App() {
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
-  const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals();
+  const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals(subscribe);
   const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue } = useIssues(subscribe);
   const { prs = [], addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe);
   const agents = useAgents();

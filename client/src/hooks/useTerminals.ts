@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { TerminalInfo, GridItem } from '../types';
+import type { TerminalInfo, GridItem, ServerMessage } from '../types';
 
 const API = '/api';
 
-export function useTerminals() {
+export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void) => () => void) {
   const [terminals, setTerminals] = useState<TerminalInfo[]>([]);
   const [layout, setLayout] = useState<GridItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,6 +71,19 @@ export function useTerminals() {
       console.error('Failed to remove terminal:', err);
     }
   }, []);
+
+  // Real-time terminal removal via WebSocket
+  useEffect(() => {
+    if (!subscribe) return;
+    const unsub = subscribe((msg) => {
+      if (msg.type === 'terminal:removed') {
+        const removedId = msg.terminalId;
+        setTerminals((prev) => prev.filter((t) => t.id !== removedId));
+        setLayout((prev) => prev.filter((l) => l.i !== removedId));
+      }
+    });
+    return unsub;
+  }, [subscribe]);
 
   const updateLayout = useCallback((newLayout: GridItem[]) => {
     setLayout(newLayout);

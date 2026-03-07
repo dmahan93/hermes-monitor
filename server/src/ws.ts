@@ -25,6 +25,11 @@ export function setupWebSocket(server: Server, manager: TerminalManager): WebSoc
     broadcast({ type: 'exit', terminalId, exitCode });
   });
 
+  // Notify clients when a terminal is removed
+  manager.onRemove((terminalId) => {
+    broadcast({ type: 'terminal:removed', terminalId });
+  });
+
   // Notify clients when a terminal is awaiting input
   manager.onAwaitingInput((terminalId, awaitingInput) => {
     broadcast({ type: 'terminal:awaitingInput', terminalId, awaitingInput });
