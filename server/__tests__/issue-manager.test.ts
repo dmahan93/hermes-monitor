@@ -8,6 +8,7 @@ describe('IssueManager', () => {
   let issueManager: IssueManager;
 
   afterEach(() => {
+    issueManager?.clearResumeTimers();
     terminalManager?.killAll();
   });
 
@@ -282,6 +283,271 @@ describe('IssueManager', () => {
     expect(terminalManager.size).toBe(1); // planning killed, agent spawned
   });
 
+  // ── Auto-resume tests ──
+
+  /** Helper: wait for a condition to become true */
+  const waitFor = async (pred: () => boolean, ms = 10000) => {
+    const start = Date.now();
+    while (!pred() && Date.now() - start < ms) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    if (!pred()) throw new Error('Timed out waiting for condition');
+  };
+
+  it('auto-resume: respawns terminal when agent exits naturally', async () => {
+    setup();
+    issueManager.setupAutoResume();
+    issueManager.setResumeDelay(100); // 100ms for fast tests
+
+    // Create issue with a command that exits immediately
+    const issue = issueManager.create({
+      title: 'Fast exit task',
+      agent: 'custom',
+      command: '/bin/true',
+    });
+
+    // Move to in_progress — spawns terminal
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const originalTermId = issueManager.get(issue.id)!.terminalId;
+    expect(originalTermId).toBeTruthy();
+
+    // Wait for process exit + resume delay
+    await waitFor(() => {
+      const current = issueManager.get(issue.id)!;
+      return current.terminalId !== originalTermId && current.terminalId !== null;
+    }, 5000);
+
+    const updated = issueManager.get(issue.id)!;
+    expect(updated.status).toBe('in_progress');
+    expect(updated.terminalId).toBeTruthy();
+    expect(updated.terminalId).not.toBe(originalTermId);
+  });
+
+  it('auto-resume: does NOT resume when terminal is killed intentionally', async () => {
+    setup();
+    issueManager.setupAutoResume();
+    issueManager.setResumeDelay(100);
+
+    const issue = issueManager.create({
+      title: 'Kill test',
+      agent: 'custom',
+      command: 'sleep 60',
+    });
+
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const termId = issueManager.get(issue.id)!.terminalId!;
+
+    // Simulate what ticket-api does on review: kill terminal, clear ref, change status.
+    // Direct mutation of issue.terminalId is intentional — create() returns the internal
+    // object reference, so this mirrors how ticket-api clears the terminal ref before
+    // changing status. If create() ever returns a copy, this pattern would need a
+    // dedicated clearTerminalRef(issueId) method.
+    terminalManager.kill(termId);
+    issue.terminalId = null;
+    issueManager.changeStatus(issue.id, 'review');
+
+    // Wait a bit — should NOT resume
+    await new Promise((r) => setTimeout(r, 500));
+
+    const updated = issueManager.get(issue.id)!;
+    expect(updated.status).toBe('review');
+    // Terminal should be null (from the status change to review, which doesn't spawn one
+    // since there's no PR manager)
+    expect(updated.terminalId).toBeNull();
+  });
+
+  it('auto-resume: does NOT resume when status changes during delay', async () => {
+    setup();
+    issueManager.setupAutoResume();
+    issueManager.setResumeDelay(500); // longer delay to give us time to change status
+
+    const issue = issueManager.create({
+      title: 'Status change during delay',
+      agent: 'custom',
+      command: '/bin/true', // exits immediately
+    });
+
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    // Wait for the process to exit (triggers auto-resume timer)
+    await new Promise((r) => setTimeout(r, 300));
+
+    // Move to todo during the delay — should cancel the resume
+    issueManager.changeStatus(issue.id, 'todo');
+
+    // Wait past the resume delay
+    await new Promise((r) => setTimeout(r, 500));
+
+    const updated = issueManager.get(issue.id)!;
+    expect(updated.status).toBe('todo');
+    expect(updated.terminalId).toBeNull();
+  });
+
+  it('auto-resume: stops after MAX_RESUME_ATTEMPTS', async () => {
+    setup();
+    issueManager.setupAutoResume();
+    issueManager.setResumeDelay(100);
+
+    const issue = issueManager.create({
+      title: 'Retry limit test',
+      agent: 'custom',
+      command: '/bin/true', // exits immediately every time
+    });
+
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    // Each cycle: process exits → 100ms delay → resume → process exits again
+    // Should stop after 3 resumes (MAX_RESUME_ATTEMPTS)
+    // Give it enough time for all cycles
+    let lastTermId = issueManager.get(issue.id)!.terminalId;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => {
+        const current = issueManager.get(issue.id)!;
+        return current.terminalId !== lastTermId && current.terminalId !== null;
+      }, 5000);
+      lastTermId = issueManager.get(issue.id)!.terminalId;
+    }
+
+    // After 3 resumes, the 4th exit should NOT trigger a resume
+    // Wait for the current terminal to exit and the resume to NOT happen
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // The issue should still be in_progress but its terminal may be exited
+    const final = issueManager.get(issue.id)!;
+    expect(final.status).toBe('in_progress');
+    // terminalId still points to the last (exited) terminal — no new one spawned
+    expect(final.terminalId).toBe(lastTermId);
+  });
+
+  it('auto-resume: resets attempt counter on status change', async () => {
+    setup();
+    issueManager.setupAutoResume();
+    issueManager.setResumeDelay(100);
+
+    const issue = issueManager.create({
+      title: 'Reset attempts test',
+      agent: 'custom',
+      command: '/bin/true',
+    });
+
+    // First cycle
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const firstTermId = issueManager.get(issue.id)!.terminalId;
+
+    // Wait for first auto-resume
+    await waitFor(() => {
+      const current = issueManager.get(issue.id)!;
+      return current.terminalId !== firstTermId && current.terminalId !== null;
+    }, 5000);
+
+    // Move back to todo (resets resume counter)
+    issueManager.changeStatus(issue.id, 'todo');
+
+    // Move back to in_progress (fresh start, fresh retries)
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const newTermId = issueManager.get(issue.id)!.terminalId;
+    expect(newTermId).toBeTruthy();
+
+    // Should be able to auto-resume again (counter was reset)
+    await waitFor(() => {
+      const current = issueManager.get(issue.id)!;
+      return current.terminalId !== newTermId && current.terminalId !== null;
+    }, 5000);
+
+    const updated = issueManager.get(issue.id)!;
+    expect(updated.terminalId).toBeTruthy();
+    expect(updated.terminalId).not.toBe(newTermId);
+  });
+
+  it('auto-resume: resets attempt counter after sliding window expires', async () => {
+    setup();
+    issueManager.setupAutoResume();
+    issueManager.setResumeDelay(100);
+    // Use a tiny window so we can test expiry without waiting 5 minutes
+    issueManager.setResumeWindow(300);
+
+    const issue = issueManager.create({
+      title: 'Window reset test',
+      agent: 'custom',
+      command: '/bin/true', // exits immediately
+    });
+
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    // Wait for all 3 resume attempts to be exhausted
+    let lastTermId = issueManager.get(issue.id)!.terminalId;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await waitFor(() => {
+        const current = issueManager.get(issue.id)!;
+        return current.terminalId !== lastTermId && current.terminalId !== null;
+      }, 5000);
+      lastTermId = issueManager.get(issue.id)!.terminalId;
+    }
+
+    // Max attempts reached — wait for the last terminal to exit
+    await new Promise((r) => setTimeout(r, 300));
+    const staleTermId = issueManager.get(issue.id)!.terminalId;
+
+    // Now wait longer than the sliding window (300ms) so the counter resets
+    await new Promise((r) => setTimeout(r, 400));
+
+    // Manually kill the stale terminal and spawn a new one to trigger
+    // another natural exit — the window should have reset the counter
+    if (staleTermId) {
+      // Kill the old exited terminal to clean up
+      terminalManager.kill(staleTermId);
+    }
+
+    // Spawn a new terminal that will exit immediately
+    const terminal = terminalManager.create({
+      title: issue.title,
+      command: '/bin/true',
+    });
+    // Update issue to point to this terminal (simulating a fresh spawn)
+    // This direct mutation simulates what performResume does internally
+    issue.terminalId = terminal.id;
+
+    // Wait for the auto-resume to fire — if the window reset worked,
+    // the counter is back to 0 and this exit will trigger a resume
+    await waitFor(() => {
+      const current = issueManager.get(issue.id)!;
+      return current.terminalId !== terminal.id && current.terminalId !== null;
+    }, 5000);
+
+    const updated = issueManager.get(issue.id)!;
+    expect(updated.terminalId).toBeTruthy();
+    expect(updated.terminalId).not.toBe(terminal.id);
+  });
+
+  it('auto-resume: emits issue:updated event on resume', async () => {
+    setup();
+    issueManager.setupAutoResume();
+    issueManager.setResumeDelay(100);
+
+    const events: string[] = [];
+    issueManager.onEvent((event) => events.push(event));
+
+    const issue = issueManager.create({
+      title: 'Event test',
+      agent: 'custom',
+      command: '/bin/true',
+    });
+
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const originalTermId = issueManager.get(issue.id)!.terminalId;
+
+    // Wait for auto-resume
+    await waitFor(() => {
+      const current = issueManager.get(issue.id)!;
+      return current.terminalId !== originalTermId && current.terminalId !== null;
+    }, 5000);
+
+    // Should have emitted: created, updated (status change), updated (auto-resume)
+    expect(events).toContain('issue:updated');
+    expect(events.filter((e) => e === 'issue:updated').length).toBeGreaterThanOrEqual(2);
+  });
+
   it('review→in_progress→review relaunches review on existing PR', () => {
     setup();
 
@@ -301,7 +567,8 @@ describe('IssueManager', () => {
 
     // First cycle: todo → in_progress → review (creates PR + spawns reviewer)
     issueManager.changeStatus(issue.id, 'in_progress');
-    // Kill terminal so ticket-api path is simulated (it kills terminal before changeStatus)
+    // Kill terminal so ticket-api path is simulated (it kills terminal before changeStatus).
+    // Direct mutation of terminalId is intentional — see comment in "does NOT resume" test.
     const termId = issueManager.get(issue.id)!.terminalId;
     if (termId) terminalManager.kill(termId);
     issueManager.get(issue.id)!.terminalId = null;

@@ -3,11 +3,12 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { ViewSwitcher } from '../../src/components/ViewSwitcher';
 
 describe('ViewSwitcher', () => {
-  it('renders all four buttons', () => {
+  it('renders all five buttons', () => {
     render(<ViewSwitcher mode="kanban" onChange={() => {}} />);
     expect(screen.getByText('[KANBAN]')).toBeInTheDocument();
     expect(screen.getByText('[TERMINALS]')).toBeInTheDocument();
     expect(screen.getByText(/PRs/)).toBeInTheDocument();
+    expect(screen.getByText('[RESEARCH]')).toBeInTheDocument();
     expect(screen.getByText('[CONFIG]')).toBeInTheDocument();
   });
 
@@ -47,5 +48,18 @@ describe('ViewSwitcher', () => {
     render(<ViewSwitcher mode="kanban" onChange={onChange} />);
     fireEvent.click(screen.getByText('[CONFIG]'));
     expect(onChange).toHaveBeenCalledWith('config');
+  });
+
+  it('highlights research when active', () => {
+    render(<ViewSwitcher mode="research" onChange={() => {}} />);
+    expect(screen.getByText('[RESEARCH]').className).toContain('active');
+    expect(screen.getByText('[KANBAN]').className).not.toContain('active');
+  });
+
+  it('calls onChange with research when clicking RESEARCH tab', () => {
+    const onChange = vi.fn();
+    render(<ViewSwitcher mode="kanban" onChange={onChange} />);
+    fireEvent.click(screen.getByText('[RESEARCH]'));
+    expect(onChange).toHaveBeenCalledWith('research');
   });
 });
