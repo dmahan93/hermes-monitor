@@ -117,6 +117,30 @@ describe('TerminalView', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it('does not trigger reconnect replay when mounting with non-zero reconnectCount', () => {
+    const send = vi.fn();
+    const subscribe = vi.fn(() => () => {});
+
+    render(
+      <TerminalView
+        terminalId="t1"
+        send={send}
+        subscribe={subscribe}
+        reconnectCount={3}
+      />
+    );
+
+    // Should only send ONE replay (from the mount effect), not a second
+    // from the reconnect effect — the component was not present for the
+    // reconnect, so it should not reset+replay on mount.
+    const replayCalls = send.mock.calls.filter(
+      (call: any) => call[0].type === 'replay'
+    );
+    expect(replayCalls).toHaveLength(1);
+    // Reset should NOT have been called — no actual reconnect happened
+    expect(mockReset).not.toHaveBeenCalled();
+  });
+
   it('resets and replays on each reconnect increment', () => {
     const send = vi.fn();
     const subscribe = vi.fn(() => () => {});

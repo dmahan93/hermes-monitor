@@ -30,6 +30,8 @@ export function TerminalView({ terminalId, send, subscribe, onResize, reconnectC
   const sendRef = useRef(send);
   const subscribeRef = useRef(subscribe);
   const onResizeRef = useRef(onResize);
+  // Track previous reconnectCount to distinguish mount from actual reconnects
+  const prevReconnectRef = useRef(reconnectCount);
 
   sendRef.current = send;
   subscribeRef.current = subscribe;
@@ -137,12 +139,15 @@ export function TerminalView({ terminalId, send, subscribe, onResize, reconnectC
   // Re-request scrollback replay after WS reconnects.
   // The subscription handlers persist across reconnects (stored in a ref set
   // inside useWebSocket), so only the replay needs to be re-sent.
+  // Uses prevReconnectRef to avoid firing on mount when reconnectCount is
+  // already > 0 (e.g. component mounts after a reconnect has already occurred).
   useEffect(() => {
-    if (reconnectCount > 0) {
+    if (reconnectCount !== prevReconnectRef.current) {
+      prevReconnectRef.current = reconnectCount;
       termRef.current?.reset();
       sendRef.current({ type: 'replay', terminalId });
     }
-  }, [reconnectCount, terminalId]);
+  }, [reconnectCount]); // terminalId omitted — mount effect handles terminalId changes
 
   return (
     <div
