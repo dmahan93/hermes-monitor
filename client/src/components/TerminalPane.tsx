@@ -6,14 +6,20 @@ interface TerminalPaneProps {
   send: (msg: any) => void;
   subscribe: (handler: (msg: ServerMessage) => void) => () => void;
   onClose: (id: string) => void;
+  awaitingInput?: boolean;
 }
 
-export function TerminalPane({ terminal, send, subscribe, onClose }: TerminalPaneProps) {
+export function TerminalPane({ terminal, send, subscribe, onClose, awaitingInput }: TerminalPaneProps) {
   return (
-    <div className="terminal-pane">
+    <div className={`terminal-pane${awaitingInput ? ' terminal-pane-awaiting' : ''}`}>
       <div className="terminal-pane-header">
         <span className="terminal-pane-drag-handle">⠿</span>
         <span className="terminal-pane-title">{terminal.title}</span>
+        {awaitingInput && (
+          <span className="terminal-pane-alert" title="Terminal is awaiting input">
+            ⏳ INPUT
+          </span>
+        )}
         <span className="terminal-pane-pid">pid:{terminal.pid}</span>
         <button
           className="terminal-pane-close"
