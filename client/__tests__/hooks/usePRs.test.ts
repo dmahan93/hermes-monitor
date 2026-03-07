@@ -15,7 +15,7 @@ const mockPR = {
   status: 'open' as const,
   diff: '',
   changedFiles: ['file.ts'],
-  verdict: '',
+  verdict: 'pending',
   reviewerTerminalId: null,
   comments: [],
   createdAt: Date.now(),

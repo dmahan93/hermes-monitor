@@ -5,28 +5,17 @@ import type { PRManager } from './pr-manager.js';
 import type { Store } from './store.js';
 import { getPreset } from './agents.js';
 
+// Re-export shared types so existing server imports continue to work.
+export type { Issue, IssueStatus } from '@hermes-monitor/shared/types';
+import type { Issue, IssueStatus } from '@hermes-monitor/shared/types';
+
 // Auto-resume constants
 const MAX_RESUME_ATTEMPTS = 3;       // max retries before giving up
 const RESUME_DELAY_MS = 5000;        // wait 5s before resuming (avoid tight loops)
 const RESUME_WINDOW_MS = 5 * 60000;  // reset attempt counter after 5 minutes of quiet
 
-export type IssueStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
 export type IssueEvent = 'issue:created' | 'issue:updated' | 'issue:deleted';
 
-export interface Issue {
-  id: string;
-  title: string;
-  description: string;
-  status: IssueStatus;
-  agent: string;        // agent preset id
-  command: string;       // resolved command (from preset or custom)
-  terminalId: string | null;
-  branch: string | null;
-  parentId: string | null;  // if set, this issue is a subtask of the parent
-  submitterNotes?: string;  // transient: notes from agent when submitting for review
-  createdAt: number;
-  updatedAt: number;
-}
 
 export interface CreateIssueOptions {
   title: string;
