@@ -6,6 +6,7 @@ import {
   parseLogLine,
   buildGraphLanes,
   createGitApiRouter,
+  resolveRenamePath,
   type GitCommit,
 } from '../src/git-api.js';
 
@@ -368,6 +369,83 @@ describe('Git API endpoints', () => {
     });
   });
 
+  describe('/api/git/branches', () => {
+    it('returns parsed branches with current indicator', async () => {
+      vi.mocked(execFile).mockImplementation(
+        (_cmd: any, args: any, _opts: any, cb: any) => {
+          const output = 'main|*\nfeature/foo|\norigin/main|\n';
+          cb(null, { stdout: output });
+          return {} as any;
+        }
+      );
+
+      const res = await request(server, 'GET', '/api/git/branches');
+      expect(res.status).toBe(200);
+      expect(res.body.branches).toHaveLength(3);
+      expect(res.body.branches[0]).toEqual({ name: 'main', current: true });
+      expect(res.body.branches[1]).toEqual({ name: 'feature/foo', current: false });
+    });
+
+    it('returns 400 when not a git repo', async () => {
+      vi.mocked(isGitRepo).mockReturnValue(false);
+      const res = await request(server, 'GET', '/api/git/branches');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Not a git repo');
+    });
+
+    it('returns 500 on git error', async () => {
+      vi.mocked(execFile).mockImplementation(
+        (_cmd: any, _args: any, _opts: any, cb: any) => {
+          cb(new Error('git failed'));
+          return {} as any;
+        }
+      );
+
+      const res = await request(server, 'GET', '/api/git/branches');
+      expect(res.status).toBe(500);
+    });
+  });
+
+  describe('/api/git/show/:sha — rename handling', () => {
+    it('correctly parses renamed files (R100 status)', async () => {
+      vi.mocked(execFile).mockImplementation(
+        (_cmd: any, args: any, _opts: any, cb: any) => {
+          if (args.includes('--name-status')) {
+            cb(null, { stdout: 'R100\told-file.ts\tnew-file.ts\nM\tother.ts\n' });
+          } else if (args.includes('--numstat')) {
+            cb(null, { stdout: '10\t5\told-file.ts => new-file.ts\n3\t1\tother.ts\n' });
+          } else {
+            cb(null, { stdout: '' });
+          }
+          return {} as any;
+        }
+      );
+
+      const res = await request(server, 'GET', '/api/git/show/abcdef12');
+      expect(res.status).toBe(200);
+      expect(res.body.files).toHaveLength(2);
+
+      const renamed = res.body.files.find((f: any) => f.status === 'R');
+      expect(renamed).toBeDefined();
+      expect(renamed.path).toBe('new-file.ts');
+      expect(renamed.additions).toBe(10);
+      expect(renamed.deletions).toBe(5);
+
+      const modified = res.body.files.find((f: any) => f.status === 'M');
+      expect(modified).toBeDefined();
+      expect(modified.path).toBe('other.ts');
+      expect(modified.additions).toBe(3);
+    });
+  });
+
+  describe('/api/git/diff/:sha — path validation', () => {
+    it('rejects absolute file paths', async () => {
+      const res = await request(server, 'GET', '/api/git/diff/abcdef12?file=/etc/passwd');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Invalid file path');
+    });
+  });
+
   describe('not a git repo', () => {
     it('returns 400 when not a git repo', async () => {
       vi.mocked(isGitRepo).mockReturnValue(false);
@@ -375,5 +453,29 @@ describe('Git API endpoints', () => {
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('Not a git repo');
     });
+  });
+});
+
+// ── resolveRenamePath tests ──
+
+describe('resolveRenamePath', () => {
+  it('returns path unchanged when no arrow notation', () => {
+    expect(resolveRenamePath('src/file.ts')).toBe('src/file.ts');
+  });
+
+  it('resolves simple "old => new" format', () => {
+    expect(resolveRenamePath('old-file.ts => new-file.ts')).toBe('new-file.ts');
+  });
+
+  it('resolves "prefix/{old => new}/suffix" format', () => {
+    expect(resolveRenamePath('src/{old-name => new-name}/index.ts')).toBe('src/new-name/index.ts');
+  });
+
+  it('resolves "prefix/{old => new}" format (no suffix)', () => {
+    expect(resolveRenamePath('src/{old.ts => new.ts}')).toBe('src/new.ts');
+  });
+
+  it('handles empty new part in braces', () => {
+    expect(resolveRenamePath('src/{old => }/file.ts')).toBe('src//file.ts');
   });
 });

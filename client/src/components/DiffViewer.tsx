@@ -15,7 +15,7 @@ interface DiffLine {
   lineNum?: { old?: number; new?: number };
 }
 
-function parseDiff(raw: string): DiffLine[] {
+export function parseDiff(raw: string): DiffLine[] {
   const lines: DiffLine[] = [];
   let oldLine = 0;
   let newLine = 0;
@@ -42,7 +42,10 @@ function parseDiff(raw: string): DiffLine[] {
       continue;
     }
 
-    if (line.startsWith('+')) {
+    if (line.startsWith('\\')) {
+      // "\ No newline at end of file" — render as meta annotation
+      lines.push({ type: 'meta', content: line });
+    } else if (line.startsWith('+')) {
       lines.push({
         type: 'add',
         content: line.slice(1),

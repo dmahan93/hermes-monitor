@@ -25,7 +25,7 @@ export interface GitFileChange {
 // Input validation — strict patterns to prevent injection
 const SHA_RE = /^[a-f0-9]{4,40}$/i;
 const BRANCH_RE = /^[a-zA-Z0-9._\/-]+$/;
-// File paths: no NUL, no ".." traversal
+// File paths: no NUL, no ".." traversal, no absolute paths
 const FILE_RE = /^[^\x00]+$/;
 
 function validateSha(sha: string): boolean {
@@ -37,7 +37,30 @@ function validateBranch(branch: string): boolean {
 }
 
 function validateFilePath(path: string): boolean {
-  return FILE_RE.test(path) && !path.includes('..');
+  return FILE_RE.test(path) && !path.includes('..') && !path.startsWith('/');
+}
+
+/**
+ * Resolve a git rename/copy path notation to the new (destination) path.
+ * Handles both formats:
+ *   "old => new"          → "new"
+ *   "prefix/{old => new}/suffix" → "prefix/new/suffix"
+ */
+export function resolveRenamePath(pathStr: string): string {
+  const arrowIdx = pathStr.indexOf(' => ');
+  if (arrowIdx === -1) return pathStr;
+
+  const braceOpen = pathStr.lastIndexOf('{', arrowIdx);
+  const braceClose = pathStr.indexOf('}', arrowIdx);
+
+  if (braceOpen !== -1 && braceClose !== -1) {
+    const prefix = pathStr.slice(0, braceOpen);
+    const newPart = pathStr.slice(arrowIdx + 4, braceClose);
+    const suffix = pathStr.slice(braceClose + 1);
+    return prefix + newPart + suffix;
+  }
+
+  return pathStr.slice(arrowIdx + 4);
 }
 
 async function git(args: string[], cwd?: string): Promise<string> {
@@ -137,11 +160,16 @@ export function createGitApiRouter(): Router {
       ]);
 
       // Parse numstat output: "additions\tdeletions\tpath"
+      // For renames/copies, path may use "old => new" or "{old => new}" notation
       const numstatMap = new Map<string, { additions: number; deletions: number }>();
       for (const line of numstatRaw.trim().split('\n').filter(Boolean)) {
         const match = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
         if (match) {
-          numstatMap.set(match[3], {
+          let path = match[3];
+          if (path.includes(' => ')) {
+            path = resolveRenamePath(path);
+          }
+          numstatMap.set(path, {
             additions: match[1] === '-' ? 0 : parseInt(match[1]) || 0,
             deletions: match[2] === '-' ? 0 : parseInt(match[2]) || 0,
           });
@@ -149,14 +177,25 @@ export function createGitApiRouter(): Router {
       }
 
       // Parse name-status output: "STATUS\tpath"
+      // Status may include a similarity percentage for R/C (e.g. R100, C085)
+      // Renames/copies have two tab-separated paths: "old-path\tnew-path"
       const files: GitFileChange[] = [];
       for (const line of nameStatusRaw.trim().split('\n').filter(Boolean)) {
-        const match = line.match(/^([AMDRCTU])\t(.+)$/);
+        const match = line.match(/^([AMDRCTU]\d*)\t(.+)$/);
         if (match) {
-          const stats = numstatMap.get(match[2]);
+          const status = match[1][0] as GitFileChange['status'];
+          let filePath = match[2];
+
+          // For R/C, the path field is "old-path\tnew-path" — use the new path
+          if ((status === 'R' || status === 'C') && filePath.includes('\t')) {
+            const pathParts = filePath.split('\t');
+            filePath = pathParts[pathParts.length - 1];
+          }
+
+          const stats = numstatMap.get(filePath);
           files.push({
-            path: match[2],
-            status: match[1] as GitFileChange['status'],
+            path: filePath,
+            status,
             additions: stats?.additions ?? 0,
             deletions: stats?.deletions ?? 0,
           });
