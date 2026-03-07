@@ -9,7 +9,7 @@ export function useAgents() {
   useEffect(() => {
     fetch(`${API}/agents`)
       .then((res) => {
-        if (!res.ok) throw new Error('Failed to fetch agents');
+        if (!res.ok) throw new Error(`Failed to fetch agents (${res.status})`);
         return res.json();
       })
       .then(setAgents)

@@ -10,7 +10,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
   const fetchPRs = useCallback(async () => {
     try {
       const res = await fetch(`${API}/prs`);
-      if (!res.ok) throw new Error('Failed to fetch PRs');
+      if (!res.ok) throw new Error(`Failed to fetch PRs (${res.status})`);
       const data: PullRequest[] = await res.json();
       setPRs(data);
     } catch (err) {
@@ -48,7 +48,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ author: 'human', body }),
       });
-      if (!res.ok) throw new Error('Failed to add comment');
+      if (!res.ok) throw new Error(`Failed to add comment (${res.status})`);
     } catch (err) {
       console.error('Failed to add comment:', err);
     }
@@ -61,7 +61,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ verdict }),
       });
-      if (!res.ok) throw new Error('Failed to set verdict');
+      if (!res.ok) throw new Error(`Failed to set verdict (${res.status})`);
     } catch (err) {
       console.error('Failed to set verdict:', err);
     }
@@ -84,7 +84,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
   const fixConflicts = useCallback(async (prId: string) => {
     try {
       const res = await fetch(`${API}/prs/${prId}/fix-conflicts`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to fix conflicts');
+      if (!res.ok) throw new Error(`Failed to fix conflicts (${res.status})`);
     } catch (err) {
       console.error('Failed to fix conflicts:', err);
     }

@@ -10,7 +10,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
   const fetchIssues = useCallback(async () => {
     try {
       const res = await fetch(`${API}/issues`);
-      if (!res.ok) throw new Error('Failed to fetch issues');
+      if (!res.ok) throw new Error(`Failed to fetch issues (${res.status})`);
       const data: Issue[] = await res.json();
       setIssues(data);
     } catch (err) {
@@ -54,7 +54,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, description, agent, command, branch }),
       });
-      if (!res.ok) throw new Error('Failed to create issue');
+      if (!res.ok) throw new Error(`Failed to create issue (${res.status})`);
       const issue = await res.json();
       // Optimistically add the issue immediately (WS event will deduplicate)
       setIssues((prev) => {
@@ -75,7 +75,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       });
-      if (!res.ok) throw new Error('Failed to update issue');
+      if (!res.ok) throw new Error(`Failed to update issue (${res.status})`);
     } catch (err) {
       console.error('Failed to update issue:', err);
     }
@@ -114,7 +114,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
       const res = await fetch(`${API}/issues/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         // Server rejected deletion — throw to trigger catch block's refetch
-        throw new Error('Failed to delete issue');
+        throw new Error(`Failed to delete issue (${res.status})`);
       }
     } catch (err) {
       console.error('Failed to delete issue:', err);
