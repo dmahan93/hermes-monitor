@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useTerminals } from '../../src/hooks/useTerminals';
+import { API_BASE } from '../../src/config';
 
 const mockTerminal = {
   id: 'abc-123',
@@ -30,7 +31,7 @@ describe('useTerminals', () => {
 
     expect(result.current.terminals).toHaveLength(1);
     expect(result.current.terminals[0].id).toBe('abc-123');
-    expect(fetch).toHaveBeenCalledWith('/api/terminals');
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/terminals`);
   });
 
   it('addTerminal calls POST and updates state', async () => {
@@ -49,7 +50,7 @@ describe('useTerminals', () => {
     });
 
     expect(result.current.terminals).toHaveLength(1);
-    expect(fetch).toHaveBeenCalledWith('/api/terminals', expect.objectContaining({
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/terminals`, expect.objectContaining({
       method: 'POST',
     }));
   });
@@ -70,6 +71,6 @@ describe('useTerminals', () => {
     });
 
     expect(result.current.terminals).toHaveLength(0);
-    expect(fetch).toHaveBeenCalledWith('/api/terminals/abc-123', { method: 'DELETE' });
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/terminals/abc-123`, { method: 'DELETE' });
   });
 });

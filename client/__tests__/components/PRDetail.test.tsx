@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { PRDetail } from '../../src/components/PRDetail';
+import { API_BASE } from '../../src/config';
 import type { PullRequest, IssueStatus, PRStatus } from '../../src/types';
 
 function makePR(overrides: Partial<PullRequest> = {}): PullRequest {
@@ -275,7 +276,7 @@ describe('PRDetail — Screenshots section', () => {
     render(<PRDetail {...props} />);
 
     await waitFor(() => {
-      expect(globalThis.fetch).toHaveBeenCalledWith('/api/prs/custom-pr-id/screenshots');
+      expect(globalThis.fetch).toHaveBeenCalledWith(`${API_BASE}/prs/custom-pr-id/screenshots`);
     });
   });
 });
