@@ -10,7 +10,7 @@ import { buildScreenshotSection } from './screenshot-utils.js';
 
 export type PRStatus = 'open' | 'reviewing' | 'approved' | 'changes_requested' | 'merged' | 'closed';
 export type Verdict = 'pending' | 'approved' | 'changes_requested';
-export type PREvent = 'pr:created' | 'pr:updated' | 'pr:comment';
+export type PREvent = 'pr:created' | 'pr:updated';
 
 export interface PRComment {
   id: string;
@@ -359,7 +359,7 @@ export class PRManager {
 
     // Re-generate the diff in case there were new changes
     const diff = this.worktreeManager.getDiff(pr.issueId);
-    if (diff !== null) {
+    if (diff !== undefined) {
       pr.diff = diff;
       pr.changedFiles = this.worktreeManager.getChangedFiles(pr.issueId);
     }

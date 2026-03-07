@@ -323,5 +323,4 @@ Connect to `ws://localhost:4000/ws`
 
 { "type": "pr:created", "pr": PullRequest }
 { "type": "pr:updated", "pr": PullRequest }
-{ "type": "pr:comment", "prId": "uuid", "comment": PRComment }
 ```
