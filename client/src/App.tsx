@@ -10,6 +10,7 @@ import { PRList } from './components/PRList';
 import { GitGraph } from './components/GitGraph';
 import { DiffViewer } from './components/DiffViewer';
 import { ConfigView } from './components/ConfigView';
+import { ResearchView } from './components/ResearchView';
 import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
 import { useTerminals } from './hooks/useTerminals';
@@ -49,6 +50,15 @@ export default function App() {
   const [planningIssueId, setPlanningIssueId] = useState<string | null>(null);
   const [detailEditing, setDetailEditing] = useState(false);
   const [awaitingInputIds, setAwaitingInputIds] = useState<Set<string>>(new Set());
+  const [researchMounted, setResearchMounted] = useState(false);
+  const [researchTerminalId, setResearchTerminalId] = useState<string | null>(
+    () => localStorage.getItem('hermes:researchTerminalId')
+  );
+
+  // Lazy-mount ResearchView: only render once the tab has been visited at least once
+  useEffect(() => {
+    if (view === 'research') setResearchMounted(true);
+  }, [view]);
 
   // Track which terminals are awaiting input
   useEffect(() => {
@@ -263,6 +273,17 @@ export default function App() {
     return prs.find((p) => p.issueId === detailIssueId);
   }, [detailIssueId, prs]);
 
+  // Filter the research terminal out of the grid so it only appears in the research tab
+  const gridTerminals = useMemo(() => {
+    if (!researchTerminalId) return terminals;
+    return terminals.filter((t) => t.id !== researchTerminalId);
+  }, [terminals, researchTerminalId]);
+
+  const gridLayout = useMemo(() => {
+    if (!researchTerminalId) return layout;
+    return layout.filter((l) => l.i !== researchTerminalId);
+  }, [layout, researchTerminalId]);
+
   if (loading) {
     return (
       <div className="app">
@@ -338,8 +359,8 @@ export default function App() {
                   />
                 ) : (
                   <TerminalGrid
-                    terminals={terminals}
-                    layout={layout}
+                    terminals={gridTerminals}
+                    layout={gridLayout}
                     onLayoutChange={updateLayout}
                     send={send}
                     subscribe={subscribe}
@@ -422,6 +443,17 @@ export default function App() {
               onMoveToInProgress={(issueId) => handleStatusChange(issueId, 'in_progress')}
             />
           </div>
+
+          {/* Research view — lazy-mounted to avoid spawning a PTY until the tab is visited */}
+          {researchMounted && (
+            <div className={`view-panel ${view === 'research' ? 'view-active' : 'view-hidden'}`}>
+              <ResearchView
+                send={send}
+                subscribe={subscribe}
+                onTerminalIdChange={setResearchTerminalId}
+              />
+            </div>
+          )}
 
           {/* Config view */}
           <div className={`view-panel ${view === 'config' ? 'view-active' : 'view-hidden'}`}>

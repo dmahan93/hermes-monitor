@@ -1,4 +1,4 @@
-export type ViewMode = 'kanban' | 'terminals' | 'prs' | 'config';
+export type ViewMode = 'kanban' | 'terminals' | 'prs' | 'research' | 'config';
 
 interface ViewSwitcherProps {
   mode: ViewMode;
@@ -26,6 +26,12 @@ export function ViewSwitcher({ mode, onChange, prCount }: ViewSwitcherProps) {
         onClick={() => onChange('prs')}
       >
         [PRs{prCount ? ` ${prCount}` : ''}]
+      </button>
+      <button
+        className={`view-switcher-btn ${mode === 'research' ? 'active' : ''}`}
+        onClick={() => onChange('research')}
+      >
+        [RESEARCH]
       </button>
       <button
         className={`view-switcher-btn ${mode === 'config' ? 'active' : ''}`}
