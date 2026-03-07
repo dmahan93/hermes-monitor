@@ -109,9 +109,15 @@ export class IssueManager {
   }
 
   create(options: CreateIssueOptions): Issue {
-    // Validate parent exists if parentId is specified
-    if (options.parentId && !this.issues.has(options.parentId)) {
-      throw new Error(`Parent issue ${options.parentId} not found`);
+    // Validate parent exists if parentId is specified, and prevent nested subtasks
+    if (options.parentId) {
+      const parent = this.issues.get(options.parentId);
+      if (!parent) {
+        throw new Error(`Parent issue ${options.parentId} not found`);
+      }
+      if (parent.parentId) {
+        throw new Error('Cannot create a subtask of a subtask');
+      }
     }
 
     const id = uuidv4();

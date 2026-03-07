@@ -97,8 +97,8 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
   }, [fetchIssues]);
 
   const deleteIssue = useCallback(async (id: string) => {
-    // Optimistic removal
-    setIssues((prev) => prev.filter((i) => i.id !== id));
+    // Optimistic removal — also cascade-remove subtasks to match server behavior
+    setIssues((prev) => prev.filter((i) => i.id !== id && i.parentId !== id));
     try {
       await fetch(`${API}/issues/${id}`, { method: 'DELETE' });
     } catch (err) {
@@ -154,10 +154,5 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
     }
   }, []);
 
-  /** Get subtasks of a given parent issue from local state */
-  const getSubtasks = useCallback((parentId: string) => {
-    return issues.filter((i) => i.parentId === parentId);
-  }, [issues]);
-
-  return { issues, loading, createIssue, updateIssue, changeStatus, deleteIssue, startPlanning, stopPlanning, createSubtask, getSubtasks };
+  return { issues, loading, createIssue, updateIssue, changeStatus, deleteIssue, startPlanning, stopPlanning, createSubtask };
 }

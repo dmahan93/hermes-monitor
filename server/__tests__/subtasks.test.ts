@@ -34,6 +34,16 @@ describe('Subtasks', () => {
     }).toThrow('Parent issue nonexistent-id not found');
   });
 
+  it('throws when creating a subtask of a subtask (no nesting)', () => {
+    setup();
+    const parent = issueManager.create({ title: 'Parent' });
+    const sub = issueManager.create({ title: 'Subtask', parentId: parent.id });
+
+    expect(() => {
+      issueManager.create({ title: 'Nested subtask', parentId: sub.id });
+    }).toThrow('Cannot create a subtask of a subtask');
+  });
+
   it('creates a subtask with all options', () => {
     setup();
     const parent = issueManager.create({ title: 'Parent' });

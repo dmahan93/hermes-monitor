@@ -27,6 +27,7 @@ export class Store {
         command TEXT NOT NULL DEFAULT '',
         terminalId TEXT,
         branch TEXT,
+        parentId TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       );
@@ -71,11 +72,14 @@ export class Store {
       this.db.exec("ALTER TABLE pull_requests ADD COLUMN submitterNotes TEXT NOT NULL DEFAULT ''");
     }
 
-    // Migration: add parentId column to issues if it doesn't exist
+    // Migration: add parentId column to issues if it doesn't exist (for existing DBs)
     const issueColumns = this.db.prepare("PRAGMA table_info(issues)").all() as any[];
     if (!issueColumns.some((c: any) => c.name === 'parentId')) {
       this.db.exec("ALTER TABLE issues ADD COLUMN parentId TEXT");
     }
+
+    // Index for efficient subtask lookups by parentId
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_issues_parentId ON issues(parentId)");
   }
 
   // ── Issues ──

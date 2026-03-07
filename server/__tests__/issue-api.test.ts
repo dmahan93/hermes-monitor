@@ -190,6 +190,15 @@ describe('Issue API', () => {
     expect(res.status).toBe(404);
   });
 
+  it('POST /api/issues/:id/subtasks rejects nested subtasks (subtask of subtask)', async () => {
+    const parent = await request(server, 'POST', '/api/issues', { title: 'Parent' });
+    const sub = await request(server, 'POST', `/api/issues/${parent.body.id}/subtasks`, { title: 'Sub' });
+    expect(sub.status).toBe(201);
+    const nested = await request(server, 'POST', `/api/issues/${sub.body.id}/subtasks`, { title: 'Nested' });
+    expect(nested.status).toBe(400);
+    expect(nested.body.error).toMatch(/subtask of a subtask/);
+  });
+
   it('POST /api/issues with parentId creates a subtask via main endpoint', async () => {
     const parent = await request(server, 'POST', '/api/issues', { title: 'Parent' });
     const res = await request(server, 'POST', '/api/issues', {

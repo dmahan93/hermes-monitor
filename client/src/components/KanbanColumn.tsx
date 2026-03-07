@@ -15,24 +15,26 @@ interface KanbanColumnProps {
 }
 
 export function KanbanColumn({ columnId, label, issues, agents, allIssues, onDelete, onEdit, onTerminalClick, onIssueClick }: KanbanColumnProps) {
-  // Build lookup maps for parent titles and subtask info
-  const parentTitleMap = new Map<string, string>();
-  const subtaskInfoMap = new Map<string, SubtaskInfo>();
+  // Build an O(1) title lookup, then derive parent titles and subtask info in O(n)
+  const titleById = new Map(allIssues.map((i) => [i.id, i.title]));
 
-  for (const issue of allIssues) {
+  const parentTitleMap = new Map<string, string>();
+  for (const issue of issues) {
     if (issue.parentId) {
-      const parent = allIssues.find((i) => i.id === issue.parentId);
-      if (parent) parentTitleMap.set(issue.id, parent.title);
+      const title = titleById.get(issue.parentId);
+      if (title) parentTitleMap.set(issue.id, title);
     }
   }
 
-  for (const issue of issues) {
-    const subtasks = allIssues.filter((i) => i.parentId === issue.id);
-    if (subtasks.length > 0) {
-      subtaskInfoMap.set(issue.id, {
-        total: subtasks.length,
-        done: subtasks.filter((s) => s.status === 'done').length,
-      });
+  // Count subtasks scoped to this column's issues
+  const subtaskInfoMap = new Map<string, SubtaskInfo>();
+  const columnIds = new Set(issues.map((i) => i.id));
+  for (const issue of allIssues) {
+    if (issue.parentId && columnIds.has(issue.parentId)) {
+      const info = subtaskInfoMap.get(issue.parentId) || { total: 0, done: 0 };
+      info.total++;
+      if (issue.status === 'done') info.done++;
+      subtaskInfoMap.set(issue.parentId, info);
     }
   }
 

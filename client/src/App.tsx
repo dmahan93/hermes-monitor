@@ -29,7 +29,7 @@ function getWsUrl(): string {
 export default function App() {
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals(subscribe);
-  const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning, createSubtask, getSubtasks } = useIssues(subscribe);
+  const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning, createSubtask } = useIssues(subscribe);
   const { prs = [], addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe);
   const agents = useAgents();
   const gitGraph = useGitGraph();
@@ -112,7 +112,8 @@ export default function App() {
     if (termViewSelection.kind === 'agent') {
       return issues.find((i) => i.id === termViewSelection.issueId) || null;
     }
-    // For reviewer terminals, build a synthetic Issue from the PR
+    // For reviewer terminals, build a synthetic Issue from the PR.
+    // This is a display-only shim — not a real Issue from the store.
     const pr = prs.find((p) => p.id === termViewSelection.prId);
     if (!pr || !pr.reviewerTerminalId) return null;
     return {
@@ -124,7 +125,7 @@ export default function App() {
       command: '',
       terminalId: pr.reviewerTerminalId,
       branch: pr.sourceBranch,
-      parentId: null,
+      parentId: null,  // synthetic — PRs are never subtasks
       createdAt: pr.createdAt,
       updatedAt: pr.updatedAt,
     };
@@ -258,6 +259,11 @@ export default function App() {
     setDetailIssueId(null);
     setDetailEditing(false);
   }, []);
+
+  const detailSubtasks = useMemo(() => {
+    if (!detailIssueId) return [];
+    return issues.filter((i) => i.parentId === detailIssueId);
+  }, [detailIssueId, issues]);
 
   const detailPR = useMemo(() => {
     if (!detailIssueId) return undefined;
@@ -449,7 +455,7 @@ export default function App() {
           agents={agents}
           pr={detailPR}
           initialEditing={detailEditing}
-          subtasks={getSubtasks(detailIssue.id)}
+          subtasks={detailSubtasks}
           parentIssue={detailIssue.parentId ? issues.find((i) => i.id === detailIssue.parentId) : undefined}
           onClose={closeDetail}
           onUpdate={(id, updates) => updateIssue(id, updates)}
