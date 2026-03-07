@@ -1,6 +1,9 @@
 /* ═══════════════════════════════════════════
    KANBAN BOARD
    ═══════════════════════════════════════════ */
+/* NOTE: App-level layout styles for the kanban split view (.kanban-split,
+ * .kanban-split-left, .kanban-split-right) are in App.css.
+ */
 
 /* ── Kanban Board ── */
 

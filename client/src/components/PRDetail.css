@@ -1,4 +1,8 @@
 /* ── PR Detail ── */
+/* NOTE: Cross-component references:
+ *   .markdown-content (defined in MarkdownContent.css)
+ * Used as descendant selectors under .pr-submitter-notes and .pr-comment-body.
+ */
 
 .pr-detail {
   padding: 0.667rem;

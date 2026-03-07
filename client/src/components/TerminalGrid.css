@@ -1,4 +1,7 @@
 /* ── Terminal Grid ── */
+/* NOTE: App-level layout styles for the terminals view (.terminals-layout,
+ * .terminals-sidebar, .terminals-main) are in App.css.
+ */
 
 .terminal-grid {
   min-height: 100%;

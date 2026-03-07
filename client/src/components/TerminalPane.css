@@ -1,4 +1,10 @@
 /* ── Terminal Pane ── */
+/* NOTE: Cross-component references:
+ *   .task-terminal-header (defined in TaskTerminalPane.css)
+ *   .header-awaiting-input (defined in Header.css)
+ *   .status-bar-awaiting (defined in StatusBar.css)
+ * These selectors are scoped under .terminal-pane-awaiting for awaiting-input state styling.
+ */
 
 .terminal-pane {
   display: flex;
