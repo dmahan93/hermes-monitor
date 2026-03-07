@@ -41,6 +41,7 @@ export interface UpdateIssueOptions {
   description?: string;
   command?: string;
   branch?: string;
+  submitterNotes?: string;
 }
 
 export type IssueEventCallback = (event: string, issue: Issue) => void;
@@ -184,6 +185,7 @@ export class IssueManager {
     if (options.description !== undefined) issue.description = options.description;
     if (options.command !== undefined) issue.command = options.command;
     if (options.branch !== undefined) issue.branch = options.branch;
+    if (options.submitterNotes !== undefined) issue.submitterNotes = options.submitterNotes;
     issue.updatedAt = Date.now();
 
     this.persist(issue);
@@ -285,8 +287,8 @@ export class IssueManager {
       }
     }
 
-    // Kill terminal when moving TO backlog, todo, or done
-    if ((to === 'backlog' || to === 'todo' || to === 'done') && issue.terminalId) {
+    // Kill terminal when moving TO backlog, todo, review, or done
+    if ((to === 'backlog' || to === 'todo' || to === 'review' || to === 'done') && issue.terminalId) {
       this.terminalManager.kill(issue.terminalId);
       issue.terminalId = null;
     }

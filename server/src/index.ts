@@ -101,6 +101,7 @@ prManager.onEvent((event, pr) => {
 const shutdown = () => {
   console.log('\nShutting down...');
   issueManager.clearResumeTimers();
+  prManager.clearAllPendingTimers();
   terminalManager.killAll();
   store.close();
   server.close();
