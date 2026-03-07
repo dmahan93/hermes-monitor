@@ -9,6 +9,7 @@ function makePR(overrides: Partial<PullRequest> = {}): PullRequest {
     issueId: 'issue-1',
     title: overrides.title || `PR (${overrides.status || 'open'})`,
     description: '',
+    submitterNotes: '',
     sourceBranch: 'feature',
     targetBranch: 'main',
     repoPath: '/repo',

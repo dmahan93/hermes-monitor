@@ -31,6 +31,7 @@ function insertTestPR(prManager: PRManager, overrides: Partial<PullRequest> = {}
     issueId: 'test-issue-1',
     title: 'Test PR',
     description: 'A test pull request',
+    submitterNotes: '',
     sourceBranch: 'issue/test-branch',
     targetBranch: 'master',
     repoPath: '/tmp/test-repo',
@@ -544,5 +545,79 @@ describe('PR API — Screenshots', () => {
     const filenames = res.body.screenshots.map((s: any) => s.filename);
     expect(filenames).toContain('screenshot.png');
     expect(filenames).toContain('photo.jpg');
+  });
+});
+
+describe('PR API — Enriched Screenshot Data', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let issueManager: IssueManager;
+  let server: Server;
+  let screenshotDir: string;
+
+  beforeEach(async () => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+
+    const app = express();
+    app.use('/api', createPRApiRouter(prManager, issueManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    terminalManager.killAll();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (screenshotDir) {
+      try { rmSync(screenshotDir, { recursive: true, force: true }); } catch {}
+    }
+  });
+
+  it('GET /api/prs includes screenshotCount for each PR', async () => {
+    const issueId = 'issue-enriched-list';
+    insertTestPR(prManager, { id: 'pr-enriched-1', issueId });
+
+    screenshotDir = join(config.screenshotBase, issueId);
+    mkdirSync(screenshotDir, { recursive: true });
+    writeFileSync(join(screenshotDir, 'shot1.png'), 'fake');
+    writeFileSync(join(screenshotDir, 'shot2.png'), 'fake');
+
+    const res = await request(server, 'GET', '/api/prs');
+    expect(res.status).toBe(200);
+    const pr = res.body.find((p: any) => p.id === 'pr-enriched-1');
+    expect(pr).toBeDefined();
+    expect(pr.screenshotCount).toBe(2);
+    expect(pr.screenshots).toHaveLength(2);
+    expect(pr.screenshots[0].url).toContain(`/screenshots/${issueId}/`);
+  });
+
+  it('GET /api/prs includes screenshotCount=0 when no screenshots', async () => {
+    insertTestPR(prManager, { id: 'pr-no-enriched', issueId: 'issue-no-enriched' });
+
+    const res = await request(server, 'GET', '/api/prs');
+    expect(res.status).toBe(200);
+    const pr = res.body.find((p: any) => p.id === 'pr-no-enriched');
+    expect(pr).toBeDefined();
+    expect(pr.screenshotCount).toBe(0);
+    expect(pr.screenshots).toEqual([]);
+  });
+
+  it('GET /api/prs/:id includes screenshots array', async () => {
+    const issueId = 'issue-enriched-detail';
+    insertTestPR(prManager, { id: 'pr-enriched-detail', issueId });
+
+    screenshotDir = join(config.screenshotBase, issueId);
+    mkdirSync(screenshotDir, { recursive: true });
+    writeFileSync(join(screenshotDir, 'before-abc12345.png'), 'fake');
+
+    const res = await request(server, 'GET', '/api/prs/pr-enriched-detail');
+    expect(res.status).toBe(200);
+    expect(res.body.screenshots).toHaveLength(1);
+    expect(res.body.screenshots[0].filename).toBe('before-abc12345.png');
+    expect(res.body.screenshots[0].url).toContain('/screenshots/issue-enriched-detail/before-abc12345.png');
+    expect(res.body.screenshotCount).toBe(1);
   });
 });

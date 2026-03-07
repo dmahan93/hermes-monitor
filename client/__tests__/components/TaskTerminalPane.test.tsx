@@ -74,4 +74,43 @@ describe('TaskTerminalPane', () => {
     );
     expect(container.innerHTML).toBe('');
   });
+
+  it('does not show alert when not awaiting input', () => {
+    render(
+      <TaskTerminalPane
+        issue={mockIssue}
+        send={() => {}}
+        subscribe={() => () => {}}
+        onMinimize={() => {}}
+        awaitingInput={false}
+      />
+    );
+    expect(screen.queryByText('⏳ INPUT')).not.toBeInTheDocument();
+  });
+
+  it('shows alert badge when awaiting input', () => {
+    render(
+      <TaskTerminalPane
+        issue={mockIssue}
+        send={() => {}}
+        subscribe={() => () => {}}
+        onMinimize={() => {}}
+        awaitingInput={true}
+      />
+    );
+    expect(screen.getByText('⏳ INPUT')).toBeInTheDocument();
+  });
+
+  it('adds awaiting class when awaiting input', () => {
+    const { container } = render(
+      <TaskTerminalPane
+        issue={mockIssue}
+        send={() => {}}
+        subscribe={() => () => {}}
+        onMinimize={() => {}}
+        awaitingInput={true}
+      />
+    );
+    expect(container.querySelector('.terminal-pane-awaiting')).not.toBeNull();
+  });
 });

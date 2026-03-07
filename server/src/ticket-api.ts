@@ -197,6 +197,7 @@ export function createTicketApiRouter(
   });
 
   // Agent calls this when done — kills terminal, moves issue to review
+  // Accepts optional { details: "..." } in the request body for submitter notes
   router.post('/ticket/:id/review', (req, res) => {
     const issue = issueManager.get(req.params.id);
     if (!issue) {
@@ -207,6 +208,12 @@ export function createTicketApiRouter(
     if (issue.status !== 'in_progress') {
       res.status(400).json({ error: `Issue is ${issue.status}, not in_progress` });
       return;
+    }
+
+    // Capture submitter notes/details for the reviewer
+    const details = req.body?.details;
+    if (details && typeof details === 'string') {
+      issue.submitterNotes = details;
     }
 
     // Check screenshot requirement for UI changes
@@ -268,6 +275,7 @@ export function createTicketApiRouter(
       ok: true,
       status: 'review',
       message: 'Issue moved to review. PR created and adversarial reviewer spawned.',
+      submitterNotes: issue.submitterNotes || null,
     });
   });
 

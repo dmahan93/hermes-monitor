@@ -64,6 +64,12 @@ export class Store {
         value TEXT NOT NULL
       );
     `);
+
+    // Migration: add submitterNotes column to pull_requests if it doesn't exist
+    const prColumns = this.db.prepare("PRAGMA table_info(pull_requests)").all() as any[];
+    if (!prColumns.some((c: any) => c.name === 'submitterNotes')) {
+      this.db.exec("ALTER TABLE pull_requests ADD COLUMN submitterNotes TEXT NOT NULL DEFAULT ''");
+    }
   }
 
   // ── Issues ──
@@ -115,9 +121,10 @@ export class Store {
   savePR(pr: PullRequest): void {
     this.db.prepare(`
       INSERT OR REPLACE INTO pull_requests
-      (id, issueId, title, description, sourceBranch, targetBranch, repoPath, status, diff, changedFiles, verdict, reviewerTerminalId, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(pr.id, pr.issueId, pr.title, pr.description, pr.sourceBranch, pr.targetBranch,
+      (id, issueId, title, description, submitterNotes, sourceBranch, targetBranch, repoPath, status, diff, changedFiles, verdict, reviewerTerminalId, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(pr.id, pr.issueId, pr.title, pr.description, pr.submitterNotes,
+           pr.sourceBranch, pr.targetBranch,
            pr.repoPath, pr.status, pr.diff, JSON.stringify(pr.changedFiles), pr.verdict,
            pr.reviewerTerminalId, pr.createdAt, pr.updatedAt);
 
@@ -161,6 +168,7 @@ export class Store {
       issueId: r.issueId,
       title: r.title,
       description: r.description,
+      submitterNotes: r.submitterNotes || '',
       sourceBranch: r.sourceBranch,
       targetBranch: r.targetBranch,
       repoPath: r.repoPath,

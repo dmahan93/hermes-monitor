@@ -15,6 +15,7 @@ export interface Issue {
   command: string;       // resolved command (from preset or custom)
   terminalId: string | null;
   branch: string | null;
+  submitterNotes?: string;  // transient: notes from agent when submitting for review
   createdAt: number;
   updatedAt: number;
 }
@@ -222,6 +223,7 @@ export class IssueManager {
           issueId: issue.id,
           title: issue.title,
           description: issue.description,
+          submitterNotes: issue.submitterNotes,
         });
         if (pr) {
           // Spawn adversarial reviewer
@@ -229,8 +231,8 @@ export class IssueManager {
         }
       } else {
         // PR already exists (e.g. review → in_progress → review cycle)
-        // Relaunch the review to pick up new changes
-        this.prManager.relaunchReview(existingPr.id);
+        // Relaunch the review to pick up new changes + updated submitter notes
+        this.prManager.relaunchReview(existingPr.id, issue.submitterNotes);
       }
     }
 

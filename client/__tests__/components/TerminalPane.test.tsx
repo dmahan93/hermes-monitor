@@ -82,4 +82,56 @@ describe('TerminalPane', () => {
     );
     expect(screen.getByText('⠿')).toBeInTheDocument();
   });
+
+  it('does not show alert when not awaiting input', () => {
+    render(
+      <TerminalPane
+        terminal={mockTerminal}
+        send={() => {}}
+        subscribe={() => () => {}}
+        onClose={() => {}}
+        awaitingInput={false}
+      />
+    );
+    expect(screen.queryByText('⏳ INPUT')).not.toBeInTheDocument();
+  });
+
+  it('shows alert badge when awaiting input', () => {
+    render(
+      <TerminalPane
+        terminal={mockTerminal}
+        send={() => {}}
+        subscribe={() => () => {}}
+        onClose={() => {}}
+        awaitingInput={true}
+      />
+    );
+    expect(screen.getByText('⏳ INPUT')).toBeInTheDocument();
+  });
+
+  it('adds awaiting class to pane when awaiting input', () => {
+    const { container } = render(
+      <TerminalPane
+        terminal={mockTerminal}
+        send={() => {}}
+        subscribe={() => () => {}}
+        onClose={() => {}}
+        awaitingInput={true}
+      />
+    );
+    expect(container.querySelector('.terminal-pane-awaiting')).not.toBeNull();
+  });
+
+  it('does not add awaiting class when not awaiting input', () => {
+    const { container } = render(
+      <TerminalPane
+        terminal={mockTerminal}
+        send={() => {}}
+        subscribe={() => () => {}}
+        onClose={() => {}}
+        awaitingInput={false}
+      />
+    );
+    expect(container.querySelector('.terminal-pane-awaiting')).toBeNull();
+  });
 });

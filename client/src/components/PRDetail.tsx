@@ -1,12 +1,7 @@
 import { useState, useEffect } from 'react';
 import { DiffViewer } from './DiffViewer';
 import { MarkdownContent, ImageWithZoom } from './MarkdownContent';
-import type { PullRequest, IssueStatus } from '../types';
-
-interface Screenshot {
-  filename: string;
-  url: string;
-}
+import type { PullRequest, IssueStatus, Screenshot } from '../types';
 
 interface PRDetailProps {
   pr: PullRequest;
@@ -35,11 +30,17 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
     checking: true, canMerge: false, hasConflicts: false,
   });
   const [mergeError, setMergeError] = useState<string | null>(null);
-  const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
+  const [screenshots, setScreenshots] = useState<Screenshot[]>(pr.screenshots || []);
   const status = STATUS_LABELS[pr.status] || STATUS_LABELS.open;
 
-  // Fetch screenshots for this PR
+  // Use screenshots from PR data if available, otherwise fetch them.
+  // Depend on screenshotCount (stable scalar) instead of the screenshots array
+  // reference, which changes identity on every parent re-render.
   useEffect(() => {
+    if (pr.screenshots && pr.screenshots.length > 0) {
+      setScreenshots(pr.screenshots);
+      return;
+    }
     let cancelled = false;
     fetch(`/api/prs/${pr.id}/screenshots`)
       .then((res) => {
@@ -53,7 +54,7 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
         if (!cancelled) setScreenshots([]);
       });
     return () => { cancelled = true; };
-  }, [pr.id]);
+  }, [pr.id, pr.screenshotCount]);
 
   // Check merge status on open
   useEffect(() => {
@@ -94,6 +95,15 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
           <MarkdownContent text={pr.description} className="pr-detail-desc" />
         )}
       </div>
+
+      {pr.submitterNotes && (
+        <div className="pr-section">
+          <h3 className="pr-section-title">SUBMITTER NOTES</h3>
+          <div className="pr-submitter-notes">
+            <MarkdownContent text={pr.submitterNotes} />
+          </div>
+        </div>
+      )}
 
       {screenshots.length > 0 && (
         <div className="pr-section">

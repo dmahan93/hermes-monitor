@@ -55,11 +55,17 @@ export interface PRComment {
   createdAt: number;
 }
 
+export interface Screenshot {
+  filename: string;
+  url: string;
+}
+
 export interface PullRequest {
   id: string;
   issueId: string;
   title: string;
   description: string;
+  submitterNotes: string;
   sourceBranch: string;
   targetBranch: string;
   repoPath: string;
@@ -69,6 +75,8 @@ export interface PullRequest {
   verdict: string;
   reviewerTerminalId: string | null;
   comments: PRComment[];
+  screenshots?: Screenshot[];
+  screenshotCount?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -91,6 +99,7 @@ export type ServerMessage =
   | { type: 'exit'; terminalId: string; exitCode: number }
   | { type: 'terminal:removed'; terminalId: string }
   | { type: 'error'; terminalId: string; message: string }
+  | { type: 'terminal:awaitingInput'; terminalId: string; awaitingInput: boolean }
   | { type: 'issue:created'; issue: Issue }
   | { type: 'issue:updated'; issue: Issue }
   | { type: 'issue:deleted'; issueId: string }

@@ -6,6 +6,7 @@ import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
 import type { Store } from './store.js';
 import { config } from './config.js';
+import { buildScreenshotSection } from './screenshot-utils.js';
 
 export type PRStatus = 'open' | 'reviewing' | 'approved' | 'changes_requested' | 'merged' | 'closed';
 export type Verdict = 'pending' | 'approved' | 'changes_requested';
@@ -25,6 +26,7 @@ export interface PullRequest {
   issueId: string;
   title: string;
   description: string;
+  submitterNotes: string;
   sourceBranch: string;
   targetBranch: string;
   repoPath: string;
@@ -42,6 +44,7 @@ export interface CreatePROptions {
   issueId: string;
   title: string;
   description?: string;
+  submitterNotes?: string;
 }
 
 export type PREventCallback = (event: string, pr: PullRequest) => void;
@@ -135,6 +138,7 @@ export class PRManager {
       issueId: options.issueId,
       title: options.title,
       description: options.description || '',
+      submitterNotes: options.submitterNotes || '',
       sourceBranch: worktree.branch,
       targetBranch: config.targetBranch,
       repoPath: config.repoPath,
@@ -164,7 +168,12 @@ export class PRManager {
     // Write context for the reviewer
     const reviewDir = join(config.reviewBase, prId);
     mkdirSync(reviewDir, { recursive: true });
-    writeFileSync(join(reviewDir, 'context.md'), [
+
+    // Build screenshot section for the review context
+    const port = process.env.PORT || '4000';
+    const screenshotSection = buildScreenshotSection(pr.issueId, pr.changedFiles, port);
+
+    const contextSections = [
       `# PR Review: ${pr.title}`,
       '',
       `**Description:** ${pr.description}`,
@@ -172,13 +181,21 @@ export class PRManager {
       `**Target Branch:** ${pr.targetBranch}`,
       `**Repo:** ${pr.repoPath}`,
       `**Changed files:** ${pr.changedFiles.join(', ') || 'none detected'}`,
+    ];
+
+    if (pr.submitterNotes) {
+      contextSections.push(
+        '',
+        '## Submitter Notes',
+        pr.submitterNotes,
+      );
+    }
+
+    contextSections.push(
       '',
       '## How to view the diff',
       `Run: git diff ${pr.targetBranch}...${pr.sourceBranch}`,
       `Or:  git log ${pr.targetBranch}..${pr.sourceBranch} --oneline`,
-      '',
-      '## How to view the diff',
-      `Run: git diff ${pr.targetBranch}...${pr.sourceBranch}`,
       '',
       '## Instructions',
       `Compare branch ${pr.sourceBranch} against ${pr.targetBranch} using git diff.`,
@@ -189,17 +206,14 @@ export class PRManager {
       '- Code style and readability issues',
       '- Missing tests or documentation',
       '',
-      '## Screenshots for UI Changes',
-      'If the PR modifies UI components (.tsx, .css, .html files), check that:',
-      '- The PR description includes before/after screenshots showing the visual changes',
-      '- Screenshots use markdown image syntax: ![description](url)',
-      '- If screenshots are missing for UI changes, flag this in your review',
-      '  and request them with VERDICT: CHANGES_REQUESTED',
+      ...screenshotSection,
       '',
       'Write your complete review to review.md in this directory.',
       'Start with a verdict line: VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED',
       'Then provide detailed feedback.',
-    ].join('\n'));
+    );
+
+    writeFileSync(join(reviewDir, 'context.md'), contextSections.join('\n'));
 
     // Spawn reviewer — give it the repo, branch info, and let it git diff itself
     const reviewCommand = `hermes chat -q 'You are an adversarial code reviewer. If a summarization step occurs, always continue working afterward — do not treat it as a stopping point. You are reviewing branch ${pr.sourceBranch} against ${pr.targetBranch} in repo ${pr.repoPath}. Run git diff ${pr.targetBranch}...${pr.sourceBranch} in the repo to see the changes. Read ${reviewDir}/context.md for context. Write a thorough critical review to ${reviewDir}/review.md. Start with VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED. Be rigorous. Do not stop until the review file is written.'`;
@@ -316,7 +330,7 @@ export class PRManager {
    * Relaunch a review — kill existing reviewer if any, re-spawn a new one.
    * Useful when the reviewer terminal crashed or the review was lost.
    */
-  relaunchReview(prId: string): PullRequest | null {
+  relaunchReview(prId: string, submitterNotes?: string): PullRequest | null {
     const pr = this.prs.get(prId);
     if (!pr) return null;
 
@@ -331,6 +345,11 @@ export class PRManager {
     // Delete stale review.md so a crashed re-reviewer doesn't pick up the old verdict
     const reviewPath = join(config.reviewBase, prId, 'review.md');
     try { unlinkSync(reviewPath); } catch {}
+
+    // Update submitter notes if provided (e.g. agent resubmitting with new details)
+    if (submitterNotes !== undefined) {
+      pr.submitterNotes = submitterNotes;
+    }
 
     // Reset status to open so spawnReviewer can set it to reviewing
     pr.status = 'open';
