@@ -45,7 +45,7 @@ Server: 6.5/10 | Client: 6.5/10 | Agent-DX: 5.2/10
 - Types duplicated between server/client (Issue, PR, etc.)
 - No README.md or API reference document
 - `ticket-api.ts` naming confuses agents (should be `agent-api.ts`)
-- `api.ts` breaks the `*-api.ts` naming convention
+- ~~`api.ts` breaks the `*-api.ts` naming convention~~ ✅ Fixed (renamed to `terminal-api.ts`)
 
 ### P2 — Type Safety & DX
 - `any` types throughout (WS send, error catches, broadcast, store)
@@ -73,7 +73,7 @@ Goal: Make the codebase navigable for AI agents in under 2 minutes.
 2. **Create docs/API.md** — complete API reference for ALL endpoints 
    (currently 15+ undocumented since PLAN.md went stale)
 3. **Rename `ticket-api.ts` → `agent-api.ts`** and routes `/ticket/` → `/agent/`
-4. **Rename `api.ts` → `terminal-api.ts`** to match `*-api.ts` convention
+4. ~~**Rename `api.ts` → `terminal-api.ts`** to match `*-api.ts` convention~~ ✅ Done
 5. **Delete HELLO.md** (test artifact)
 6. **Clean up .playwright-cli/** (80+ files cluttering searches)
 

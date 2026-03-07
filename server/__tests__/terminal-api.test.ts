@@ -3,7 +3,7 @@ import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
 import { TerminalManager } from '../src/terminal-manager.js';
-import { createApiRouter } from '../src/api.js';
+import { createApiRouter } from '../src/terminal-api.js';
 
 // Simple fetch-based test helper
 async function request(server: Server, method: string, path: string, body?: any) {

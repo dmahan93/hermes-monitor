@@ -169,7 +169,7 @@ List available agent presets with install status.
 
 ## Terminals API
 
-Defined in `server/src/api.ts`.
+Defined in `server/src/terminal-api.ts`.
 
 ### GET /api/terminals
 
