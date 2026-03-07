@@ -148,4 +148,78 @@ describe('Issue API', () => {
     const del = await request(server, 'DELETE', '/api/issues/nope');
     expect(del.status).toBe(404);
   });
+
+  // ── Subtask API endpoints ──
+
+  it('POST /api/issues/:id/subtasks creates a subtask', async () => {
+    const parent = await request(server, 'POST', '/api/issues', { title: 'Parent' });
+    const res = await request(server, 'POST', `/api/issues/${parent.body.id}/subtasks`, {
+      title: 'Subtask 1',
+      description: 'Sub desc',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.title).toBe('Subtask 1');
+    expect(res.body.description).toBe('Sub desc');
+    expect(res.body.parentId).toBe(parent.body.id);
+    expect(res.body.status).toBe('backlog');
+  });
+
+  it('GET /api/issues/:id/subtasks lists subtasks', async () => {
+    const parent = await request(server, 'POST', '/api/issues', { title: 'Parent' });
+    await request(server, 'POST', `/api/issues/${parent.body.id}/subtasks`, { title: 'Sub A' });
+    await request(server, 'POST', `/api/issues/${parent.body.id}/subtasks`, { title: 'Sub B' });
+    const res = await request(server, 'GET', `/api/issues/${parent.body.id}/subtasks`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body.map((s: any) => s.title).sort()).toEqual(['Sub A', 'Sub B']);
+  });
+
+  it('POST /api/issues/:id/subtasks requires title', async () => {
+    const parent = await request(server, 'POST', '/api/issues', { title: 'Parent' });
+    const res = await request(server, 'POST', `/api/issues/${parent.body.id}/subtasks`, {});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/issues/:id/subtasks returns 404 for nonexistent parent', async () => {
+    const res = await request(server, 'POST', '/api/issues/nonexistent/subtasks', { title: 'Orphan' });
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /api/issues/:id/subtasks returns 404 for nonexistent parent', async () => {
+    const res = await request(server, 'GET', '/api/issues/nonexistent/subtasks');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/issues with parentId creates a subtask via main endpoint', async () => {
+    const parent = await request(server, 'POST', '/api/issues', { title: 'Parent' });
+    const res = await request(server, 'POST', '/api/issues', {
+      title: 'Sub via main',
+      parentId: parent.body.id,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.parentId).toBe(parent.body.id);
+  });
+
+  it('subtasks appear in full issue list with parentId set', async () => {
+    const parent = await request(server, 'POST', '/api/issues', { title: 'Parent' });
+    await request(server, 'POST', `/api/issues/${parent.body.id}/subtasks`, { title: 'Sub' });
+    const res = await request(server, 'GET', '/api/issues');
+    expect(res.body).toHaveLength(2);
+    const sub = res.body.find((i: any) => i.title === 'Sub');
+    expect(sub.parentId).toBe(parent.body.id);
+    const par = res.body.find((i: any) => i.title === 'Parent');
+    expect(par.parentId).toBeNull();
+  });
+
+  it('deleting parent cascades to subtasks via API', async () => {
+    const parent = await request(server, 'POST', '/api/issues', { title: 'Parent' });
+    await request(server, 'POST', `/api/issues/${parent.body.id}/subtasks`, { title: 'Sub 1' });
+    await request(server, 'POST', `/api/issues/${parent.body.id}/subtasks`, { title: 'Sub 2' });
+    const before = await request(server, 'GET', '/api/issues');
+    expect(before.body).toHaveLength(3);
+
+    await request(server, 'DELETE', `/api/issues/${parent.body.id}`);
+    const after = await request(server, 'GET', '/api/issues');
+    expect(after.body).toHaveLength(0);
+  });
 });

@@ -6,12 +6,17 @@ interface IssueDetailProps {
   agents: AgentPreset[];
   pr?: PullRequest;
   initialEditing?: boolean;
+  subtasks?: Issue[];
+  parentIssue?: Issue;
   onClose: () => void;
   onUpdate: (id: string, updates: Partial<Issue>) => void;
   onStatusChange: (id: string, status: IssueStatus) => void;
   onDelete: (id: string) => void;
   onTerminalClick?: (issueId: string) => void;
   onPRClick?: (prId: string) => void;
+  onCreateSubtask?: (parentId: string, title: string, description?: string) => void;
+  onSubtaskClick?: (issueId: string) => void;
+  onParentClick?: (issueId: string) => void;
 }
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -23,7 +28,9 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
 };
 
 export function IssueDetail({
-  issue, agents, pr, initialEditing, onClose, onUpdate, onStatusChange, onDelete, onTerminalClick, onPRClick,
+  issue, agents, pr, initialEditing, subtasks, parentIssue,
+  onClose, onUpdate, onStatusChange, onDelete, onTerminalClick, onPRClick,
+  onCreateSubtask, onSubtaskClick, onParentClick,
 }: IssueDetailProps) {
   // initialEditing is only read at mount. This works because App.tsx renders
   // <IssueDetail key={`${detailIssueId}-${detailEditing}`}>, forcing a full
@@ -31,8 +38,19 @@ export function IssueDetail({
   const [editing, setEditing] = useState(initialEditing ?? false);
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(issue.description);
+  const [showSubtaskForm, setShowSubtaskForm] = useState(false);
+  const [subtaskTitle, setSubtaskTitle] = useState('');
+  const [subtaskDesc, setSubtaskDesc] = useState('');
   const agent = agents.find((a) => a.id === issue.agent);
   const status = STATUS_LABELS[issue.status] || STATUS_LABELS.todo;
+
+  const handleAddSubtask = () => {
+    if (!subtaskTitle.trim() || !onCreateSubtask) return;
+    onCreateSubtask(issue.id, subtaskTitle.trim(), subtaskDesc.trim() || undefined);
+    setSubtaskTitle('');
+    setSubtaskDesc('');
+    setShowSubtaskForm(false);
+  };
 
   const handleSave = () => {
     onUpdate(issue.id, { title: title.trim(), description: description.trim() });
@@ -93,6 +111,17 @@ export function IssueDetail({
                 {agent ? `${agent.icon} ${agent.name}` : issue.agent}
               </span>
             </div>
+            {parentIssue && (
+              <div className="issue-detail-meta-row">
+                <span className="issue-detail-label">parent</span>
+                <button
+                  className="issue-detail-value issue-detail-parent-link"
+                  onClick={() => onParentClick?.(parentIssue.id)}
+                >
+                  ↑ {parentIssue.title}
+                </button>
+              </div>
+            )}
             {issue.branch && (
               <div className="issue-detail-meta-row">
                 <span className="issue-detail-label">branch</span>
@@ -130,6 +159,70 @@ export function IssueDetail({
               <span className="issue-detail-value">{new Date(issue.updatedAt).toLocaleString()}</span>
             </div>
           </div>
+
+          {/* Subtasks section */}
+          {!issue.parentId && (
+            <div className="issue-detail-subtasks">
+              <div className="issue-detail-subtasks-header">
+                <h3 className="issue-detail-section-title">
+                  SUBTASKS {subtasks && subtasks.length > 0 && `(${subtasks.filter(s => s.status === 'done').length}/${subtasks.length})`}
+                </h3>
+                {onCreateSubtask && !showSubtaskForm && (
+                  <button
+                    className="issue-detail-add-subtask-btn"
+                    onClick={() => setShowSubtaskForm(true)}
+                  >
+                    [+ ADD SUBTASK]
+                  </button>
+                )}
+              </div>
+              {showSubtaskForm && (
+                <div className="issue-detail-subtask-form">
+                  <input
+                    className="issue-detail-subtask-title-input"
+                    type="text"
+                    value={subtaskTitle}
+                    onChange={(e) => setSubtaskTitle(e.target.value)}
+                    placeholder="Subtask title..."
+                    autoFocus
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubtask(); if (e.key === 'Escape') setShowSubtaskForm(false); }}
+                  />
+                  <input
+                    className="issue-detail-subtask-desc-input"
+                    type="text"
+                    value={subtaskDesc}
+                    onChange={(e) => setSubtaskDesc(e.target.value)}
+                    placeholder="Description (optional)"
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubtask(); if (e.key === 'Escape') setShowSubtaskForm(false); }}
+                  />
+                  <div className="issue-detail-subtask-form-actions">
+                    <button className="modal-btn modal-btn-cancel" onClick={() => setShowSubtaskForm(false)}>[CANCEL]</button>
+                    <button className="modal-btn modal-btn-submit" onClick={handleAddSubtask} disabled={!subtaskTitle.trim()}>[ADD]</button>
+                  </div>
+                </div>
+              )}
+              {subtasks && subtasks.length > 0 ? (
+                <ul className="issue-detail-subtask-list">
+                  {subtasks.map((sub) => {
+                    const subStatus = STATUS_LABELS[sub.status] || STATUS_LABELS.todo;
+                    return (
+                      <li key={sub.id} className="issue-detail-subtask-item">
+                        <span className={`issue-detail-subtask-status ${subStatus.className}`}>{subStatus.label}</span>
+                        <button
+                          className="issue-detail-subtask-title"
+                          onClick={() => onSubtaskClick?.(sub.id)}
+                        >
+                          {sub.title}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : !showSubtaskForm && (
+                <p className="issue-detail-no-subtasks">No subtasks yet.</p>
+              )}
+            </div>
+          )}
 
           {/* Previous reviews */}
           {pr && pr.comments.length > 0 && (

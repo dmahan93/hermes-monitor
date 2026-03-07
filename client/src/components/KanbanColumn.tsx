@@ -1,5 +1,5 @@
 import { Droppable } from '@hello-pangea/dnd';
-import { IssueCard } from './IssueCard';
+import { IssueCard, type SubtaskInfo } from './IssueCard';
 import type { Issue, IssueStatus, AgentPreset } from '../types';
 
 interface KanbanColumnProps {
@@ -7,13 +7,35 @@ interface KanbanColumnProps {
   label: string;
   issues: Issue[];
   agents: AgentPreset[];
+  allIssues: Issue[];
   onDelete: (id: string) => void;
   onEdit?: (issueId: string) => void;
   onTerminalClick?: (issueId: string) => void;
   onIssueClick?: (issueId: string) => void;
 }
 
-export function KanbanColumn({ columnId, label, issues, agents, onDelete, onEdit, onTerminalClick, onIssueClick }: KanbanColumnProps) {
+export function KanbanColumn({ columnId, label, issues, agents, allIssues, onDelete, onEdit, onTerminalClick, onIssueClick }: KanbanColumnProps) {
+  // Build lookup maps for parent titles and subtask info
+  const parentTitleMap = new Map<string, string>();
+  const subtaskInfoMap = new Map<string, SubtaskInfo>();
+
+  for (const issue of allIssues) {
+    if (issue.parentId) {
+      const parent = allIssues.find((i) => i.id === issue.parentId);
+      if (parent) parentTitleMap.set(issue.id, parent.title);
+    }
+  }
+
+  for (const issue of issues) {
+    const subtasks = allIssues.filter((i) => i.parentId === issue.id);
+    if (subtasks.length > 0) {
+      subtaskInfoMap.set(issue.id, {
+        total: subtasks.length,
+        done: subtasks.filter((s) => s.status === 'done').length,
+      });
+    }
+  }
+
   return (
     <div className="kanban-column">
       <div className="kanban-column-header">
@@ -37,6 +59,8 @@ export function KanbanColumn({ columnId, label, issues, agents, onDelete, onEdit
                 onEdit={onEdit}
                 onTerminalClick={onTerminalClick}
                 onClick={onIssueClick}
+                parentTitle={parentTitleMap.get(issue.id)}
+                subtaskInfo={subtaskInfoMap.get(issue.id)}
               />
             ))}
             {provided.placeholder}

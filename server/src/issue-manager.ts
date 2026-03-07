@@ -15,6 +15,7 @@ export interface Issue {
   command: string;       // resolved command (from preset or custom)
   terminalId: string | null;
   branch: string | null;
+  parentId: string | null;  // if set, this issue is a subtask of the parent
   submitterNotes?: string;  // transient: notes from agent when submitting for review
   createdAt: number;
   updatedAt: number;
@@ -26,6 +27,7 @@ export interface CreateIssueOptions {
   agent?: string;        // agent preset id, defaults to 'hermes'
   command?: string;      // override command (used with 'custom' agent)
   branch?: string;
+  parentId?: string;     // create as subtask of this issue
 }
 
 export interface UpdateIssueOptions {
@@ -107,6 +109,11 @@ export class IssueManager {
   }
 
   create(options: CreateIssueOptions): Issue {
+    // Validate parent exists if parentId is specified
+    if (options.parentId && !this.issues.has(options.parentId)) {
+      throw new Error(`Parent issue ${options.parentId} not found`);
+    }
+
     const id = uuidv4();
     const now = Date.now();
     const agentId = options.agent || 'hermes';
@@ -122,6 +129,7 @@ export class IssueManager {
       command,
       terminalId: null,
       branch: options.branch || null,
+      parentId: options.parentId || null,
       createdAt: now,
       updatedAt: now,
     };
@@ -137,6 +145,18 @@ export class IssueManager {
 
   get(id: string): Issue | undefined {
     return this.issues.get(id);
+  }
+
+  /** Get all direct subtasks of an issue */
+  getSubtasks(parentId: string): Issue[] {
+    return Array.from(this.issues.values()).filter((i) => i.parentId === parentId);
+  }
+
+  /** Get the parent issue of a subtask */
+  getParent(id: string): Issue | undefined {
+    const issue = this.issues.get(id);
+    if (!issue?.parentId) return undefined;
+    return this.issues.get(issue.parentId);
   }
 
   update(id: string, options: UpdateIssueOptions): Issue | undefined {
@@ -292,6 +312,12 @@ export class IssueManager {
   delete(id: string): boolean {
     const issue = this.issues.get(id);
     if (!issue) return false;
+
+    // Cascade delete subtasks first
+    const subtasks = this.getSubtasks(id);
+    for (const sub of subtasks) {
+      this.delete(sub.id);
+    }
 
     // Kill associated terminal if any
     if (issue.terminalId) {

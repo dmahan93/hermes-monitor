@@ -133,5 +133,31 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
     }
   }, []);
 
-  return { issues, loading, createIssue, updateIssue, changeStatus, deleteIssue, startPlanning, stopPlanning };
+  const createSubtask = useCallback(async (parentId: string, title: string, description?: string, agent?: string, command?: string, branch?: string) => {
+    try {
+      const res = await fetch(`${API}/issues/${parentId}/subtasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, agent, command, branch }),
+      });
+      if (!res.ok) return null;
+      const issue = await res.json();
+      // Optimistically add the subtask immediately (WS event will deduplicate)
+      setIssues((prev) => {
+        if (prev.some((i) => i.id === issue.id)) return prev;
+        return [...prev, issue];
+      });
+      return issue;
+    } catch (err) {
+      console.error('Failed to create subtask:', err);
+      return null;
+    }
+  }, []);
+
+  /** Get subtasks of a given parent issue from local state */
+  const getSubtasks = useCallback((parentId: string) => {
+    return issues.filter((i) => i.parentId === parentId);
+  }, [issues]);
+
+  return { issues, loading, createIssue, updateIssue, changeStatus, deleteIssue, startPlanning, stopPlanning, createSubtask, getSubtasks };
 }

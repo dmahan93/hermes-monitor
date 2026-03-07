@@ -68,6 +68,7 @@ export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onD
               label={col.label}
               issues={issuesByColumn[col.id]}
               agents={agents}
+              allIssues={issues}
               onDelete={onDeleteIssue}
               onEdit={onEditIssue}
               onTerminalClick={onTerminalClick}

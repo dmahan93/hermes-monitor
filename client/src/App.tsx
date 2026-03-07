@@ -29,7 +29,7 @@ function getWsUrl(): string {
 export default function App() {
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals(subscribe);
-  const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning } = useIssues(subscribe);
+  const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning, createSubtask, getSubtasks } = useIssues(subscribe);
   const { prs = [], addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe);
   const agents = useAgents();
   const gitGraph = useGitGraph();
@@ -124,6 +124,7 @@ export default function App() {
       command: '',
       terminalId: pr.reviewerTerminalId,
       branch: pr.sourceBranch,
+      parentId: null,
       createdAt: pr.createdAt,
       updatedAt: pr.updatedAt,
     };
@@ -448,12 +449,17 @@ export default function App() {
           agents={agents}
           pr={detailPR}
           initialEditing={detailEditing}
+          subtasks={getSubtasks(detailIssue.id)}
+          parentIssue={detailIssue.parentId ? issues.find((i) => i.id === detailIssue.parentId) : undefined}
           onClose={closeDetail}
           onUpdate={(id, updates) => updateIssue(id, updates)}
           onStatusChange={(id, status) => { handleStatusChange(id, status); closeDetail(); }}
           onDelete={(id) => { handleDeleteIssue(id); closeDetail(); }}
           onTerminalClick={(issueId) => { closeDetail(); handleTerminalClick(issueId); }}
           onPRClick={() => { closeDetail(); setView('prs'); }}
+          onCreateSubtask={(parentId, title, desc) => createSubtask(parentId, title, desc)}
+          onSubtaskClick={(issueId) => { setDetailIssueId(issueId); setDetailEditing(false); }}
+          onParentClick={(issueId) => { setDetailIssueId(issueId); setDetailEditing(false); }}
         />
       )}
     </div>
