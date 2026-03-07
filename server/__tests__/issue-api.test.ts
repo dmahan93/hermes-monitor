@@ -42,7 +42,7 @@ describe('Issue API', () => {
     const res = await request(server, 'POST', '/api/issues', { title: 'Test issue' });
     expect(res.status).toBe(201);
     expect(res.body.title).toBe('Test issue');
-    expect(res.body.status).toBe('todo');
+    expect(res.body.status).toBe('backlog');
     expect(res.body.id).toBeTruthy();
   });
 
@@ -110,6 +110,32 @@ describe('Issue API', () => {
     expect(res.body.ok).toBe(true);
     const list = await request(server, 'GET', '/api/issues');
     expect(list.body).toHaveLength(0);
+  });
+
+  it('POST /api/issues/:id/plan starts planning terminal', async () => {
+    const created = await request(server, 'POST', '/api/issues', { title: 'Plan test' });
+    expect(created.body.status).toBe('backlog');
+    const res = await request(server, 'POST', `/api/issues/${created.body.id}/plan`);
+    expect(res.status).toBe(200);
+    expect(res.body.terminalId).toBeTruthy();
+    expect(terminalManager.size).toBe(1);
+  });
+
+  it('DELETE /api/issues/:id/plan stops planning terminal', async () => {
+    const created = await request(server, 'POST', '/api/issues', { title: 'Stop plan' });
+    await request(server, 'POST', `/api/issues/${created.body.id}/plan`);
+    expect(terminalManager.size).toBe(1);
+    const res = await request(server, 'DELETE', `/api/issues/${created.body.id}/plan`);
+    expect(res.status).toBe(200);
+    expect(res.body.terminalId).toBeNull();
+    expect(terminalManager.size).toBe(0);
+  });
+
+  it('POST /api/issues/:id/plan rejects non-backlog issue', async () => {
+    const created = await request(server, 'POST', '/api/issues', { title: 'Not backlog' });
+    await request(server, 'PATCH', `/api/issues/${created.body.id}/status`, { status: 'todo' });
+    const res = await request(server, 'POST', `/api/issues/${created.body.id}/plan`);
+    expect(res.status).toBe(400);
   });
 
   it('operations on nonexistent issue return 404', async () => {

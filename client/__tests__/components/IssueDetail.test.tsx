@@ -4,7 +4,7 @@ import { IssueDetail } from '../../src/components/IssueDetail';
 import type { Issue, AgentPreset } from '../../src/types';
 
 const mockAgents: AgentPreset[] = [
-  { id: 'hermes', name: 'Hermes', icon: '⚗', command: '', description: 'Hermes agent' },
+  { id: 'hermes', name: 'Hermes', icon: '⚗', command: '', planningCommand: 'hermes chat', description: 'Hermes agent' },
 ];
 
 const mockIssue: Issue = {

@@ -33,7 +33,7 @@ export function NewIssueModal({ agents, onSubmit, onClose }: NewIssueModalProps)
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <span className="modal-title">NEW ISSUE</span>
+          <span className="modal-title">NEW ISSUE <span className="modal-title-hint">→ backlog</span></span>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <form className="modal-body" onSubmit={handleSubmit}>
@@ -96,6 +96,9 @@ export function NewIssueModal({ agents, onSubmit, onClose }: NewIssueModalProps)
               placeholder="e.g. fix/login-bug"
             />
           </label>
+          <div className="modal-backlog-hint">
+            issue will be added to the backlog for planning before moving to TODO
+          </div>
           <div className="modal-actions">
             <button type="button" className="modal-btn modal-btn-cancel" onClick={onClose}>
               [CANCEL]

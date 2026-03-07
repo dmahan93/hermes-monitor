@@ -4,6 +4,7 @@ import { TerminalGrid } from './components/TerminalGrid';
 import { KanbanBoard } from './components/KanbanBoard';
 import { IssueDetail } from './components/IssueDetail';
 import { TaskTerminalPane } from './components/TaskTerminalPane';
+import { PlanningPane } from './components/PlanningPane';
 import { AgentTerminalList, type AgentListSelection, selectionKey } from './components/AgentTerminalList';
 import { PRList } from './components/PRList';
 import { GitGraph } from './components/GitGraph';
@@ -28,7 +29,7 @@ function getWsUrl(): string {
 export default function App() {
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals(subscribe);
-  const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue } = useIssues(subscribe);
+  const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning } = useIssues(subscribe);
   const { prs = [], addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe);
   const agents = useAgents();
   const gitGraph = useGitGraph();
@@ -45,6 +46,7 @@ export default function App() {
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [termViewSelection, setTermViewSelection] = useState<AgentListSelection | null>(null);
   const [detailIssueId, setDetailIssueId] = useState<string | null>(null);
+  const [planningIssueId, setPlanningIssueId] = useState<string | null>(null);
   const [detailEditing, setDetailEditing] = useState(false);
   const [awaitingInputIds, setAwaitingInputIds] = useState<Set<string>>(new Set());
 
@@ -127,6 +129,12 @@ export default function App() {
     };
   }, [termViewSelection, issues, prs, prStatusToIssueStatus]);
 
+  // Get the planning issue
+  const planningIssue = useMemo(() => {
+    if (!planningIssueId) return null;
+    return issues.find((i) => i.id === planningIssueId) || null;
+  }, [planningIssueId, issues]);
+
   // Auto-close panes if issue loses its terminal
   useEffect(() => {
     if (expandedIssue && !expandedIssue.terminalId) {
@@ -139,6 +147,15 @@ export default function App() {
       setTermViewSelection(null);
     }
   }, [termViewAgentIssue]);
+
+  // Auto-close planning pane if issue is no longer in backlog or was deleted externally
+  useEffect(() => {
+    if (planningIssueId && !planningIssue) {
+      setPlanningIssueId(null);
+    } else if (planningIssue && planningIssue.status !== 'backlog') {
+      setPlanningIssueId(null);
+    }
+  }, [planningIssueId, planningIssue]);
 
   useEffect(() => {
     if (termViewSelection && !termViewAgentIssue) {
@@ -182,9 +199,10 @@ export default function App() {
 
   const handleDeleteIssue = useCallback(async (id: string) => {
     if (expandedIssueId === id) setExpandedIssueId(null);
+    if (planningIssueId === id) setPlanningIssueId(null);
     await deleteIssue(id);
     refetchTerminals();
-  }, [deleteIssue, refetchTerminals, expandedIssueId]);
+  }, [deleteIssue, refetchTerminals, expandedIssueId, planningIssueId]);
 
   const handleTerminalClick = useCallback((issueId: string) => {
     setExpandedIssueId((prev) => prev === issueId ? null : issueId);
@@ -199,6 +217,36 @@ export default function App() {
     setDetailIssueId(issueId);
     setDetailEditing(true);
   }, []);
+
+  const handlePlanClick = useCallback(async (issueId: string) => {
+    const issue = issues.find((i) => i.id === issueId);
+    if (!issue) return;
+    // Auto-start planning terminal if not already running
+    if (!issue.terminalId) {
+      const result = await startPlanning(issueId);
+      if (!result) {
+        console.warn('Failed to start planning terminal for issue', issueId);
+      }
+      refetchTerminals();
+    }
+    setPlanningIssueId(issueId);
+  }, [issues, startPlanning, refetchTerminals]);
+
+  const handlePromote = useCallback(async (issueId: string) => {
+    await changeStatus(issueId, 'todo');
+    setPlanningIssueId(null);
+    refetchTerminals();
+  }, [changeStatus, refetchTerminals]);
+
+  const handleStartPlanning = useCallback(async (issueId: string) => {
+    await startPlanning(issueId);
+    refetchTerminals();
+  }, [startPlanning, refetchTerminals]);
+
+  const handleStopPlanning = useCallback(async (issueId: string) => {
+    await stopPlanning(issueId);
+    refetchTerminals();
+  }, [stopPlanning, refetchTerminals]);
 
   const detailIssue = useMemo(() => {
     if (!detailIssueId) return null;
@@ -224,6 +272,7 @@ export default function App() {
   }
 
   const showTaskTerminal = view === 'kanban' && expandedIssue && expandedIssue.terminalId;
+  const showPlanning = view === 'kanban' && planningIssue && planningIssue.status === 'backlog';
 
   return (
     <div className="app">
@@ -317,31 +366,47 @@ export default function App() {
 
           {/* Kanban view: board + optional split terminal */}
           <div className={`view-panel ${view === 'kanban' ? 'view-active' : 'view-hidden'}`}>
-            <div className={`kanban-split ${showTaskTerminal ? 'split-open' : ''}`}>
-              <div className="kanban-split-left">
-                <KanbanBoard
-                  issues={issues}
-                  agents={agents}
-                  onStatusChange={handleStatusChange}
-                  onCreateIssue={handleCreateIssue}
-                  onDeleteIssue={handleDeleteIssue}
-                  onEditIssue={handleEditIssue}
-                  onTerminalClick={handleTerminalClick}
-                  onIssueClick={handleIssueClick}
-                />
-              </div>
-              {showTaskTerminal && (
-                <div className="kanban-split-right">
-                  <TaskTerminalPane
-                    issue={expandedIssue}
-                    send={send}
-                    subscribe={subscribe}
-                    onMinimize={() => setExpandedIssueId(null)}
-                    awaitingInput={expandedIssue.terminalId ? awaitingInputIds.has(expandedIssue.terminalId) : false}
+            {showPlanning ? (
+              <PlanningPane
+                key={planningIssue.id}
+                issue={planningIssue}
+                agents={agents}
+                send={send}
+                subscribe={subscribe}
+                onUpdate={updateIssue}
+                onPromote={handlePromote}
+                onStartPlanning={handleStartPlanning}
+                onStopPlanning={handleStopPlanning}
+                onClose={() => setPlanningIssueId(null)}
+              />
+            ) : (
+              <div className={`kanban-split ${showTaskTerminal ? 'split-open' : ''}`}>
+                <div className="kanban-split-left">
+                  <KanbanBoard
+                    issues={issues}
+                    agents={agents}
+                    onStatusChange={handleStatusChange}
+                    onCreateIssue={handleCreateIssue}
+                    onDeleteIssue={handleDeleteIssue}
+                    onEditIssue={handleEditIssue}
+                    onTerminalClick={handleTerminalClick}
+                    onIssueClick={handleIssueClick}
+                    onPlanClick={handlePlanClick}
                   />
                 </div>
-              )}
-            </div>
+                {showTaskTerminal && (
+                  <div className="kanban-split-right">
+                    <TaskTerminalPane
+                      issue={expandedIssue}
+                      send={send}
+                      subscribe={subscribe}
+                      onMinimize={() => setExpandedIssueId(null)}
+                      awaitingInput={expandedIssue.terminalId ? awaitingInputIds.has(expandedIssue.terminalId) : false}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* PR view */}

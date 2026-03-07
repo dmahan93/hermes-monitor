@@ -27,7 +27,7 @@ const store = new Store();
 const terminalManager = new TerminalManager();
 const worktreeManager = new WorktreeManager();
 const prManager = new PRManager(terminalManager, worktreeManager);
-const issueManager = new IssueManager(terminalManager);
+const issueManager = new IssueManager(terminalManager, config.repoPath);
 
 // Wire up cross-references
 issueManager.setWorktreeManager(worktreeManager);
@@ -35,10 +35,13 @@ issueManager.setPRManager(prManager);
 issueManager.setStore(store);
 prManager.setStore(store);
 
-// Load persisted state
-const resetCount = store.resetInProgress();
-if (resetCount > 0) {
-  console.log(`Reset ${resetCount} in-progress issue(s) to todo`);
+// Load persisted state (clear stale terminal refs from previous session)
+const { inProgress, backlog } = store.resetStaleTerminals();
+if (inProgress > 0) {
+  console.log(`Reset ${inProgress} in-progress issue(s) to todo`);
+}
+if (backlog > 0) {
+  console.log(`Cleared ${backlog} stale planning terminal(s) from backlog`);
 }
 issueManager.loadFromStore();
 prManager.loadFromStore();

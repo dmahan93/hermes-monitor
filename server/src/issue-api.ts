@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import type { IssueManager, IssueStatus } from './issue-manager.js';
 import { AGENT_PRESETS, type AgentPreset } from './agents.js';
 
-const VALID_STATUSES: IssueStatus[] = ['todo', 'in_progress', 'review', 'done'];
+const VALID_STATUSES: IssueStatus[] = ['backlog', 'todo', 'in_progress', 'review', 'done'];
 
 function checkInstalled(cmd: string): boolean {
   try {
@@ -77,6 +77,36 @@ export function createIssueApiRouter(manager: IssueManager): Router {
     const issue = manager.changeStatus(req.params.id, status);
     if (!issue) {
       res.status(404).json({ error: 'Issue not found' });
+      return;
+    }
+    res.json(issue);
+  });
+
+  // Start planning terminal for a backlog issue
+  router.post('/issues/:id/plan', (req, res) => {
+    const existing = manager.get(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: 'Issue not found' });
+      return;
+    }
+    const issue = manager.startPlanning(req.params.id);
+    if (!issue) {
+      res.status(400).json({ error: 'Issue is not in backlog status' });
+      return;
+    }
+    res.json(issue);
+  });
+
+  // Stop planning terminal for a backlog issue
+  router.delete('/issues/:id/plan', (req, res) => {
+    const existing = manager.get(req.params.id);
+    if (!existing) {
+      res.status(404).json({ error: 'Issue not found' });
+      return;
+    }
+    const issue = manager.stopPlanning(req.params.id);
+    if (!issue) {
+      res.status(400).json({ error: 'Issue is not in backlog status' });
       return;
     }
     res.json(issue);

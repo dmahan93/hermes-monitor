@@ -4,8 +4,7 @@ import type { WorktreeManager } from './worktree-manager.js';
 import type { PRManager } from './pr-manager.js';
 import type { Store } from './store.js';
 import { getPreset } from './agents.js';
-
-export type IssueStatus = 'todo' | 'in_progress' | 'review' | 'done';
+export type IssueStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
 
 export interface Issue {
   id: string;
@@ -45,9 +44,11 @@ export class IssueManager {
   private prManager: PRManager | null = null;
   private store: Store | null = null;
   private eventCallbacks: IssueEventCallback[] = [];
+  private repoPath: string | undefined;
 
-  constructor(terminalManager: TerminalManager) {
+  constructor(terminalManager: TerminalManager, repoPath?: string) {
     this.terminalManager = terminalManager;
+    this.repoPath = repoPath;
   }
 
   setStore(store: Store): void {
@@ -116,7 +117,7 @@ export class IssueManager {
       id,
       title: options.title,
       description: options.description || '',
-      status: 'todo',
+      status: 'backlog',
       agent: agentId,
       command,
       terminalId: null,
@@ -172,6 +173,14 @@ export class IssueManager {
   }
 
   private handleTransition(issue: Issue, from: IssueStatus, to: IssueStatus): void {
+    // Kill planning terminal when leaving backlog.
+    // This must happen before the in_progress spawn logic below so the planning
+    // terminal is cleaned up before an agent terminal is created.
+    if (from === 'backlog' && issue.terminalId) {
+      this.terminalManager.kill(issue.terminalId);
+      issue.terminalId = null;
+    }
+
     // Reset PR verdict when moving back to in_progress so it doesn't show stale status
     if (to === 'in_progress' && this.prManager) {
       const existingPr = this.prManager.getByIssueId(issue.id);
@@ -227,8 +236,8 @@ export class IssueManager {
       }
     }
 
-    // Kill terminal when moving TO todo or done
-    if ((to === 'todo' || to === 'done') && issue.terminalId) {
+    // Kill terminal when moving TO backlog, todo, or done
+    if ((to === 'backlog' || to === 'todo' || to === 'done') && issue.terminalId) {
       this.terminalManager.kill(issue.terminalId);
       issue.terminalId = null;
     }
@@ -237,6 +246,47 @@ export class IssueManager {
     if (to === 'done' && this.worktreeManager) {
       this.worktreeManager.remove(issue.id, false); // keep branch for history
     }
+  }
+
+  /** Start a planning agent terminal for a backlog issue */
+  startPlanning(id: string): Issue | undefined {
+    const issue = this.issues.get(id);
+    if (!issue || issue.status !== 'backlog') return undefined;
+    if (issue.terminalId) return issue; // already has a planning terminal
+
+    // Resolve the planning command from the issue's agent preset
+    const preset = getPreset(issue.agent);
+    const planningTemplate = preset?.planningCommand || '';
+    const command = planningTemplate
+      ? this.interpolateCommand(planningTemplate, issue)
+      : undefined;
+
+    const terminal = this.terminalManager.create({
+      title: `[plan] ${issue.title}`,
+      command,
+      cwd: this.repoPath,
+    });
+    issue.terminalId = terminal.id;
+    issue.updatedAt = Date.now();
+
+    this.persist(issue);
+    this.emit('issue:updated', issue);
+    return issue;
+  }
+
+  /** Stop the planning terminal for a backlog issue */
+  stopPlanning(id: string): Issue | undefined {
+    const issue = this.issues.get(id);
+    if (!issue || issue.status !== 'backlog') return undefined;
+    if (!issue.terminalId) return issue;
+
+    this.terminalManager.kill(issue.terminalId);
+    issue.terminalId = null;
+    issue.updatedAt = Date.now();
+
+    this.persist(issue);
+    this.emit('issue:updated', issue);
+    return issue;
   }
 
   delete(id: string): boolean {
