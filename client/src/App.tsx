@@ -30,7 +30,7 @@ function getWsUrl(): string {
 export default function App() {
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals(subscribe);
-  const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning } = useIssues(subscribe);
+  const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning, createSubtask } = useIssues(subscribe);
   const { prs = [], addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe);
   const agents = useAgents();
   const gitGraph = useGitGraph();
@@ -122,7 +122,8 @@ export default function App() {
     if (termViewSelection.kind === 'agent') {
       return issues.find((i) => i.id === termViewSelection.issueId) || null;
     }
-    // For reviewer terminals, build a synthetic Issue from the PR
+    // For reviewer terminals, build a synthetic Issue from the PR.
+    // This is a display-only shim — not a real Issue from the store.
     const pr = prs.find((p) => p.id === termViewSelection.prId);
     if (!pr || !pr.reviewerTerminalId) return null;
     return {
@@ -134,6 +135,7 @@ export default function App() {
       command: '',
       terminalId: pr.reviewerTerminalId,
       branch: pr.sourceBranch,
+      parentId: null,  // synthetic — PRs are never subtasks
       createdAt: pr.createdAt,
       updatedAt: pr.updatedAt,
     };
@@ -201,10 +203,11 @@ export default function App() {
     createIssue(title, description || undefined, agent || undefined, command || undefined, branch || undefined);
   }, [createIssue]);
 
-  const handleStatusChange = useCallback(async (id: string, status: IssueStatus) => {
-    await changeStatus(id, status);
+  const handleStatusChange = useCallback(async (id: string, status: IssueStatus): Promise<string | null> => {
+    const error = await changeStatus(id, status);
     refetchTerminals();
     refetchPRs();
+    return error;
   }, [changeStatus, refetchTerminals, refetchPRs]);
 
   const handleDeleteIssue = useCallback(async (id: string) => {
@@ -267,6 +270,11 @@ export default function App() {
     setDetailIssueId(null);
     setDetailEditing(false);
   }, []);
+
+  const detailSubtasks = useMemo(() => {
+    if (!detailIssueId) return [];
+    return issues.filter((i) => i.parentId === detailIssueId);
+  }, [detailIssueId, issues]);
 
   const detailPR = useMemo(() => {
     if (!detailIssueId) return undefined;
@@ -440,7 +448,7 @@ export default function App() {
               onMerge={mergePR}
               onFixConflicts={fixConflicts}
               onRelaunchReview={relaunchReview}
-              onMoveToInProgress={(issueId) => handleStatusChange(issueId, 'in_progress')}
+              onMoveToInProgress={async (issueId) => { await handleStatusChange(issueId, 'in_progress'); }}
             />
           </div>
 
@@ -480,12 +488,17 @@ export default function App() {
           agents={agents}
           pr={detailPR}
           initialEditing={detailEditing}
+          subtasks={detailSubtasks}
+          parentIssue={detailIssue.parentId ? issues.find((i) => i.id === detailIssue.parentId) : undefined}
           onClose={closeDetail}
           onUpdate={(id, updates) => updateIssue(id, updates)}
-          onStatusChange={(id, status) => { handleStatusChange(id, status); closeDetail(); }}
+          onStatusChange={async (id, status) => { const err = await handleStatusChange(id, status); if (!err) closeDetail(); return err; }}
           onDelete={(id) => { handleDeleteIssue(id); closeDetail(); }}
           onTerminalClick={(issueId) => { closeDetail(); handleTerminalClick(issueId); }}
           onPRClick={() => { closeDetail(); setView('prs'); }}
+          onCreateSubtask={(parentId, title, desc) => createSubtask(parentId, title, desc)}
+          onSubtaskClick={(issueId) => { setDetailIssueId(issueId); setDetailEditing(false); }}
+          onParentClick={(issueId) => { setDetailIssueId(issueId); setDetailEditing(false); }}
         />
       )}
     </div>

@@ -27,6 +27,7 @@ export class Store {
         command TEXT NOT NULL DEFAULT '',
         terminalId TEXT,
         branch TEXT,
+        parentId TEXT,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL
       );
@@ -70,16 +71,25 @@ export class Store {
     if (!prColumns.some((c: any) => c.name === 'submitterNotes')) {
       this.db.exec("ALTER TABLE pull_requests ADD COLUMN submitterNotes TEXT NOT NULL DEFAULT ''");
     }
+
+    // Migration: add parentId column to issues if it doesn't exist (for existing DBs)
+    const issueColumns = this.db.prepare("PRAGMA table_info(issues)").all() as any[];
+    if (!issueColumns.some((c: any) => c.name === 'parentId')) {
+      this.db.exec("ALTER TABLE issues ADD COLUMN parentId TEXT");
+    }
+
+    // Index for efficient subtask lookups by parentId
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_issues_parentId ON issues(parentId)");
   }
 
   // ── Issues ──
 
   saveIssue(issue: Issue): void {
     this.db.prepare(`
-      INSERT OR REPLACE INTO issues (id, title, description, status, agent, command, terminalId, branch, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO issues (id, title, description, status, agent, command, terminalId, branch, parentId, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(issue.id, issue.title, issue.description, issue.status, issue.agent, issue.command,
-           issue.terminalId, issue.branch, issue.createdAt, issue.updatedAt);
+           issue.terminalId, issue.branch, issue.parentId, issue.createdAt, issue.updatedAt);
   }
 
   loadIssues(): Issue[] {
@@ -93,6 +103,7 @@ export class Store {
       command: r.command,
       terminalId: r.terminalId,
       branch: r.branch,
+      parentId: r.parentId || null,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     }));

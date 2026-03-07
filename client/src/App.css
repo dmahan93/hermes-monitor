@@ -813,6 +813,127 @@ body {
 
 .issue-detail-pr-link:hover { text-decoration: underline; }
 
+.issue-detail-parent-link {
+  background: transparent;
+  border: none;
+  color: var(--link);
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.issue-detail-parent-link:hover { text-decoration: underline; }
+
+/* ── Subtasks ── */
+
+.issue-detail-subtasks {
+  margin-top: 8px;
+}
+
+.issue-detail-subtasks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.issue-detail-add-subtask-btn {
+  background: transparent;
+  border: 1px solid var(--chrome);
+  color: var(--accent);
+  font-family: 'VT323', monospace;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 1px 6px;
+}
+.issue-detail-add-subtask-btn:hover {
+  background: var(--chrome);
+}
+
+.issue-detail-subtask-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+}
+
+.issue-detail-subtask-title-input,
+.issue-detail-subtask-desc-input {
+  background: var(--chrome-dark);
+  border: 1px solid var(--chrome);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 4px 6px;
+  outline: none;
+}
+.issue-detail-subtask-title-input:focus,
+.issue-detail-subtask-desc-input:focus {
+  border-color: var(--accent);
+}
+
+.issue-detail-subtask-form-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.issue-detail-subtask-error {
+  color: #ff6b6b;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 2px 0;
+}
+
+.issue-detail-subtask-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.issue-detail-subtask-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--chrome-dark);
+}
+.issue-detail-subtask-item:last-child {
+  border-bottom: none;
+}
+
+.issue-detail-subtask-status {
+  font-family: 'VT323', monospace;
+  font-size: 10px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.issue-detail-subtask-title {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.issue-detail-subtask-title:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.issue-detail-no-subtasks {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 4px 0;
+  font-style: italic;
+}
+
 .issue-detail-reviews {
   margin-top: 8px;
 }
@@ -859,11 +980,26 @@ body {
 
 .issue-detail-footer {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 4px;
   padding: 6px 8px;
   border-top: 1px solid var(--bevel-dark);
   flex-shrink: 0;
+}
+
+.issue-detail-status-error {
+  color: #ff6b6b;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 2px 4px;
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+}
+
+.issue-detail-footer-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .issue-detail-status-actions {
@@ -1026,6 +1162,23 @@ body {
 .kanban-toolbar {
   padding: 0.333rem 0.667rem;
   flex-shrink: 0;
+}
+
+.kanban-drag-error {
+  color: #ff6b6b;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 4px 8px;
+  margin: 0 0.667rem 4px;
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  cursor: pointer;
+  animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .kanban-columns {
@@ -1222,6 +1375,26 @@ body {
 
 .issue-card-branch {
   color: var(--link);
+}
+
+.issue-card-subtask {
+  border-left: 2px solid var(--link);
+  opacity: 0.9;
+}
+
+.issue-card-parent {
+  font-size: 9px;
+  color: var(--link);
+  font-family: 'VT323', monospace;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.issue-card-subtasks {
+  color: var(--text-muted);
+  font-size: 9px;
 }
 
 /* ── Modal ── */

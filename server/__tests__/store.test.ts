@@ -24,7 +24,7 @@ describe('Store', () => {
     const issue = {
       id: 'test-1', title: 'Test', description: 'desc', status: 'todo' as const,
       agent: 'hermes', command: 'echo hi', terminalId: null, branch: null,
-      createdAt: Date.now(), updatedAt: Date.now(),
+      parentId: null, createdAt: Date.now(), updatedAt: Date.now(),
     };
     store.saveIssue(issue);
     const loaded = store.loadIssues();
@@ -38,7 +38,7 @@ describe('Store', () => {
     const issue = {
       id: 'test-1', title: 'Old', description: '', status: 'todo' as const,
       agent: 'hermes', command: '', terminalId: null, branch: null,
-      createdAt: Date.now(), updatedAt: Date.now(),
+      parentId: null, createdAt: Date.now(), updatedAt: Date.now(),
     };
     store.saveIssue(issue);
     issue.title = 'New';
@@ -54,7 +54,7 @@ describe('Store', () => {
     store.saveIssue({
       id: 'del-1', title: 'Delete me', description: '', status: 'todo',
       agent: 'hermes', command: '', terminalId: null, branch: null,
-      createdAt: Date.now(), updatedAt: Date.now(),
+      parentId: null, createdAt: Date.now(), updatedAt: Date.now(),
     });
     expect(store.loadIssues()).toHaveLength(1);
     store.deleteIssue('del-1');
@@ -65,12 +65,12 @@ describe('Store', () => {
     store.saveIssue({
       id: 'ip-1', title: 'WIP', description: '', status: 'in_progress',
       agent: 'hermes', command: '', terminalId: 'term-1', branch: 'b',
-      createdAt: Date.now(), updatedAt: Date.now(),
+      parentId: null, createdAt: Date.now(), updatedAt: Date.now(),
     });
     store.saveIssue({
       id: 'rv-1', title: 'Reviewing', description: '', status: 'review',
       agent: 'hermes', command: '', terminalId: null, branch: 'b2',
-      createdAt: Date.now(), updatedAt: Date.now(),
+      parentId: null, createdAt: Date.now(), updatedAt: Date.now(),
     });
     const result = store.resetStaleTerminals();
     expect(result).toEqual({ inProgress: 1, backlog: 0 });
@@ -86,12 +86,12 @@ describe('Store', () => {
     store.saveIssue({
       id: 'bl-1', title: 'Planning', description: '', status: 'backlog',
       agent: 'hermes', command: '', terminalId: 'plan-term-1', branch: null,
-      createdAt: Date.now(), updatedAt: Date.now(),
+      parentId: null, createdAt: Date.now(), updatedAt: Date.now(),
     });
     store.saveIssue({
       id: 'bl-2', title: 'No terminal', description: '', status: 'backlog',
       agent: 'hermes', command: '', terminalId: null, branch: null,
-      createdAt: Date.now(), updatedAt: Date.now(),
+      parentId: null, createdAt: Date.now(), updatedAt: Date.now(),
     });
     store.resetStaleTerminals();
     const issues = store.loadIssues();
@@ -100,6 +100,37 @@ describe('Store', () => {
     expect(planned.terminalId).toBeNull(); // terminal ref cleared
     const noPlan = issues.find((i) => i.id === 'bl-2')!;
     expect(noPlan.terminalId).toBeNull(); // unchanged
+  });
+
+  it('saves and loads issue with parentId', () => {
+    store.saveIssue({
+      id: 'parent-1', title: 'Parent', description: '', status: 'todo',
+      agent: 'hermes', command: '', terminalId: null, branch: null,
+      parentId: null,
+      createdAt: Date.now(), updatedAt: Date.now(),
+    });
+    store.saveIssue({
+      id: 'sub-1', title: 'Subtask', description: 'child', status: 'backlog',
+      agent: 'hermes', command: '', terminalId: null, branch: null,
+      parentId: 'parent-1',
+      createdAt: Date.now(), updatedAt: Date.now(),
+    });
+    const loaded = store.loadIssues();
+    expect(loaded).toHaveLength(2);
+    const parent = loaded.find((i) => i.id === 'parent-1')!;
+    expect(parent.parentId).toBeNull();
+    const sub = loaded.find((i) => i.id === 'sub-1')!;
+    expect(sub.parentId).toBe('parent-1');
+  });
+
+  it('parentId defaults to null when not set', () => {
+    store.saveIssue({
+      id: 'no-parent', title: 'No parent', description: '', status: 'todo',
+      agent: 'hermes', command: '', terminalId: null, branch: null,
+      createdAt: Date.now(), updatedAt: Date.now(),
+    } as any);
+    const loaded = store.loadIssues();
+    expect(loaded[0].parentId).toBeNull();
   });
 
   // ── PR CRUD ──
@@ -195,7 +226,7 @@ describe('Store', () => {
     store.saveIssue({
       id: 'persist-1', title: 'Survives', description: '', status: 'todo',
       agent: 'claude', command: '', terminalId: null, branch: null,
-      createdAt: Date.now(), updatedAt: Date.now(),
+      parentId: null, createdAt: Date.now(), updatedAt: Date.now(),
     });
     store.close();
 

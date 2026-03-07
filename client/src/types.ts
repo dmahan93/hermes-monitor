@@ -28,6 +28,7 @@ export interface Issue {
   command: string;
   terminalId: string | null;
   branch: string | null;
+  parentId: string | null;
   createdAt: number;
   updatedAt: number;
 }

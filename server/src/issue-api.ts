@@ -47,13 +47,17 @@ export function createIssueApiRouter(manager: IssueManager): Router {
 
   // Create issue
   router.post('/issues', (req, res) => {
-    const { title, description, agent, command, branch } = req.body || {};
+    const { title, description, agent, command, branch, parentId } = req.body || {};
     if (!title || typeof title !== 'string') {
       res.status(400).json({ error: 'title is required' });
       return;
     }
-    const issue = manager.create({ title, description, agent, command, branch });
-    res.status(201).json(issue);
+    try {
+      const issue = manager.create({ title, description, agent, command, branch, parentId });
+      res.status(201).json(issue);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
   });
 
   // Update issue fields
@@ -74,12 +78,16 @@ export function createIssueApiRouter(manager: IssueManager): Router {
       res.status(400).json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}` });
       return;
     }
-    const issue = manager.changeStatus(req.params.id, status);
-    if (!issue) {
-      res.status(404).json({ error: 'Issue not found' });
-      return;
+    try {
+      const issue = manager.changeStatus(req.params.id, status);
+      if (!issue) {
+        res.status(404).json({ error: 'Issue not found' });
+        return;
+      }
+      res.json(issue);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
     }
-    res.json(issue);
   });
 
   // Start planning terminal for a backlog issue
@@ -110,6 +118,43 @@ export function createIssueApiRouter(manager: IssueManager): Router {
       return;
     }
     res.json(issue);
+  });
+
+  // List subtasks of an issue
+  router.get('/issues/:id/subtasks', (req, res) => {
+    const parent = manager.get(req.params.id);
+    if (!parent) {
+      res.status(404).json({ error: 'Issue not found' });
+      return;
+    }
+    res.json(manager.getSubtasks(req.params.id));
+  });
+
+  // Create a subtask under an issue
+  router.post('/issues/:id/subtasks', (req, res) => {
+    const parent = manager.get(req.params.id);
+    if (!parent) {
+      res.status(404).json({ error: 'Parent issue not found' });
+      return;
+    }
+    const { title, description, agent, command, branch } = req.body || {};
+    if (!title || typeof title !== 'string') {
+      res.status(400).json({ error: 'title is required' });
+      return;
+    }
+    try {
+      const issue = manager.create({
+        title,
+        description,
+        agent,
+        command,
+        branch,
+        parentId: req.params.id,
+      });
+      res.status(201).json(issue);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
   });
 
   // Delete issue

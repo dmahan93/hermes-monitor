@@ -78,27 +78,35 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
     }
   }, []);
 
-  const changeStatus = useCallback(async (id: string, status: IssueStatus) => {
+  const changeStatus = useCallback(async (id: string, status: IssueStatus): Promise<string | null> => {
     // Optimistic update
     setIssues((prev) =>
       prev.map((i) => (i.id === id ? { ...i, status } : i))
     );
     try {
-      await fetch(`${API}/issues/${id}/status`, {
+      const res = await fetch(`${API}/issues/${id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
+      if (!res.ok) {
+        // Server rejected the status change — revert optimistic update
+        const body = await res.json().catch(() => ({ error: 'Status change failed' }));
+        fetchIssues();
+        return body.error || 'Status change failed';
+      }
+      return null;
     } catch (err) {
       console.error('Failed to change issue status:', err);
       // Revert on failure — refetch
       fetchIssues();
+      return 'Network error — failed to change status';
     }
   }, [fetchIssues]);
 
   const deleteIssue = useCallback(async (id: string) => {
-    // Optimistic removal
-    setIssues((prev) => prev.filter((i) => i.id !== id));
+    // Optimistic removal — also cascade-remove subtasks to match server behavior
+    setIssues((prev) => prev.filter((i) => i.id !== id && i.parentId !== id));
     try {
       await fetch(`${API}/issues/${id}`, { method: 'DELETE' });
     } catch (err) {
@@ -133,5 +141,26 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
     }
   }, []);
 
-  return { issues, loading, createIssue, updateIssue, changeStatus, deleteIssue, startPlanning, stopPlanning };
+  const createSubtask = useCallback(async (parentId: string, title: string, description?: string, agent?: string, command?: string, branch?: string) => {
+    try {
+      const res = await fetch(`${API}/issues/${parentId}/subtasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, agent, command, branch }),
+      });
+      if (!res.ok) return null;
+      const issue = await res.json();
+      // Optimistically add the subtask immediately (WS event will deduplicate)
+      setIssues((prev) => {
+        if (prev.some((i) => i.id === issue.id)) return prev;
+        return [...prev, issue];
+      });
+      return issue;
+    } catch (err) {
+      console.error('Failed to create subtask:', err);
+      return null;
+    }
+  }, []);
+
+  return { issues, loading, createIssue, updateIssue, changeStatus, deleteIssue, startPlanning, stopPlanning, createSubtask };
 }

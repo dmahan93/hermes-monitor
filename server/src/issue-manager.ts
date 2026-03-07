@@ -21,6 +21,7 @@ export interface Issue {
   command: string;       // resolved command (from preset or custom)
   terminalId: string | null;
   branch: string | null;
+  parentId: string | null;  // if set, this issue is a subtask of the parent
   submitterNotes?: string;  // transient: notes from agent when submitting for review
   createdAt: number;
   updatedAt: number;
@@ -32,6 +33,7 @@ export interface CreateIssueOptions {
   agent?: string;        // agent preset id, defaults to 'hermes'
   command?: string;      // override command (used with 'custom' agent)
   branch?: string;
+  parentId?: string;     // create as subtask of this issue
 }
 
 export interface UpdateIssueOptions {
@@ -118,6 +120,17 @@ export class IssueManager {
   }
 
   create(options: CreateIssueOptions): Issue {
+    // Validate parent exists if parentId is specified, and prevent nested subtasks
+    if (options.parentId) {
+      const parent = this.issues.get(options.parentId);
+      if (!parent) {
+        throw new Error(`Parent issue ${options.parentId} not found`);
+      }
+      if (parent.parentId) {
+        throw new Error('Cannot create a subtask of a subtask');
+      }
+    }
+
     const id = uuidv4();
     const now = Date.now();
     const agentId = options.agent || 'hermes';
@@ -133,6 +146,7 @@ export class IssueManager {
       command,
       terminalId: null,
       branch: options.branch || null,
+      parentId: options.parentId || null,
       createdAt: now,
       updatedAt: now,
     };
@@ -148,6 +162,18 @@ export class IssueManager {
 
   get(id: string): Issue | undefined {
     return this.issues.get(id);
+  }
+
+  /** Get all direct subtasks of an issue */
+  getSubtasks(parentId: string): Issue[] {
+    return Array.from(this.issues.values()).filter((i) => i.parentId === parentId);
+  }
+
+  /** Get the parent issue of a subtask */
+  getParent(id: string): Issue | undefined {
+    const issue = this.issues.get(id);
+    if (!issue?.parentId) return undefined;
+    return this.issues.get(issue.parentId);
   }
 
   update(id: string, options: UpdateIssueOptions): Issue | undefined {
@@ -171,6 +197,15 @@ export class IssueManager {
 
     const oldStatus = issue.status;
     if (oldStatus === newStatus) return issue;
+
+    // Guard: cannot mark parent as done while subtasks are still open
+    if (newStatus === 'done' && !issue.parentId) {
+      const openSubtasks = this.getSubtasks(id).filter((s) => s.status !== 'done');
+      if (openSubtasks.length > 0) {
+        const count = openSubtasks.length;
+        throw new Error(`Cannot mark as done — ${count} subtask${count > 1 ? 's' : ''} still open`);
+      }
+    }
 
     issue.status = newStatus;
     issue.updatedAt = Date.now();
@@ -307,12 +342,27 @@ export class IssueManager {
     const issue = this.issues.get(id);
     if (!issue) return false;
 
+    // Cascade delete subtasks first
+    const subtasks = this.getSubtasks(id);
+    for (const sub of subtasks) {
+      this.delete(sub.id);
+    }
+
     // Clean up resume state
     this.resetResumeAttempts(id);
 
     // Kill associated terminal if any
     if (issue.terminalId) {
       this.terminalManager.kill(issue.terminalId);
+    }
+
+    // Clean up worktree if the issue had one
+    if (this.worktreeManager) {
+      try {
+        this.worktreeManager.remove(id, false); // keep branch for history
+      } catch {
+        // Worktree may not exist (e.g. never moved to in_progress) — ignore
+      }
     }
 
     this.issues.delete(id);

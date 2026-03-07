@@ -1,6 +1,11 @@
 import { Draggable } from '@hello-pangea/dnd';
 import type { Issue, AgentPreset } from '../types';
 
+export interface SubtaskInfo {
+  total: number;
+  done: number;
+}
+
 interface IssueCardProps {
   issue: Issue;
   index: number;
@@ -9,9 +14,11 @@ interface IssueCardProps {
   onEdit?: (issueId: string) => void;
   onTerminalClick?: (issueId: string) => void;
   onClick?: (issueId: string) => void;
+  parentTitle?: string;
+  subtaskInfo?: SubtaskInfo;
 }
 
-export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalClick, onClick }: IssueCardProps) {
+export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalClick, onClick, parentTitle, subtaskInfo }: IssueCardProps) {
   const agent = agents.find((a) => a.id === issue.agent);
 
   return (
@@ -21,7 +28,7 @@ export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalCl
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
-          className={`issue-card ${snapshot.isDragging ? 'dragging' : ''}`}
+          className={`issue-card ${snapshot.isDragging ? 'dragging' : ''} ${issue.parentId ? 'issue-card-subtask' : ''}`}
         >
           <div className="issue-card-header">
             <span
@@ -57,6 +64,11 @@ export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalCl
               </button>
             </div>
           </div>
+          {parentTitle && (
+            <div className="issue-card-parent" title="Subtask of parent issue">
+              ↑ {parentTitle}
+            </div>
+          )}
           {issue.description && (
             <div className="issue-card-desc">{issue.description}</div>
           )}
@@ -81,6 +93,11 @@ export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalCl
             {issue.branch && (
               <span className="issue-card-branch" title={issue.branch}>
                 ⎇ {issue.branch}
+              </span>
+            )}
+            {subtaskInfo && subtaskInfo.total > 0 && (
+              <span className="issue-card-subtasks" title={`${subtaskInfo.done}/${subtaskInfo.total} subtasks done`}>
+                ◫ {subtaskInfo.done}/{subtaskInfo.total}
               </span>
             )}
           </div>
