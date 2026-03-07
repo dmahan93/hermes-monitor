@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { mkdirSync, existsSync, rmSync, symlinkSync, lstatSync } from 'fs';
 import { join, resolve } from 'path';
 import { config } from './config.js';
@@ -17,8 +17,8 @@ function slugify(text: string): string {
     .slice(0, 40);
 }
 
-function git(args: string, cwd?: string): string {
-  return execSync(`git ${args}`, {
+function git(args: string[], cwd?: string): string {
+  return execFileSync('git', args, {
     cwd: cwd || config.repoPath,
     stdio: 'pipe',
   }).toString().trim();
@@ -44,14 +44,14 @@ export class WorktreeManager {
 
     // Create branch from target branch (main/master)
     try {
-      git(`branch ${branch} ${config.targetBranch}`, repo);
+      git(['branch', branch, config.targetBranch], repo);
     } catch {
       // Branch might already exist — that's ok
     }
 
     // Create worktree
     try {
-      git(`worktree add "${worktreePath}" ${branch}`, repo);
+      git(['worktree', 'add', worktreePath, branch], repo);
     } catch (err: any) {
       // Worktree might already exist
       if (!existsSync(worktreePath)) {
@@ -77,18 +77,18 @@ export class WorktreeManager {
 
     try {
       // Remove worktree
-      git(`worktree remove "${info.path}" --force`, config.repoPath);
+      git(['worktree', 'remove', info.path, '--force'], config.repoPath);
     } catch {
       // Force remove the directory if git worktree remove fails
       try {
         rmSync(info.path, { recursive: true, force: true });
-        git('worktree prune', config.repoPath);
+        git(['worktree', 'prune'], config.repoPath);
       } catch {}
     }
 
     if (deleteBranch) {
       try {
-        git(`branch -D ${info.branch}`, config.repoPath);
+        git(['branch', '-D', info.branch], config.repoPath);
       } catch {}
     }
 
@@ -155,7 +155,7 @@ export class WorktreeManager {
     if (!info) return undefined;
 
     try {
-      return git(`diff ${config.targetBranch}...${info.branch}`, config.repoPath);
+      return git(['diff', `${config.targetBranch}...${info.branch}`], config.repoPath);
     } catch {
       return undefined;
     }
@@ -169,7 +169,7 @@ export class WorktreeManager {
     if (!info) return [];
 
     try {
-      const output = git(`diff --name-only ${config.targetBranch}...${info.branch}`, config.repoPath);
+      const output = git(['diff', '--name-only', `${config.targetBranch}...${info.branch}`], config.repoPath);
       return output ? output.split('\n').filter(Boolean) : [];
     } catch {
       return [];
@@ -184,7 +184,7 @@ export class WorktreeManager {
     if (!info) return false;
 
     try {
-      git(`merge ${info.branch} --no-ff -m "Merge ${info.branch}"`, config.repoPath);
+      git(['merge', info.branch, '--no-ff', '-m', `Merge ${info.branch}`], config.repoPath);
       return true;
     } catch {
       return false;
