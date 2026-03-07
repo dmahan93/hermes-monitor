@@ -10,7 +10,7 @@ interface TerminalViewProps {
   send: (msg: any) => void;
   subscribe: (handler: (msg: ServerMessage) => void) => () => void;
   onResize?: (cols: number, rows: number) => void;
-  /** Incremented by useWebSocket on each reconnect; triggers re-subscribe + replay */
+  /** Incremented by useWebSocket on each reconnect; triggers scrollback replay */
   reconnectCount?: number;
 }
 
@@ -139,6 +139,7 @@ export function TerminalView({ terminalId, send, subscribe, onResize, reconnectC
   // inside useWebSocket), so only the replay needs to be re-sent.
   useEffect(() => {
     if (reconnectCount > 0) {
+      termRef.current?.reset();
       sendRef.current({ type: 'replay', terminalId });
     }
   }, [reconnectCount, terminalId]);

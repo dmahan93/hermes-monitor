@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useWebSocket } from '../../src/hooks/useWebSocket';
 
@@ -51,5 +51,105 @@ describe('useWebSocket', () => {
     expect(() => {
       result.current.send({ type: 'stdin', terminalId: 'test', data: 'hello' });
     }).not.toThrow();
+  });
+
+  describe('reconnect behavior', () => {
+    // Track WebSocket instances created during each test
+    let wsInstances: any[];
+    let OriginalWS: typeof WebSocket;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      wsInstances = [];
+      OriginalWS = globalThis.WebSocket;
+
+      // Wrap the mock to capture created instances
+      const Wrapped = function (this: any, url: string) {
+        const instance = new OriginalWS(url);
+        wsInstances.push(instance);
+        return instance;
+      } as any;
+      Wrapped.OPEN = (OriginalWS as any).OPEN;
+      Wrapped.CLOSED = (OriginalWS as any).CLOSED;
+      Wrapped.CONNECTING = 0;
+      Wrapped.CLOSING = 2;
+      globalThis.WebSocket = Wrapped;
+    });
+
+    afterEach(() => {
+      globalThis.WebSocket = OriginalWS;
+      vi.useRealTimers();
+    });
+
+    it('increments reconnectCount on WS reconnect', async () => {
+      const { result, unmount } = renderHook(() => useWebSocket('ws://localhost:4000/ws'));
+
+      // Flush the setTimeout(onopen, 0) in mock constructor
+      await act(async () => { vi.advanceTimersByTime(1); });
+      expect(result.current.connected).toBe(true);
+      expect(result.current.reconnectCount).toBe(0);
+
+      // Simulate WS disconnect
+      act(() => { wsInstances[0].close(); });
+      expect(result.current.connected).toBe(false);
+
+      // Hook schedules reconnect after 1s — advance timer
+      await act(async () => { vi.advanceTimersByTime(1000); });
+      // Flush the new WS instance's onopen setTimeout
+      await act(async () => { vi.advanceTimersByTime(1); });
+
+      expect(result.current.connected).toBe(true);
+      expect(result.current.reconnectCount).toBe(1);
+      expect(wsInstances.length).toBe(2);
+
+      unmount();
+    });
+
+    it('increments reconnectCount on each subsequent reconnect', async () => {
+      const { result, unmount } = renderHook(() => useWebSocket('ws://localhost:4000/ws'));
+
+      // Initial connect
+      await act(async () => { vi.advanceTimersByTime(1); });
+      expect(result.current.reconnectCount).toBe(0);
+
+      // First reconnect cycle
+      act(() => { wsInstances[0].close(); });
+      await act(async () => { vi.advanceTimersByTime(1001); });
+      expect(result.current.reconnectCount).toBe(1);
+
+      // Second reconnect cycle
+      act(() => { wsInstances[1].close(); });
+      await act(async () => { vi.advanceTimersByTime(1001); });
+      expect(result.current.reconnectCount).toBe(2);
+
+      unmount();
+    });
+
+    it('subscribers persist across reconnects', async () => {
+      const { result, unmount } = renderHook(() => useWebSocket('ws://localhost:4000/ws'));
+      const received: any[] = [];
+
+      // Initial connect
+      await act(async () => { vi.advanceTimersByTime(1); });
+
+      // Register a subscriber
+      act(() => {
+        result.current.subscribe((msg) => { received.push(msg); });
+      });
+
+      // Simulate reconnect
+      act(() => { wsInstances[0].close(); });
+      await act(async () => { vi.advanceTimersByTime(1001); });
+
+      // Simulate a message on the new WS instance
+      const msg = { type: 'stdout', terminalId: 't1', data: 'hello' };
+      act(() => {
+        wsInstances[1].onmessage?.({ data: JSON.stringify(msg) });
+      });
+
+      expect(received).toEqual([msg]);
+
+      unmount();
+    });
   });
 });

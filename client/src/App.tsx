@@ -358,23 +358,23 @@ export default function App() {
             <div className="terminals-layout">
               <div className="terminals-main">
                 {termViewAgentIssue && termViewAgentIssue.terminalId ? (
-                   <TaskTerminalPane
-                     issue={termViewAgentIssue}
-                     send={send}
-                     subscribe={subscribe}
-                     reconnectCount={reconnectCount}
-                     onMinimize={() => setTermViewSelection(null)}
+                  <TaskTerminalPane
+                    issue={termViewAgentIssue}
+                    send={send}
+                    subscribe={subscribe}
+                    reconnectCount={reconnectCount}
+                    onMinimize={() => setTermViewSelection(null)}
                     awaitingInput={awaitingInputIds.has(termViewAgentIssue.terminalId)}
                   />
                 ) : (
-                 <TerminalGrid
-                   terminals={gridTerminals}
-                   layout={gridLayout}
-                   onLayoutChange={updateLayout}
-                   send={send}
-                   subscribe={subscribe}
-                   reconnectCount={reconnectCount}
-                   onClose={handleCloseTerminal}
+                  <TerminalGrid
+                    terminals={gridTerminals}
+                    layout={gridLayout}
+                    onLayoutChange={updateLayout}
+                    send={send}
+                    subscribe={subscribe}
+                    reconnectCount={reconnectCount}
+                    onClose={handleCloseTerminal}
                     awaitingInputIds={awaitingInputIds}
                   />
                 )}
@@ -398,14 +398,14 @@ export default function App() {
           {/* Kanban view: board + optional split terminal */}
           <div className={`view-panel ${view === 'kanban' ? 'view-active' : 'view-hidden'}`}>
             {showPlanning ? (
-             <PlanningPane
-               key={planningIssue.id}
-               issue={planningIssue}
-               agents={agents}
-               send={send}
-               subscribe={subscribe}
-               reconnectCount={reconnectCount}
-               onUpdate={updateIssue}
+              <PlanningPane
+                key={planningIssue.id}
+                issue={planningIssue}
+                agents={agents}
+                send={send}
+                subscribe={subscribe}
+                reconnectCount={reconnectCount}
+                onUpdate={updateIssue}
                 onPromote={handlePromote}
                 onStartPlanning={handleStartPlanning}
                 onStopPlanning={handleStopPlanning}
@@ -428,12 +428,12 @@ export default function App() {
                 </div>
                 {showTaskTerminal && (
                   <div className="kanban-split-right">
-                   <TaskTerminalPane
-                     issue={expandedIssue}
-                     send={send}
-                     subscribe={subscribe}
-                     reconnectCount={reconnectCount}
-                     onMinimize={() => setExpandedIssueId(null)}
+                    <TaskTerminalPane
+                      issue={expandedIssue}
+                      send={send}
+                      subscribe={subscribe}
+                      reconnectCount={reconnectCount}
+                      onMinimize={() => setExpandedIssueId(null)}
                       awaitingInput={expandedIssue.terminalId ? awaitingInputIds.has(expandedIssue.terminalId) : false}
                     />
                   </div>
@@ -459,11 +459,11 @@ export default function App() {
           {/* Research view — lazy-mounted to avoid spawning a PTY until the tab is visited */}
           {researchMounted && (
             <div className={`view-panel ${view === 'research' ? 'view-active' : 'view-hidden'}`}>
-             <ResearchView
-               send={send}
-               subscribe={subscribe}
-               reconnectCount={reconnectCount}
-               onTerminalIdChange={setResearchTerminalId}
+              <ResearchView
+                send={send}
+                subscribe={subscribe}
+                reconnectCount={reconnectCount}
+                onTerminalIdChange={setResearchTerminalId}
               />
             </div>
           )}
