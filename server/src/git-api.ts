@@ -128,42 +128,38 @@ export function createGitApiRouter(): Router {
     }
 
     try {
-      // Get file changes with name-status and numstat in a single git call
-      const raw = await git(['show', '--name-status', '--numstat', '--format=', sha]);
-      const lines = raw.trim().split('\n').filter(Boolean);
+      // git show --name-status and --numstat can't be combined in a single
+      // call (git silently drops --numstat when --name-status is present).
+      // Run two separate commands and merge the results.
+      const [nameStatusRaw, numstatRaw] = await Promise.all([
+        git(['show', '--name-status', '--format=', sha]),
+        git(['show', '--numstat', '--format=', sha]),
+      ]);
 
-      const files: GitFileChange[] = [];
+      // Parse numstat output: "additions\tdeletions\tpath"
       const numstatMap = new Map<string, { additions: number; deletions: number }>();
-
-      for (const line of lines) {
-        // numstat lines: "additions\tdeletions\tpath"
-        const numstatMatch = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
-        if (numstatMatch) {
-          numstatMap.set(numstatMatch[3], {
-            additions: numstatMatch[1] === '-' ? 0 : parseInt(numstatMatch[1]) || 0,
-            deletions: numstatMatch[2] === '-' ? 0 : parseInt(numstatMatch[2]) || 0,
-          });
-          continue;
-        }
-
-        // name-status lines: "STATUS\tpath"
-        const match = line.match(/^([AMDRCTU])\t(.+)$/);
+      for (const line of numstatRaw.trim().split('\n').filter(Boolean)) {
+        const match = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
         if (match) {
-          files.push({
-            path: match[2],
-            status: match[1] as GitFileChange['status'],
-            additions: 0,
-            deletions: 0,
+          numstatMap.set(match[3], {
+            additions: match[1] === '-' ? 0 : parseInt(match[1]) || 0,
+            deletions: match[2] === '-' ? 0 : parseInt(match[2]) || 0,
           });
         }
       }
 
-      // Merge numstat data into files
-      for (const file of files) {
-        const stats = numstatMap.get(file.path);
-        if (stats) {
-          file.additions = stats.additions;
-          file.deletions = stats.deletions;
+      // Parse name-status output: "STATUS\tpath"
+      const files: GitFileChange[] = [];
+      for (const line of nameStatusRaw.trim().split('\n').filter(Boolean)) {
+        const match = line.match(/^([AMDRCTU])\t(.+)$/);
+        if (match) {
+          const stats = numstatMap.get(match[2]);
+          files.push({
+            path: match[2],
+            status: match[1] as GitFileChange['status'],
+            additions: stats?.additions ?? 0,
+            deletions: stats?.deletions ?? 0,
+          });
         }
       }
 

@@ -62,24 +62,36 @@ export function useGitGraph() {
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffSha, setDiffSha] = useState<string | null>(null);
 
-  // AbortController refs for cleanup on unmount
-  const abortRef = useRef<AbortController | null>(null);
+  // Separate AbortController refs for each independent concern
+  // (log, files, diff) so they don't cancel each other's in-flight requests.
+  const logAbortRef = useRef<AbortController | null>(null);
+  const filesAbortRef = useRef<AbortController | null>(null);
+  const diffAbortRef = useRef<AbortController | null>(null);
 
-  // Abort any in-flight request and create a new controller
-  function newAbort(): AbortSignal {
-    abortRef.current?.abort();
+  // Create a new AbortController for a specific concern, cancelling any
+  // previous in-flight request for that same concern.
+  function newAbort(ref: React.MutableRefObject<AbortController | null>): AbortSignal {
+    ref.current?.abort();
     const ctrl = new AbortController();
-    abortRef.current = ctrl;
+    ref.current = ctrl;
     return ctrl.signal;
   }
 
+  // Ref for deselect comparison — avoids putting selectedSha in dependency arrays
+  const selectedShaRef = useRef(selectedSha);
+  selectedShaRef.current = selectedSha;
+
   // Cleanup on unmount
   useEffect(() => {
-    return () => { abortRef.current?.abort(); };
+    return () => {
+      logAbortRef.current?.abort();
+      filesAbortRef.current?.abort();
+      diffAbortRef.current?.abort();
+    };
   }, []);
 
   const fetchLog = useCallback(async () => {
-    const signal = newAbort();
+    const signal = newAbort(logAbortRef);
     try {
       setLoading(true);
       const res = await fetch('/api/git/log?limit=80', { signal });
@@ -101,7 +113,7 @@ export function useGitGraph() {
   }, [fetchLog]);
 
   const selectCommit = useCallback(async (sha: string | null) => {
-    if (!sha || sha === selectedSha) {
+    if (!sha || sha === selectedShaRef.current) {
       setSelectedSha(null);
       setFiles([]);
       return;
@@ -109,7 +121,7 @@ export function useGitGraph() {
 
     setSelectedSha(sha);
     setFilesLoading(true);
-    const signal = newAbort();
+    const signal = newAbort(filesAbortRef);
     try {
       const res = await fetch(`/api/git/show/${sha}`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -121,13 +133,13 @@ export function useGitGraph() {
     } finally {
       setFilesLoading(false);
     }
-  }, [selectedSha]);
+  }, []);
 
   const viewDiff = useCallback(async (sha: string, filePath: string) => {
     setDiffLoading(true);
     setDiffFile(filePath);
     setDiffSha(sha);
-    const signal = newAbort();
+    const signal = newAbort(diffAbortRef);
     try {
       const res = await fetch(`/api/git/diff/${sha}?file=${encodeURIComponent(filePath)}`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -79,7 +79,6 @@
 .diff-header-close:hover {
   color: var(--error);
   background: #dd444420;
-
 }
 
 .diff-body {
