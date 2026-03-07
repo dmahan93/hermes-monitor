@@ -119,6 +119,9 @@ export function PRList({ prs = [], issues, onComment, onVerdict, onMerge, onFixC
                 <span className="pr-list-item-title">{pr.title}</span>
                 <span className="pr-list-item-meta">
                   ⎇ {pr.sourceBranch} · {pr.changedFiles.length} files · {pr.comments.length} comments
+                  {(pr.screenshotCount ?? 0) > 0 && (
+                    <> · 📷 {pr.screenshotCount}</>
+                  )}
                 </span>
               </div>
               <span className={`pr-list-verdict verdict-${pr.verdict}`}>

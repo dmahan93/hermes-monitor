@@ -6,6 +6,7 @@ import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
 import type { Store } from './store.js';
 import { config } from './config.js';
+import { buildScreenshotSection } from './screenshot-utils.js';
 
 export type PRStatus = 'open' | 'reviewing' | 'approved' | 'changes_requested' | 'merged' | 'closed';
 export type Verdict = 'pending' | 'approved' | 'changes_requested';
@@ -168,6 +169,10 @@ export class PRManager {
     const reviewDir = join(config.reviewBase, prId);
     mkdirSync(reviewDir, { recursive: true });
 
+    // Build screenshot section for the review context
+    const port = process.env.PORT || '4000';
+    const screenshotSection = buildScreenshotSection(pr.issueId, pr.changedFiles, port);
+
     const contextSections = [
       `# PR Review: ${pr.title}`,
       '',
@@ -201,12 +206,7 @@ export class PRManager {
       '- Code style and readability issues',
       '- Missing tests or documentation',
       '',
-      '## Screenshots for UI Changes',
-      'If the PR modifies UI components (.tsx, .css, .html files), check that:',
-      '- The PR description includes before/after screenshots showing the visual changes',
-      '- Screenshots use markdown image syntax: ![description](url)',
-      '- If screenshots are missing for UI changes, flag this in your review',
-      '  and request them with VERDICT: CHANGES_REQUESTED',
+      ...screenshotSection,
       '',
       'Write your complete review to review.md in this directory.',
       'Start with a verdict line: VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED',

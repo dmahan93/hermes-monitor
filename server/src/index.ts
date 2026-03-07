@@ -13,6 +13,7 @@ import { createTicketApiRouter } from './ticket-api.js';
 import { createGitApiRouter } from './git-api.js';
 import { setupWebSocket } from './ws.js';
 import { config, isGitRepo } from './config.js';
+import { enrichPRWithScreenshots } from './screenshot-utils.js';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
 
@@ -86,9 +87,10 @@ issueManager.onEvent((event, issue) => {
   );
 });
 
-// Broadcast PR events
+// Broadcast PR events — enrich with screenshot data so clients get consistent data
+// whether they got the PR from HTTP API or WebSocket
 prManager.onEvent((event, pr) => {
-  broadcast({ type: event, pr });
+  broadcast({ type: event, pr: enrichPRWithScreenshots(pr) });
 });
 
 // Cleanup on shutdown
