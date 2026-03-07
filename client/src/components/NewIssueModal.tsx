@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AgentPreset } from '../types';
 
 interface NewIssueModalProps {
@@ -8,6 +8,15 @@ interface NewIssueModalProps {
 }
 
 export function NewIssueModal({ agents, onSubmit, onClose }: NewIssueModalProps) {
+  // Close on Escape key
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [agent, setAgent] = useState('hermes');
