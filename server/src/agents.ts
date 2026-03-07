@@ -1,12 +1,6 @@
-export interface AgentPreset {
-  id: string;
-  name: string;
-  icon: string;
-  command: string;          // template with {{var}} placeholders (execution)
-  planningCommand: string;  // template for interactive planning sessions
-  description: string;
-  installed?: boolean;      // populated at runtime
-}
+// Re-export shared type so existing server imports continue to work.
+export type { AgentPreset } from '@hermes-monitor/shared/types';
+import type { AgentPreset } from '@hermes-monitor/shared/types';
 
 export const AGENT_PRESETS: AgentPreset[] = [
   {

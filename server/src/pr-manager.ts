@@ -8,38 +8,11 @@ import type { Store } from './store.js';
 import { config } from './config.js';
 import { buildScreenshotSection } from './screenshot-utils.js';
 
-export type PRStatus = 'open' | 'reviewing' | 'approved' | 'changes_requested' | 'merged' | 'closed';
-export type Verdict = 'pending' | 'approved' | 'changes_requested';
+// Re-export shared types so existing server imports continue to work.
+export type { PRStatus, Verdict, PRComment, PullRequest } from '@hermes-monitor/shared/types';
+import type { PRStatus, Verdict, PRComment, PullRequest } from '@hermes-monitor/shared/types';
+
 export type PREvent = 'pr:created' | 'pr:updated';
-
-export interface PRComment {
-  id: string;
-  prId: string;
-  author: string;
-  body: string;
-  file?: string;
-  line?: number;
-  createdAt: number;
-}
-
-export interface PullRequest {
-  id: string;
-  issueId: string;
-  title: string;
-  description: string;
-  submitterNotes: string;
-  sourceBranch: string;
-  targetBranch: string;
-  repoPath: string;
-  status: PRStatus;
-  diff: string;
-  changedFiles: string[];
-  verdict: Verdict;
-  reviewerTerminalId: string | null;
-  comments: PRComment[];
-  createdAt: number;
-  updatedAt: number;
-}
 
 export interface CreatePROptions {
   issueId: string;

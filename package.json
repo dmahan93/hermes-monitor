@@ -2,6 +2,7 @@
   "name": "hermes-monitor",
   "private": true,
   "workspaces": [
+    "shared",
     "server",
     "client",
     "e2e"
