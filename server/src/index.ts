@@ -11,7 +11,7 @@ import { createIssueApiRouter } from './issue-api.js';
 import { createPRApiRouter } from './pr-api.js';
 import { createTicketApiRouter } from './ticket-api.js';
 import { createGitApiRouter } from './git-api.js';
-import { setupWebSocket } from './ws.js';
+import { setupWebSocket, broadcastToAll } from './ws.js';
 import { config, isGitRepo } from './config.js';
 import { enrichPRWithScreenshots } from './screenshot-utils.js';
 
@@ -74,17 +74,9 @@ app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, wor
 // WebSocket
 const wss = setupWebSocket(server, terminalManager);
 
-// Helper to broadcast over WS
-const broadcast = (msg: any) => {
-  const payload = JSON.stringify(msg);
-  wss.clients.forEach((client) => {
-    if (client.readyState === 1) client.send(payload);
-  });
-};
-
 // Broadcast issue events
 issueManager.onEvent((event, issue) => {
-  broadcast(
+  broadcastToAll(wss,
     event === 'issue:deleted'
       ? { type: 'issue:deleted', issueId: issue.id }
       : { type: event, issue }
@@ -94,7 +86,7 @@ issueManager.onEvent((event, issue) => {
 // Broadcast PR events — enrich with screenshot data so clients get consistent data
 // whether they got the PR from HTTP API or WebSocket
 prManager.onEvent((event, pr) => {
-  broadcast({ type: event, pr: enrichPRWithScreenshots(pr) });
+  broadcastToAll(wss, { type: event, pr: enrichPRWithScreenshots(pr) });
 });
 
 // Cleanup on shutdown

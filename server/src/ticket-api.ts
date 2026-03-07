@@ -7,12 +7,13 @@ import type { PRManager } from './pr-manager.js';
 import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
 import { config } from './config.js';
-import { ALLOWED_EXTENSIONS, getUploadedScreenshots } from './screenshot-utils.js';
+import { ALLOWED_EXTENSIONS, getUploadedScreenshots, UI_EXTENSIONS } from './screenshot-utils.js';
 
-/** File extensions that indicate UI changes requiring screenshots */
-const UI_FILE_EXTENSIONS = new Set([
-  '.tsx', '.jsx', '.css', '.scss', '.less', '.html', '.vue', '.svelte',
-]);
+/** File extensions that indicate UI changes requiring screenshots (derived from screenshot-utils) */
+const UI_FILE_EXTENSIONS = new Set(UI_EXTENSIONS);
+
+/** Server port — single source of truth for URL construction in this module */
+const PORT = process.env.PORT || '4000';
 
 const MIME_TO_EXT: Record<string, string> = {
   'image/png': '.png',
@@ -80,8 +81,7 @@ export function createTicketApiRouter(
         }))
       : [];
 
-    const port = process.env.PORT || '4000';
-    const baseUrl = `http://localhost:${port}`;
+    const baseUrl = `http://localhost:${PORT}`;
 
     const screenshotUploadUrl = `${baseUrl}/ticket/${issue.id}/screenshots`;
     const screenshotUploadInstructions = [
@@ -166,9 +166,8 @@ export function createTicketApiRouter(
     const filePath = join(screenshotDir, basename);
     writeFileSync(filePath, req.body);
 
-    const port = process.env.PORT || '4000';
     const url = `/screenshots/${issue.id}/${basename}`;
-    const fullUrl = `http://localhost:${port}${url}`;
+    const fullUrl = `http://localhost:${PORT}${url}`;
     const alt = description || basename;
     const markdown = `![${alt}](${fullUrl})`;
 
@@ -185,12 +184,11 @@ export function createTicketApiRouter(
 
     const files = getUploadedScreenshots(issue.id);
 
-    const port = process.env.PORT || '4000';
     const screenshots = files.map((f) => ({
       filename: f,
       url: `/screenshots/${issue.id}/${f}`,
-      fullUrl: `http://localhost:${port}/screenshots/${issue.id}/${f}`,
-      markdown: `![${f}](http://localhost:${port}/screenshots/${issue.id}/${f})`,
+      fullUrl: `http://localhost:${PORT}/screenshots/${issue.id}/${f}`,
+      markdown: `![${f}](http://localhost:${PORT}/screenshots/${issue.id}/${f})`,
     }));
 
     res.json({ screenshots });
@@ -246,7 +244,7 @@ export function createTicketApiRouter(
                 'To fix: upload screenshots using the screenshotUploadUrl from /ticket/:id/info',
                 '',
                 'To bypass (if no visual changes): resubmit with ?no_ui_changes=true',
-                '  curl -s -X POST http://localhost:' + (process.env.PORT || '4000') + '/ticket/' + issue.id + '/review?no_ui_changes=true',
+                '  curl -s -X POST http://localhost:' + PORT + '/ticket/' + issue.id + '/review?no_ui_changes=true',
                 '',
                 'Or send JSON body: { "noUiChanges": true }',
               ].join('\n'),
