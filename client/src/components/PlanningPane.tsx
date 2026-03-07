@@ -132,11 +132,11 @@ export function PlanningPane({
           {issue.terminalId ? (
             <>
               <div className="planning-terminal-header">
-                <span className="planning-terminal-label">▸ planning terminal</span>
+                <span className="planning-terminal-label">▸ {agent ? `${agent.icon} ${agent.name}` : 'planning agent'}</span>
                 <button
                   className="planning-terminal-stop"
                   onClick={() => onStopPlanning(issue.id)}
-                  title="Stop planning terminal"
+                  title="Stop planning agent"
                 >
                   [×]
                 </button>
@@ -152,15 +152,15 @@ export function PlanningPane({
           ) : (
             <div className="planning-terminal-empty">
               <div className="planning-terminal-empty-text">
-                <div>no planning terminal active</div>
+                <div>no planning agent active</div>
                 <button
                   className="planning-terminal-start"
                   onClick={() => onStartPlanning(issue.id)}
                 >
-                  [START TERMINAL]
+                  {agent ? `[START ${agent.name.toUpperCase()}]` : '[START AGENT]'}
                 </button>
                 <div className="planning-terminal-hint">
-                  opens a shell for exploring, researching, prototyping
+                  launches {agent ? agent.name : 'an agent'} to explore, research, and prototype
                 </div>
               </div>
             </div>

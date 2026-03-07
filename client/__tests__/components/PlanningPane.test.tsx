@@ -11,7 +11,7 @@ vi.mock('../../src/components/TerminalView', () => ({
 }));
 
 const mockAgents: AgentPreset[] = [
-  { id: 'hermes', name: 'Hermes', icon: '⚗', command: '', description: 'Hermes agent', installed: true },
+  { id: 'hermes', name: 'Hermes', icon: '⚗', command: '', planningCommand: 'hermes chat', description: 'Hermes agent', installed: true },
 ];
 
 const makeIssue = (overrides: Partial<Issue> = {}): Issue => ({
@@ -62,7 +62,8 @@ describe('PlanningPane', () => {
 
   it('renders agent info', () => {
     renderPane();
-    expect(screen.getByText(/Hermes/)).toBeInTheDocument();
+    // Agent name appears in the form meta row and the terminal area
+    expect(screen.getAllByText(/Hermes/).length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders branch info when present', () => {
@@ -183,15 +184,15 @@ describe('PlanningPane', () => {
   });
 
   // Terminal states
-  it('shows START TERMINAL button when no terminal', () => {
+  it('shows START agent button when no terminal', () => {
     renderPane({ terminalId: null });
-    expect(screen.getByText('[START TERMINAL]')).toBeInTheDocument();
-    expect(screen.getByText(/no planning terminal active/)).toBeInTheDocument();
+    expect(screen.getByText('[START HERMES]')).toBeInTheDocument();
+    expect(screen.getByText(/no planning agent active/)).toBeInTheDocument();
   });
 
-  it('start terminal button calls onStartPlanning', () => {
+  it('start agent button calls onStartPlanning', () => {
     const { props } = renderPane({ terminalId: null });
-    fireEvent.click(screen.getByText('[START TERMINAL]'));
+    fireEvent.click(screen.getByText('[START HERMES]'));
     expect(props.onStartPlanning).toHaveBeenCalledWith('issue-1');
   });
 
@@ -201,15 +202,17 @@ describe('PlanningPane', () => {
     expect(screen.getByText('Terminal: term-abc')).toBeInTheDocument();
   });
 
-  it('stop terminal button calls onStopPlanning', () => {
+  it('stop agent button calls onStopPlanning', () => {
     const { props } = renderPane({ terminalId: 'term-abc' });
-    fireEvent.click(screen.getByTitle('Stop planning terminal'));
+    fireEvent.click(screen.getByTitle('Stop planning agent'));
     expect(props.onStopPlanning).toHaveBeenCalledWith('issue-1');
   });
 
-  it('renders planning terminal header when terminal is active', () => {
-    renderPane({ terminalId: 'term-1' });
-    expect(screen.getByText('▸ planning terminal')).toBeInTheDocument();
+  it('renders agent name in terminal header when terminal is active', () => {
+    const { container } = renderPane({ terminalId: 'term-1' });
+    const label = container.querySelector('.planning-terminal-label');
+    expect(label).toBeTruthy();
+    expect(label!.textContent).toContain('⚗ Hermes');
   });
 
   // State sync
@@ -242,6 +245,6 @@ describe('PlanningPane', () => {
 
   it('shows hint text in empty terminal state', () => {
     renderPane({ terminalId: null });
-    expect(screen.getByText(/opens a shell for exploring/)).toBeInTheDocument();
+    expect(screen.getByText(/launches Hermes to explore/)).toBeInTheDocument();
   });
 });

@@ -4,7 +4,7 @@ import { AgentTerminalList, selectionKey } from '../../src/components/AgentTermi
 import type { Issue, AgentPreset, PullRequest } from '../../src/types';
 
 const mockAgents: AgentPreset[] = [
-  { id: 'hermes', name: 'Hermes', icon: '⚗', command: '', description: 'Hermes agent', installed: true },
+  { id: 'hermes', name: 'Hermes', icon: '⚗', command: '', planningCommand: 'hermes chat', description: 'Hermes agent', installed: true },
 ];
 
 const makeIssue = (id: string, title: string, opts?: Partial<Issue>): Issue => ({

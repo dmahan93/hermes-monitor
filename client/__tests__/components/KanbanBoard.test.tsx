@@ -4,7 +4,7 @@ import { KanbanBoard } from '../../src/components/KanbanBoard';
 import type { Issue, AgentPreset } from '../../src/types';
 
 const mockAgents: AgentPreset[] = [
-  { id: 'hermes', name: 'Hermes', icon: '⚗', command: '', description: 'Hermes agent', installed: true },
+  { id: 'hermes', name: 'Hermes', icon: '⚗', command: '', planningCommand: 'hermes chat', description: 'Hermes agent', installed: true },
 ];
 
 const makeIssue = (id: string, title: string, status: Issue['status'] = 'todo'): Issue => ({

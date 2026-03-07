@@ -246,14 +246,22 @@ export class IssueManager {
     }
   }
 
-  /** Start a planning terminal for a backlog issue (shell in repo dir) */
+  /** Start a planning agent terminal for a backlog issue */
   startPlanning(id: string): Issue | undefined {
     const issue = this.issues.get(id);
     if (!issue || issue.status !== 'backlog') return undefined;
     if (issue.terminalId) return issue; // already has a planning terminal
 
+    // Resolve the planning command from the issue's agent preset
+    const preset = getPreset(issue.agent);
+    const planningTemplate = preset?.planningCommand || '';
+    const command = planningTemplate
+      ? this.interpolateCommand(planningTemplate, issue)
+      : undefined;
+
     const terminal = this.terminalManager.create({
       title: `[plan] ${issue.title}`,
+      command,
       cwd: this.repoPath,
     });
     issue.terminalId = terminal.id;

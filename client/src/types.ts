@@ -37,6 +37,7 @@ export interface AgentPreset {
   name: string;
   icon: string;
   command: string;
+  planningCommand: string;
   description: string;
   installed?: boolean;
 }
