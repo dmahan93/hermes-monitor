@@ -7,6 +7,7 @@ export interface AppConfig {
   reviewBase: string;
   screenshotBase: string;
   targetBranch: string;
+  requireScreenshotsForUiChanges: boolean;
 }
 
 // Detect the default branch name for a repo
@@ -33,6 +34,7 @@ export const config: AppConfig = {
   reviewBase: process.env.HERMES_REVIEW_BASE || '/tmp/hermes-reviews',
   screenshotBase: process.env.HERMES_SCREENSHOT_BASE || '/tmp/hermes-screenshots',
   targetBranch: detectDefaultBranch(defaultRepo),
+  requireScreenshotsForUiChanges: process.env.HERMES_REQUIRE_SCREENSHOTS !== 'false',
 };
 
 export function updateConfig(updates: Partial<AppConfig>): void {
@@ -44,6 +46,7 @@ export function updateConfig(updates: Partial<AppConfig>): void {
   if (updates.reviewBase !== undefined) config.reviewBase = updates.reviewBase;
   if (updates.screenshotBase !== undefined) config.screenshotBase = updates.screenshotBase;
   if (updates.targetBranch !== undefined) config.targetBranch = updates.targetBranch;
+  if (updates.requireScreenshotsForUiChanges !== undefined) config.requireScreenshotsForUiChanges = updates.requireScreenshotsForUiChanges;
 }
 
 export function isGitRepo(path: string): boolean {

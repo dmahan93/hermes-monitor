@@ -117,6 +117,23 @@ describe('WebSocket', () => {
     expect(typeof msg.exitCode).toBe('number');
   });
 
+  it('terminal kill sends terminal:removed message', async () => {
+    const ws = await connectWs(server);
+    clients.push(ws);
+    const term = manager.create();
+
+    // Wait for any initial stdout, then kill
+    await new Promise((r) => setTimeout(r, 200));
+    manager.kill(term.id);
+
+    const msg = await Promise.race([
+      waitForMessage(ws, (m) => m.type === 'terminal:removed' && m.terminalId === term.id),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000)),
+    ]);
+    expect(msg.type).toBe('terminal:removed');
+    expect(msg.terminalId).toBe(term.id);
+  });
+
   it('invalid JSON handled gracefully', async () => {
     const ws = await connectWs(server);
     clients.push(ws);

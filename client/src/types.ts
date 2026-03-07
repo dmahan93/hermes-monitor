@@ -88,6 +88,7 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'stdout'; terminalId: string; data: string }
   | { type: 'exit'; terminalId: string; exitCode: number }
+  | { type: 'terminal:removed'; terminalId: string }
   | { type: 'error'; terminalId: string; message: string }
   | { type: 'terminal:removed'; terminalId: string }
   | { type: 'terminal:awaitingInput'; terminalId: string; awaitingInput: boolean }
