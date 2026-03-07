@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
@@ -71,6 +71,10 @@ describe('Ticket API (Agent Communication)', () => {
   });
 
   it('GET /ticket/:id/info returns issue context', async () => {
+    // Explicitly set config so test doesn't depend on env vars
+    const savedRequire = config.requireScreenshotsForUiChanges;
+    config.requireScreenshotsForUiChanges = true;
+
     const issue = issueManager.create({ title: 'Test task', description: 'Do the thing' });
     const res = await request(server, 'GET', `/ticket/${issue.id}/info`);
     expect(res.status).toBe(200);
@@ -81,9 +85,12 @@ describe('Ticket API (Agent Communication)', () => {
     expect(res.body.previousReviews).toEqual([]);
     expect(res.body.guidelines).toBeDefined();
     expect(res.body.guidelines.screenshots).toContain('screenshotUploadUrl');
-    expect(res.body.guidelines.screenshots).toContain('required for UI changes');
+    expect(res.body.guidelines.screenshots).toContain('REQUIRED');
+    expect(res.body.guidelines.requireScreenshotsForUiChanges).toBe(true);
     expect(res.body.screenshotUploadUrl).toContain(`/ticket/${issue.id}/screenshots`);
     expect(res.body.screenshotUploadInstructions).toContain('curl');
+
+    config.requireScreenshotsForUiChanges = savedRequire;
   });
 
   it('GET /ticket/:id/info returns 404 for unknown issue', async () => {
@@ -95,8 +102,11 @@ describe('Ticket API (Agent Communication)', () => {
     const issue = issueManager.create({ title: 'WIP task' });
     issueManager.changeStatus(issue.id, 'in_progress');
     const res = await request(server, 'GET', `/ticket/${issue.id}/info`);
-    expect(res.body.branch).toBeTruthy();
-    // worktreePath may or may not be set depending on git repo availability
+    // branch and worktreePath may or may not be set depending on git repo availability
+    // In test environments without a git repo, worktree creation fails gracefully
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('branch');
+    expect(res.body).toHaveProperty('worktreePath');
   });
 
   it('POST /ticket/:id/review moves issue to review', async () => {
@@ -267,5 +277,149 @@ describe('Ticket API — Screenshot Upload', () => {
   it('GET /ticket/:id/screenshots returns 404 for unknown issue', async () => {
     const res = await request(server, 'GET', '/ticket/nonexistent/screenshots');
     expect(res.status).toBe(404);
+  });
+});
+
+describe('Ticket API — Screenshot Requirement Enforcement', () => {
+  let terminalManager: TerminalManager;
+  let issueManager: IssueManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let server: Server;
+  let savedRequireScreenshots: boolean;
+
+  beforeEach(async () => {
+    // Save and ensure config is enabled
+    savedRequireScreenshots = config.requireScreenshotsForUiChanges;
+    config.requireScreenshotsForUiChanges = true;
+
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+    issueManager.setWorktreeManager(worktreeManager);
+    issueManager.setPRManager(prManager);
+
+    const app = express();
+    app.use('/api', createIssueApiRouter(issueManager));
+    app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, worktreeManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    config.requireScreenshotsForUiChanges = savedRequireScreenshots;
+    vi.restoreAllMocks();
+    terminalManager.killAll();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  /**
+   * Helper: create an issue, move to in_progress, mock getChangedFiles.
+   * Tests the ticket API's enforcement logic without requiring real git worktrees.
+   */
+  function setupIssueWithChangedFiles(title: string, changedFiles: string[]): { issue: any } {
+    const issue = issueManager.create({ title });
+    issueManager.changeStatus(issue.id, 'in_progress');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue(changedFiles);
+    return { issue: issueManager.get(issue.id)! };
+  }
+
+  it('rejects review when UI files changed but no screenshots uploaded', async () => {
+    const { issue } = setupIssueWithChangedFiles('UI change no screenshot', ['Component.tsx']);
+
+    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Screenshots required for UI changes');
+    expect(res.body.uiFilesChanged).toContain('Component.tsx');
+    expect(res.body.message).toContain('no_ui_changes=true');
+
+    // Issue should still be in_progress (not moved to review)
+    const updated = issueManager.get(issue.id);
+    expect(updated?.status).toBe('in_progress');
+  });
+
+  it('allows review when UI files changed and screenshots are uploaded', async () => {
+    const { issue } = setupIssueWithChangedFiles('UI change with screenshot', ['Button.tsx']);
+
+    // Upload a screenshot first
+    await rawRequest(
+      server, 'POST',
+      `/ticket/${issue.id}/screenshots?filename=button-before.png`,
+      TINY_PNG, 'image/png'
+    );
+
+    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.status).toBe('review');
+  });
+
+  it('allows review when UI files changed but agent passes no_ui_changes query param', async () => {
+    const { issue } = setupIssueWithChangedFiles('UI refactor only', ['App.tsx']);
+
+    const res = await request(server, 'POST', `/ticket/${issue.id}/review?no_ui_changes=true`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.status).toBe('review');
+  });
+
+  it('allows review when UI files changed but agent sends noUiChanges in body', async () => {
+    const { issue } = setupIssueWithChangedFiles('UI rename only', ['Header.tsx']);
+
+    const res = await request(server, 'POST', `/ticket/${issue.id}/review`, { noUiChanges: true });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.status).toBe('review');
+  });
+
+  it('allows review when only non-UI files changed (no screenshot needed)', async () => {
+    const { issue } = setupIssueWithChangedFiles('Backend change', ['utils.ts']);
+
+    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.status).toBe('review');
+  });
+
+  it('allows review when config.requireScreenshotsForUiChanges is false', async () => {
+    config.requireScreenshotsForUiChanges = false;
+    const { issue } = setupIssueWithChangedFiles('UI change config off', ['Modal.tsx']);
+
+    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.status).toBe('review');
+  });
+
+  it('lists UI file extensions that triggered the rejection', async () => {
+    // Mock getChangedFiles to return a mix of UI and non-UI files
+    const { issue } = setupIssueWithChangedFiles('Multi UI files', [
+      'Page.tsx', 'styles.css', 'helper.ts',
+    ]);
+
+    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    expect(res.status).toBe(400);
+    expect(res.body.uiFilesChanged).toContain('Page.tsx');
+    expect(res.body.uiFilesChanged).toContain('styles.css');
+    // Non-UI file should NOT be listed
+    expect(res.body.uiFilesChanged).not.toContain('helper.ts');
+  });
+
+  it('GET /ticket/:id/info reflects requireScreenshotsForUiChanges in guidelines', async () => {
+    const issue = issueManager.create({ title: 'Check guidelines' });
+
+    // When enabled
+    config.requireScreenshotsForUiChanges = true;
+    let res = await request(server, 'GET', `/ticket/${issue.id}/info`);
+    expect(res.body.guidelines.requireScreenshotsForUiChanges).toBe(true);
+    expect(res.body.guidelines.screenshots).toContain('REQUIRED');
+    expect(res.body.guidelines.screenshots).toContain('no_ui_changes=true');
+
+    // When disabled
+    config.requireScreenshotsForUiChanges = false;
+    res = await request(server, 'GET', `/ticket/${issue.id}/info`);
+    expect(res.body.guidelines.requireScreenshotsForUiChanges).toBe(false);
+    expect(res.body.guidelines.screenshots).not.toContain('REQUIRED');
   });
 });

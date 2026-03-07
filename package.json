@@ -14,7 +14,8 @@
     "test": "npm run test -w server && npm run test -w client",
     "test:server": "npm run test -w server",
     "test:client": "npm run test -w client",
-    "test:e2e": "npm run test -w e2e"
+    "test:e2e": "npm run test -w e2e",
+    "setup:worktree": "bash scripts/setup-worktree.sh"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

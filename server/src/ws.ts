@@ -25,6 +25,11 @@ export function setupWebSocket(server: Server, manager: TerminalManager): WebSoc
     broadcast({ type: 'exit', terminalId, exitCode });
   });
 
+  // Notify clients when a terminal is removed (killed/cleaned up)
+  manager.onRemove((terminalId) => {
+    broadcast({ type: 'terminal:removed', terminalId });
+  });
+
   wss.on('connection', (ws) => {
     // Replay scrollback for all active terminals to the new client
     for (const terminal of manager.list()) {

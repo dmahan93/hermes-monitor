@@ -132,6 +132,226 @@ describe('PRManager.resetToOpen', () => {
   });
 });
 
+describe('PRManager.handleReviewerExit — terminal cleanup', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+
+  beforeEach(() => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+  });
+
+  afterEach(() => {
+    terminalManager.killAll();
+  });
+
+  it('clears reviewerTerminalId when reviewer terminal exits', async () => {
+    // Create a terminal that exits immediately
+    const term = terminalManager.create({ command: '/bin/true' });
+    const pr = insertTestPR(prManager, {
+      id: 'cleanup-pr-1',
+      status: 'reviewing',
+      reviewerTerminalId: term.id,
+    });
+
+    // Write a review file so handleReviewerExit can process it
+    const reviewDir = join(config.reviewBase, pr.id);
+    mkdirSync(reviewDir, { recursive: true });
+    writeFileSync(join(reviewDir, 'review.md'), 'VERDICT: APPROVED\nLooks great!');
+
+    // Wait for the terminal to exit and trigger handleReviewerExit
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // reviewerTerminalId should be cleared
+    const updated = prManager.get(pr.id);
+    expect(updated).toBeDefined();
+    expect(updated!.reviewerTerminalId).toBeNull();
+  });
+
+  it('removes reviewer terminal from terminal manager after exit', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    insertTestPR(prManager, {
+      id: 'cleanup-pr-2',
+      status: 'reviewing',
+      reviewerTerminalId: term.id,
+    });
+
+    const reviewDir = join(config.reviewBase, 'cleanup-pr-2');
+    mkdirSync(reviewDir, { recursive: true });
+    writeFileSync(join(reviewDir, 'review.md'), 'VERDICT: CHANGES_REQUESTED\nNeeds work.');
+
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // Terminal should be removed from the manager
+    expect(terminalManager.get(term.id)).toBeUndefined();
+  });
+
+  it('emits pr:updated with null reviewerTerminalId after exit', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    insertTestPR(prManager, {
+      id: 'cleanup-pr-3',
+      status: 'reviewing',
+      reviewerTerminalId: term.id,
+    });
+
+    const reviewDir = join(config.reviewBase, 'cleanup-pr-3');
+    mkdirSync(reviewDir, { recursive: true });
+    writeFileSync(join(reviewDir, 'review.md'), 'VERDICT: APPROVED\nAll good.');
+
+    const events: Array<{ event: string; reviewerTerminalId: string | null }> = [];
+    prManager.onEvent((event, pr) => {
+      events.push({ event, reviewerTerminalId: pr.reviewerTerminalId });
+    });
+
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const updateEvent = events.find((e) => e.event === 'pr:updated');
+    expect(updateEvent).toBeDefined();
+    expect(updateEvent!.reviewerTerminalId).toBeNull();
+  });
+});
+
+describe('PRManager.handleConflictFixerExit — conflict fixer lifecycle', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+
+  beforeEach(() => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+  });
+
+  afterEach(() => {
+    prManager.clearAllPendingTimers();
+    terminalManager.killAll();
+  });
+
+  it('clears reviewerTerminalId immediately when conflict fixer exits', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    const pr = insertTestPR(prManager, {
+      id: 'fixer-pr-1',
+      status: 'open',
+      reviewerTerminalId: term.id,
+    });
+    // Register as a conflict fixer via private set
+    (prManager as any).conflictFixerTerminals.add(term.id);
+
+    // Wait for the terminal to exit
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // reviewerTerminalId should be cleared immediately on exit
+    const updated = prManager.get(pr.id);
+    expect(updated).toBeDefined();
+    expect(updated!.reviewerTerminalId).toBeNull();
+  });
+
+  it('emits pr:updated when conflict fixer exits', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    insertTestPR(prManager, {
+      id: 'fixer-pr-2',
+      status: 'open',
+      reviewerTerminalId: term.id,
+    });
+    (prManager as any).conflictFixerTerminals.add(term.id);
+
+    const events: Array<{ event: string; reviewerTerminalId: string | null }> = [];
+    prManager.onEvent((event, pr) => {
+      events.push({ event, reviewerTerminalId: pr.reviewerTerminalId });
+    });
+
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const updateEvent = events.find((e) => e.event === 'pr:updated');
+    expect(updateEvent).toBeDefined();
+    expect(updateEvent!.reviewerTerminalId).toBeNull();
+  });
+
+  it('removes terminal from manager after 5-second delay', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    insertTestPR(prManager, {
+      id: 'fixer-pr-3',
+      status: 'open',
+      reviewerTerminalId: term.id,
+    });
+    (prManager as any).conflictFixerTerminals.add(term.id);
+
+    // Wait for exit but not the 5-second delay
+    await new Promise((r) => setTimeout(r, 1500));
+    // Terminal should still be in manager (waiting for delayed kill)
+    expect(terminalManager.get(term.id)).toBeDefined();
+
+    // Wait for the 5-second delay to fire
+    await new Promise((r) => setTimeout(r, 5500));
+    // Terminal should now be removed
+    expect(terminalManager.get(term.id)).toBeUndefined();
+  }, 10000);
+
+  it('clearAllPendingTimers prevents delayed removal', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    insertTestPR(prManager, {
+      id: 'fixer-pr-4',
+      status: 'open',
+      reviewerTerminalId: term.id,
+    });
+    (prManager as any).conflictFixerTerminals.add(term.id);
+
+    // Wait for exit
+    await new Promise((r) => setTimeout(r, 1500));
+    // Terminal should still be in manager
+    expect(terminalManager.get(term.id)).toBeDefined();
+
+    // Clear all pending timers before the 5-second delay fires
+    prManager.clearAllPendingTimers();
+
+    // Wait past the 5-second window
+    await new Promise((r) => setTimeout(r, 5500));
+    // Terminal should still be in manager since we cancelled the timer
+    expect(terminalManager.get(term.id)).toBeDefined();
+  }, 10000);
+
+  it('relaunchReview cleans up conflict fixer terminals', () => {
+    // Create a terminal acting as a conflict fixer
+    const fixerTerm = terminalManager.create({ title: 'Conflict fixer' });
+    insertTestPR(prManager, {
+      id: 'fixer-pr-5',
+      status: 'open',
+      reviewerTerminalId: fixerTerm.id,
+    });
+    (prManager as any).conflictFixerTerminals.add(fixerTerm.id);
+
+    // Relaunch review should kill the fixer and remove from the set
+    prManager.relaunchReview('fixer-pr-5');
+
+    // Old fixer terminal should be removed
+    expect(terminalManager.get(fixerTerm.id)).toBeUndefined();
+    // Conflict fixer set should no longer contain the old terminal
+    expect((prManager as any).conflictFixerTerminals.has(fixerTerm.id)).toBe(false);
+    // PR should have a new reviewer terminal
+    const updated = prManager.get('fixer-pr-5');
+    expect(updated!.reviewerTerminalId).not.toBeNull();
+    expect(updated!.reviewerTerminalId).not.toBe(fixerTerm.id);
+  });
+
+  it('handles orphan conflict fixer with no matching PR', async () => {
+    // Create a terminal and register it as conflict fixer, but don't associate with any PR
+    const term = terminalManager.create({ command: '/bin/true' });
+    (prManager as any).conflictFixerTerminals.add(term.id);
+
+    // Wait for exit
+    await new Promise((r) => setTimeout(r, 1500));
+    // Terminal should still exist (waiting for delayed kill)
+    expect(terminalManager.get(term.id)).toBeDefined();
+
+    // Wait for delayed removal
+    await new Promise((r) => setTimeout(r, 5500));
+    // Terminal should be removed
+    expect(terminalManager.get(term.id)).toBeUndefined();
+  }, 10000);
+});
+
 describe('PR API — Relaunch Review', () => {
   let terminalManager: TerminalManager;
   let worktreeManager: WorktreeManager;

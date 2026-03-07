@@ -8,6 +8,7 @@ import { AgentTerminalList, type AgentListSelection, selectionKey } from './comp
 import { PRList } from './components/PRList';
 import { GitGraph } from './components/GitGraph';
 import { DiffViewer } from './components/DiffViewer';
+import { ConfigView } from './components/ConfigView';
 import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
 import { useTerminals } from './hooks/useTerminals';
@@ -26,7 +27,7 @@ function getWsUrl(): string {
 
 export default function App() {
   const { connected, send, subscribe } = useWebSocket(getWsUrl());
-  const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals();
+  const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals(subscribe);
   const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue } = useIssues(subscribe);
   const { prs = [], addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe);
   const agents = useAgents();
@@ -311,6 +312,11 @@ export default function App() {
               onRelaunchReview={relaunchReview}
               onMoveToInProgress={(issueId) => handleStatusChange(issueId, 'in_progress')}
             />
+          </div>
+
+          {/* Config view */}
+          <div className={`view-panel ${view === 'config' ? 'view-active' : 'view-hidden'}`}>
+            <ConfigView />
           </div>
         </main>
       </div>
