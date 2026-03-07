@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
-import { mkdirSync, writeFileSync, existsSync } from 'fs';
+import { mkdirSync, writeFileSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
 import { TerminalManager } from '../src/terminal-manager.js';
 import { WorktreeManager } from '../src/worktree-manager.js';
@@ -464,5 +464,85 @@ describe('PR API — Relaunch Review', () => {
     expect(res.status).toBe(200);
     // The stale review.md should be deleted
     expect(existsSync(join(reviewDir, 'review.md'))).toBe(false);
+  });
+});
+
+describe('PR API — Screenshots', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let issueManager: IssueManager;
+  let server: Server;
+  let screenshotDir: string;
+
+  beforeEach(async () => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+
+    const app = express();
+    app.use('/api', createPRApiRouter(prManager, issueManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    terminalManager.killAll();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    // Clean up screenshot dirs
+    if (screenshotDir) {
+      try { rmSync(screenshotDir, { recursive: true, force: true }); } catch {}
+    }
+  });
+
+  it('GET /api/prs/:id/screenshots returns empty array when no screenshots', async () => {
+    insertTestPR(prManager, { id: 'pr-no-ss', issueId: 'issue-no-ss' });
+    const res = await request(server, 'GET', '/api/prs/pr-no-ss/screenshots');
+    expect(res.status).toBe(200);
+    expect(res.body.screenshots).toEqual([]);
+  });
+
+  it('GET /api/prs/:id/screenshots returns 404 for unknown PR', async () => {
+    const res = await request(server, 'GET', '/api/prs/nonexistent/screenshots');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('PR not found');
+  });
+
+  it('GET /api/prs/:id/screenshots lists uploaded screenshots', async () => {
+    const issueId = 'issue-with-ss';
+    insertTestPR(prManager, { id: 'pr-with-ss', issueId });
+
+    // Create fake screenshot files
+    screenshotDir = join(config.screenshotBase, issueId);
+    mkdirSync(screenshotDir, { recursive: true });
+    writeFileSync(join(screenshotDir, 'before-abc12345.png'), 'fake-png-data');
+    writeFileSync(join(screenshotDir, 'after-def67890.png'), 'fake-png-data');
+
+    const res = await request(server, 'GET', '/api/prs/pr-with-ss/screenshots');
+    expect(res.status).toBe(200);
+    expect(res.body.screenshots).toHaveLength(2);
+    expect(res.body.screenshots[0].filename).toBeTruthy();
+    expect(res.body.screenshots[0].url).toContain(`/screenshots/${issueId}/`);
+    expect(res.body.screenshots[1].url).toContain(`/screenshots/${issueId}/`);
+  });
+
+  it('GET /api/prs/:id/screenshots only lists image files', async () => {
+    const issueId = 'issue-mixed-files';
+    insertTestPR(prManager, { id: 'pr-mixed', issueId });
+
+    screenshotDir = join(config.screenshotBase, issueId);
+    mkdirSync(screenshotDir, { recursive: true });
+    writeFileSync(join(screenshotDir, 'screenshot.png'), 'fake-png');
+    writeFileSync(join(screenshotDir, 'photo.jpg'), 'fake-jpg');
+    writeFileSync(join(screenshotDir, 'notes.txt'), 'not an image');
+    writeFileSync(join(screenshotDir, 'data.json'), '{}');
+
+    const res = await request(server, 'GET', '/api/prs/pr-mixed/screenshots');
+    expect(res.status).toBe(200);
+    expect(res.body.screenshots).toHaveLength(2);
+    const filenames = res.body.screenshots.map((s: any) => s.filename);
+    expect(filenames).toContain('screenshot.png');
+    expect(filenames).toContain('photo.jpg');
   });
 });

@@ -6,6 +6,8 @@ import { IssueDetail } from './components/IssueDetail';
 import { TaskTerminalPane } from './components/TaskTerminalPane';
 import { AgentTerminalList, type AgentListSelection, selectionKey } from './components/AgentTerminalList';
 import { PRList } from './components/PRList';
+import { GitGraph } from './components/GitGraph';
+import { DiffViewer } from './components/DiffViewer';
 import { ConfigView } from './components/ConfigView';
 import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
@@ -14,6 +16,7 @@ import { useIssues } from './hooks/useIssues';
 import { usePRs } from './hooks/usePRs';
 import { useAgents } from './hooks/useAgents';
 import { useWebSocket } from './hooks/useWebSocket';
+import { useGitGraph } from './hooks/useGitGraph';
 import type { IssueStatus } from './types';
 import './App.css';
 
@@ -28,6 +31,16 @@ export default function App() {
   const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue } = useIssues(subscribe);
   const { prs = [], addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe);
   const agents = useAgents();
+  const gitGraph = useGitGraph();
+  const [gitPanelOpen, setGitPanelOpen] = useState(() => {
+    const stored = localStorage.getItem('hermes:gitPanelOpen');
+    return stored !== null ? stored === 'true' : true;
+  });
+
+  // Persist sidebar state
+  useEffect(() => {
+    localStorage.setItem('hermes:gitPanelOpen', String(gitPanelOpen));
+  }, [gitPanelOpen]);
   const [view, setView] = useState<ViewMode>('kanban');
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [termViewSelection, setTermViewSelection] = useState<AgentListSelection | null>(null);
@@ -223,96 +236,146 @@ export default function App() {
       >
         <ViewSwitcher mode={view} onChange={setView} prCount={prs.length} />
       </Header>
-      <main className="main">
-        {/* Terminal view: sidebar + grid/expanded agent */}
-        <div className={`view-panel ${view === 'terminals' ? 'view-active' : 'view-hidden'}`}>
-          <div className="terminals-layout">
-            <div className="terminals-main">
-              {termViewAgentIssue && termViewAgentIssue.terminalId ? (
-                <TaskTerminalPane
-                  issue={termViewAgentIssue}
-                  send={send}
-                  subscribe={subscribe}
-                  onMinimize={() => setTermViewSelection(null)}
-                  awaitingInput={awaitingInputIds.has(termViewAgentIssue.terminalId)}
-                />
-              ) : (
-                <TerminalGrid
-                  terminals={terminals}
-                  layout={layout}
-                  onLayoutChange={updateLayout}
-                  send={send}
-                  subscribe={subscribe}
-                  onClose={handleCloseTerminal}
-                  awaitingInputIds={awaitingInputIds}
-                />
-              )}
-            </div>
-            <div className="terminals-sidebar">
-              <AgentTerminalList
-                issues={issues}
-                prs={prs}
-                agents={agents}
-                activeTerminalId={termViewAgentIssue?.terminalId || null}
-                onSelect={(selection) => {
-                  setTermViewSelection((prev) =>
-                    prev && selectionKey(prev) === selectionKey(selection) ? null : selection
-                  );
-                }}
-              />
-            </div>
-          </div>
+      <div className="app-body">
+        {/* Git Graph Left Sidebar */}
+        <div className={`git-graph-sidebar ${gitPanelOpen ? 'git-graph-open' : 'git-graph-closed'}`}>
+          {gitPanelOpen ? (
+            <GitGraph
+              commits={gitGraph.commits}
+              graph={gitGraph.graph}
+              loading={gitGraph.loading}
+              error={gitGraph.error}
+              selectedSha={gitGraph.selectedSha}
+              files={gitGraph.files}
+              filesLoading={gitGraph.filesLoading}
+              onSelectCommit={gitGraph.selectCommit}
+              onFileClick={gitGraph.viewDiff}
+            />
+          ) : (
+            <button
+              className="git-graph-toggle"
+              onClick={() => setGitPanelOpen(true)}
+              title="Open git graph"
+              aria-label="Open git graph"
+            >
+              ⎇
+            </button>
+          )}
+          {gitPanelOpen && (
+            <button
+              className="git-graph-collapse"
+              onClick={() => setGitPanelOpen(false)}
+              title="Collapse git graph"
+              aria-label="Collapse git graph"
+            >
+              ◂
+            </button>
+          )}
         </div>
 
-        {/* Kanban view: board + optional split terminal */}
-        <div className={`view-panel ${view === 'kanban' ? 'view-active' : 'view-hidden'}`}>
-          <div className={`kanban-split ${showTaskTerminal ? 'split-open' : ''}`}>
-            <div className="kanban-split-left">
-              <KanbanBoard
-                issues={issues}
-                agents={agents}
-                onStatusChange={handleStatusChange}
-                onCreateIssue={handleCreateIssue}
-                onDeleteIssue={handleDeleteIssue}
-                onEditIssue={handleEditIssue}
-                onTerminalClick={handleTerminalClick}
-                onIssueClick={handleIssueClick}
-              />
-            </div>
-            {showTaskTerminal && (
-              <div className="kanban-split-right">
-                <TaskTerminalPane
-                  issue={expandedIssue}
-                  send={send}
-                  subscribe={subscribe}
-                  onMinimize={() => setExpandedIssueId(null)}
-                  awaitingInput={expandedIssue.terminalId ? awaitingInputIds.has(expandedIssue.terminalId) : false}
+        {/* Main content area */}
+        <main className="main">
+          {/* Terminal view: sidebar + grid/expanded agent */}
+          <div className={`view-panel ${view === 'terminals' ? 'view-active' : 'view-hidden'}`}>
+            <div className="terminals-layout">
+              <div className="terminals-main">
+                {termViewAgentIssue && termViewAgentIssue.terminalId ? (
+                  <TaskTerminalPane
+                    issue={termViewAgentIssue}
+                    send={send}
+                    subscribe={subscribe}
+                    onMinimize={() => setTermViewSelection(null)}
+                    awaitingInput={awaitingInputIds.has(termViewAgentIssue.terminalId)}
+                  />
+                ) : (
+                  <TerminalGrid
+                    terminals={terminals}
+                    layout={layout}
+                    onLayoutChange={updateLayout}
+                    send={send}
+                    subscribe={subscribe}
+                    onClose={handleCloseTerminal}
+                    awaitingInputIds={awaitingInputIds}
+                  />
+                )}
+              </div>
+              <div className="terminals-sidebar">
+                <AgentTerminalList
+                  issues={issues}
+                  prs={prs}
+                  agents={agents}
+                  activeTerminalId={termViewAgentIssue?.terminalId || null}
+                  onSelect={(selection) => {
+                    setTermViewSelection((prev) =>
+                      prev && selectionKey(prev) === selectionKey(selection) ? null : selection
+                    );
+                  }}
                 />
               </div>
-            )}
+            </div>
           </div>
-        </div>
 
-        {/* PR view */}
-        <div className={`view-panel ${view === 'prs' ? 'view-active' : 'view-hidden'}`}>
-          <PRList
-            prs={prs}
-            issues={issues}
-            onComment={addComment}
-            onVerdict={setVerdict}
-            onMerge={mergePR}
-            onFixConflicts={fixConflicts}
-            onRelaunchReview={relaunchReview}
-            onMoveToInProgress={(issueId) => handleStatusChange(issueId, 'in_progress')}
-          />
-        </div>
+          {/* Kanban view: board + optional split terminal */}
+          <div className={`view-panel ${view === 'kanban' ? 'view-active' : 'view-hidden'}`}>
+            <div className={`kanban-split ${showTaskTerminal ? 'split-open' : ''}`}>
+              <div className="kanban-split-left">
+                <KanbanBoard
+                  issues={issues}
+                  agents={agents}
+                  onStatusChange={handleStatusChange}
+                  onCreateIssue={handleCreateIssue}
+                  onDeleteIssue={handleDeleteIssue}
+                  onEditIssue={handleEditIssue}
+                  onTerminalClick={handleTerminalClick}
+                  onIssueClick={handleIssueClick}
+                />
+              </div>
+              {showTaskTerminal && (
+                <div className="kanban-split-right">
+                  <TaskTerminalPane
+                    issue={expandedIssue}
+                    send={send}
+                    subscribe={subscribe}
+                    onMinimize={() => setExpandedIssueId(null)}
+                    awaitingInput={expandedIssue.terminalId ? awaitingInputIds.has(expandedIssue.terminalId) : false}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
 
-        {/* Config view */}
-        <div className={`view-panel ${view === 'config' ? 'view-active' : 'view-hidden'}`}>
-          <ConfigView />
-        </div>
-      </main>
+          {/* PR view */}
+          <div className={`view-panel ${view === 'prs' ? 'view-active' : 'view-hidden'}`}>
+            <PRList
+              prs={prs}
+              issues={issues}
+              onComment={addComment}
+              onVerdict={setVerdict}
+              onMerge={mergePR}
+              onFixConflicts={fixConflicts}
+              onRelaunchReview={relaunchReview}
+              onMoveToInProgress={(issueId) => handleStatusChange(issueId, 'in_progress')}
+            />
+          </div>
+
+          {/* Config view */}
+          <div className={`view-panel ${view === 'config' ? 'view-active' : 'view-hidden'}`}>
+            <ConfigView />
+          </div>
+        </main>
+      </div>
       <StatusBar connected={connected} terminalCount={terminals.length} issueCount={issues.length} awaitingInputCount={awaitingInputIds.size} />
+
+      {/* Diff viewer overlay */}
+      {gitGraph.diffFile && gitGraph.diffSha && (
+        <DiffViewer
+          sha={gitGraph.diffSha}
+          file={gitGraph.diffFile}
+          diff={gitGraph.diffContent}
+          loading={gitGraph.diffLoading}
+          onClose={gitGraph.closeDiff}
+        />
+      )}
       {detailIssue && (
         <IssueDetail
           key={`${detailIssueId}-${detailEditing}`}

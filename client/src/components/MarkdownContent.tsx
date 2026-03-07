@@ -65,7 +65,7 @@ export function parseMarkdownImages(text: string): ContentPart[] {
   return parts;
 }
 
-function ImageWithZoom({ src, alt, showCaption }: { src: string; alt: string; showCaption: boolean }) {
+export function ImageWithZoom({ src, alt, showCaption }: { src: string; alt: string; showCaption: boolean }) {
   const [zoomed, setZoomed] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
