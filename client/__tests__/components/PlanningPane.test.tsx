@@ -118,6 +118,41 @@ describe('PlanningPane', () => {
     });
   });
 
+  it('save button is disabled when title is empty', () => {
+    renderPane();
+    const titleInput = screen.getByDisplayValue('Plan this feature');
+    fireEvent.change(titleInput, { target: { value: '   ' } });
+
+    const saveBtn = screen.getByText('[SAVE CHANGES]');
+    expect(saveBtn).toBeDisabled();
+  });
+
+  it('does not call onUpdate when saving with empty title', async () => {
+    const { props } = renderPane();
+    const titleInput = screen.getByDisplayValue('Plan this feature');
+    fireEvent.change(titleInput, { target: { value: '' } });
+
+    fireEvent.click(screen.getByText('[SAVE CHANGES]'));
+    expect(props.onUpdate).not.toHaveBeenCalled();
+  });
+
+  it('shows SAVING text during save', async () => {
+    let resolveUpdate: () => void;
+    const slowUpdate = vi.fn(() => new Promise<void>((resolve) => { resolveUpdate = resolve; }));
+    const { props } = renderPane({}, { onUpdate: slowUpdate });
+
+    const titleInput = screen.getByDisplayValue('Plan this feature');
+    fireEvent.change(titleInput, { target: { value: 'Updated' } });
+    fireEvent.click(screen.getByText('[SAVE CHANGES]'));
+
+    expect(screen.getByText('[SAVING...]')).toBeInTheDocument();
+
+    resolveUpdate!();
+    await waitFor(() => {
+      expect(screen.queryByText('[SAVING...]')).not.toBeInTheDocument();
+    });
+  });
+
   it('promote button calls onPromote', () => {
     const { props } = renderPane();
     fireEvent.click(screen.getByText('[→ MOVE TO TODO]'));

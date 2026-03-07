@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { TerminalView } from './TerminalView';
 import type { Issue, AgentPreset, ClientMessage, ServerMessage } from '../types';
 
@@ -21,6 +21,10 @@ export function PlanningPane({
   const [title, setTitle] = useState(issue.title);
   const [description, setDescription] = useState(issue.description);
   const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   // Sync local state with prop changes (e.g., from WebSocket updates).
   // When dirty, local edits are preserved and external updates are intentionally
@@ -36,14 +40,24 @@ export function PlanningPane({
   const agent = agents.find((a) => a.id === issue.agent);
 
   const handleSave = useCallback(async () => {
-    await onUpdate(issue.id, { title: title.trim(), description: description.trim() });
-    setDirty(false);
-  }, [issue.id, title, description, onUpdate]);
+    const trimmed = title.trim();
+    if (!trimmed || saving) return;
+    setSaving(true);
+    try {
+      await onUpdate(issue.id, { title: trimmed, description: description.trim() });
+      if (mountedRef.current) setDirty(false);
+    } finally {
+      if (mountedRef.current) setSaving(false);
+    }
+  }, [issue.id, title, description, saving, onUpdate]);
 
   const handlePromote = useCallback(async () => {
     // Save any unsaved changes first, then promote
     if (dirty) {
-      await onUpdate(issue.id, { title: title.trim(), description: description.trim() });
+      const trimmed = title.trim();
+      if (trimmed) {
+        await onUpdate(issue.id, { title: trimmed, description: description.trim() });
+      }
     }
     onPromote(issue.id);
   }, [issue.id, title, description, dirty, onUpdate, onPromote]);
@@ -98,8 +112,12 @@ export function PlanningPane({
               </div>
             )}
             {dirty && (
-              <button className="planning-save-btn" onClick={handleSave}>
-                [SAVE CHANGES]
+              <button
+                className="planning-save-btn"
+                onClick={handleSave}
+                disabled={saving || !title.trim()}
+              >
+                {saving ? '[SAVING...]' : '[SAVE CHANGES]'}
               </button>
             )}
           </div>

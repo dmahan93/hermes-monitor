@@ -96,8 +96,9 @@ export class Store {
     this.db.prepare('DELETE FROM issues WHERE id = ?').run(id);
   }
 
-  /** Reset in_progress issues to todo on startup (terminals don't survive restart) */
-  resetInProgress(): number {
+  /** Reset stale terminal state on startup: move in_progress → todo, clear backlog planning terminals.
+   *  Terminals don't survive server restart, so all terminal refs must be cleared. */
+  resetStaleTerminals(): number {
     const now = Date.now();
     const result = this.db.prepare(
       "UPDATE issues SET status = 'todo', terminalId = NULL, updatedAt = ? WHERE status = 'in_progress'"

@@ -72,7 +72,7 @@ describe('Store', () => {
       agent: 'hermes', command: '', terminalId: null, branch: 'b2',
       createdAt: Date.now(), updatedAt: Date.now(),
     });
-    const count = store.resetInProgress();
+    const count = store.resetStaleTerminals();
     expect(count).toBe(1);
     const issues = store.loadIssues();
     const wip = issues.find((i) => i.id === 'ip-1')!;
@@ -82,7 +82,7 @@ describe('Store', () => {
     expect(review.status).toBe('review'); // not reset
   });
 
-  it('resetInProgress clears backlog planning terminals', () => {
+  it('resetStaleTerminals clears backlog planning terminals', () => {
     store.saveIssue({
       id: 'bl-1', title: 'Planning', description: '', status: 'backlog',
       agent: 'hermes', command: '', terminalId: 'plan-term-1', branch: null,
@@ -93,7 +93,7 @@ describe('Store', () => {
       agent: 'hermes', command: '', terminalId: null, branch: null,
       createdAt: Date.now(), updatedAt: Date.now(),
     });
-    store.resetInProgress();
+    store.resetStaleTerminals();
     const issues = store.loadIssues();
     const planned = issues.find((i) => i.id === 'bl-1')!;
     expect(planned.status).toBe('backlog'); // stays backlog
