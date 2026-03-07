@@ -1670,45 +1670,6 @@ body {
   border-bottom: 1px solid var(--bevel-dark);
 }
 
-/* ── Diff Viewer ── */
-
-.diff-viewer {
-  background: var(--surface);
-  border: 1px solid var(--chrome);
-  border-top-color: var(--bevel-dark);
-  border-left-color: var(--bevel-dark);
-  border-bottom-color: var(--bevel-light);
-  border-right-color: var(--bevel-light);
-  overflow-x: auto;
-  max-height: 33.333rem;
-  overflow-y: auto;
-}
-
-.diff-viewer-empty {
-  color: var(--text-muted);
-  font-size: 0.917rem;
-  padding: 1rem;
-  text-align: center;
-}
-
-.diff-content {
-  margin: 0;
-  padding: 0.333rem;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.917rem;
-  line-height: 1.5;
-}
-
-.diff-line {
-  padding: 0 0.333rem;
-  white-space: pre;
-}
-
-.diff-header { color: var(--link); }
-.diff-add { color: var(--accent); background: #33dd7710; }
-.diff-remove { color: var(--error); background: #dd444410; }
-.diff-context { color: var(--text-muted); }
-
 /* ── PR Comments ── */
 
 .pr-comments {
@@ -2210,6 +2171,20 @@ body {
   font-style: italic;
 }
 
+/* ═══════════════════════════════════════════
+   APP BODY (sidebar + main content)
+   ═══════════════════════════════════════════ */
+
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Git graph sidebar and diff viewer styles are in
+   components/GitGraph.css and components/DiffViewer.css */
+
 /* ── PR Screenshots / Markdown Content ── */
 
 .markdown-content {
@@ -2303,4 +2278,94 @@ body {
 
 .pr-screenshot-close:hover {
   color: var(--text);
+}
+
+/* Screenshot gallery in PR detail */
+.pr-screenshot-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 0.667rem;
+}
+
+/* ── Config View ── */
+
+.config-view {
+  display: flex;
+  justify-content: center;
+  padding: 2rem;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.config-panel {
+  max-width: 600px;
+  width: 100%;
+}
+
+.config-heading {
+  font-family: 'VT323', monospace;
+  font-size: 1.5rem;
+  font-weight: 400;
+  letter-spacing: 0.167rem;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--chrome);
+}
+
+.config-section {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.config-section-title {
+  font-family: 'VT323', monospace;
+  font-size: 1.167rem;
+  font-weight: 400;
+  letter-spacing: 0.083rem;
+  color: var(--accent);
+  margin-bottom: 0.75rem;
+}
+
+.config-text {
+  color: var(--text-muted);
+  font-size: 0.917rem;
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+}
+
+.config-text:last-child {
+  margin-bottom: 0;
+}
+
+.config-link {
+  display: inline-block;
+  color: var(--link);
+  font-size: 0.917rem;
+  text-decoration: none;
+  padding: 0.333rem 0.667rem;
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  transition: background 0.1s, color 0.1s;
+}
+
+.config-link:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.config-link:active {
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
 }

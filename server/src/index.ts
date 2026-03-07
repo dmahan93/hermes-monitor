@@ -10,6 +10,7 @@ import { createApiRouter } from './api.js';
 import { createIssueApiRouter } from './issue-api.js';
 import { createPRApiRouter } from './pr-api.js';
 import { createTicketApiRouter } from './ticket-api.js';
+import { createGitApiRouter } from './git-api.js';
 import { setupWebSocket } from './ws.js';
 import { config, isGitRepo } from './config.js';
 
@@ -65,6 +66,7 @@ app.use('/screenshots', serveStatic(config.screenshotBase));
 app.use('/api', createApiRouter(terminalManager));
 app.use('/api', createIssueApiRouter(issueManager));
 app.use('/api', createPRApiRouter(prManager, issueManager));
+app.use('/api', createGitApiRouter());
 app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, worktreeManager));
 
 // WebSocket

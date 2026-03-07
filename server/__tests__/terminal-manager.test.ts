@@ -116,6 +116,27 @@ describe('TerminalManager', () => {
     expect(result).toBe(false);
   });
 
+  it('emits remove events when terminal is killed', () => {
+    manager = new TerminalManager();
+    let removedId: string | null = null;
+    manager.onRemove((id) => {
+      removedId = id;
+    });
+    const term = manager.create();
+    manager.kill(term.id);
+    expect(removedId).toBe(term.id);
+  });
+
+  it('does not emit remove event for nonexistent terminal', () => {
+    manager = new TerminalManager();
+    let removeCalled = false;
+    manager.onRemove(() => {
+      removeCalled = true;
+    });
+    manager.kill('nonexistent');
+    expect(removeCalled).toBe(false);
+  });
+
   it('buffers scrollback data', async () => {
     manager = new TerminalManager();
     const term = manager.create();

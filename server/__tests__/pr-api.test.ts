@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
-import { mkdirSync, writeFileSync, existsSync } from 'fs';
+import { mkdirSync, writeFileSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
 import { TerminalManager } from '../src/terminal-manager.js';
 import { WorktreeManager } from '../src/worktree-manager.js';
@@ -213,6 +213,145 @@ describe('PRManager.handleReviewerExit — terminal cleanup', () => {
   });
 });
 
+describe('PRManager.handleConflictFixerExit — conflict fixer lifecycle', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+
+  beforeEach(() => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+  });
+
+  afterEach(() => {
+    prManager.clearAllPendingTimers();
+    terminalManager.killAll();
+  });
+
+  it('clears reviewerTerminalId immediately when conflict fixer exits', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    const pr = insertTestPR(prManager, {
+      id: 'fixer-pr-1',
+      status: 'open',
+      reviewerTerminalId: term.id,
+    });
+    // Register as a conflict fixer via private set
+    (prManager as any).conflictFixerTerminals.add(term.id);
+
+    // Wait for the terminal to exit
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // reviewerTerminalId should be cleared immediately on exit
+    const updated = prManager.get(pr.id);
+    expect(updated).toBeDefined();
+    expect(updated!.reviewerTerminalId).toBeNull();
+  });
+
+  it('emits pr:updated when conflict fixer exits', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    insertTestPR(prManager, {
+      id: 'fixer-pr-2',
+      status: 'open',
+      reviewerTerminalId: term.id,
+    });
+    (prManager as any).conflictFixerTerminals.add(term.id);
+
+    const events: Array<{ event: string; reviewerTerminalId: string | null }> = [];
+    prManager.onEvent((event, pr) => {
+      events.push({ event, reviewerTerminalId: pr.reviewerTerminalId });
+    });
+
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const updateEvent = events.find((e) => e.event === 'pr:updated');
+    expect(updateEvent).toBeDefined();
+    expect(updateEvent!.reviewerTerminalId).toBeNull();
+  });
+
+  it('removes terminal from manager after 5-second delay', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    insertTestPR(prManager, {
+      id: 'fixer-pr-3',
+      status: 'open',
+      reviewerTerminalId: term.id,
+    });
+    (prManager as any).conflictFixerTerminals.add(term.id);
+
+    // Wait for exit but not the 5-second delay
+    await new Promise((r) => setTimeout(r, 1500));
+    // Terminal should still be in manager (waiting for delayed kill)
+    expect(terminalManager.get(term.id)).toBeDefined();
+
+    // Wait for the 5-second delay to fire
+    await new Promise((r) => setTimeout(r, 5500));
+    // Terminal should now be removed
+    expect(terminalManager.get(term.id)).toBeUndefined();
+  }, 10000);
+
+  it('clearAllPendingTimers prevents delayed removal', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    insertTestPR(prManager, {
+      id: 'fixer-pr-4',
+      status: 'open',
+      reviewerTerminalId: term.id,
+    });
+    (prManager as any).conflictFixerTerminals.add(term.id);
+
+    // Wait for exit
+    await new Promise((r) => setTimeout(r, 1500));
+    // Terminal should still be in manager
+    expect(terminalManager.get(term.id)).toBeDefined();
+
+    // Clear all pending timers before the 5-second delay fires
+    prManager.clearAllPendingTimers();
+
+    // Wait past the 5-second window
+    await new Promise((r) => setTimeout(r, 5500));
+    // Terminal should still be in manager since we cancelled the timer
+    expect(terminalManager.get(term.id)).toBeDefined();
+  }, 10000);
+
+  it('relaunchReview cleans up conflict fixer terminals', () => {
+    // Create a terminal acting as a conflict fixer
+    const fixerTerm = terminalManager.create({ title: 'Conflict fixer' });
+    insertTestPR(prManager, {
+      id: 'fixer-pr-5',
+      status: 'open',
+      reviewerTerminalId: fixerTerm.id,
+    });
+    (prManager as any).conflictFixerTerminals.add(fixerTerm.id);
+
+    // Relaunch review should kill the fixer and remove from the set
+    prManager.relaunchReview('fixer-pr-5');
+
+    // Old fixer terminal should be removed
+    expect(terminalManager.get(fixerTerm.id)).toBeUndefined();
+    // Conflict fixer set should no longer contain the old terminal
+    expect((prManager as any).conflictFixerTerminals.has(fixerTerm.id)).toBe(false);
+    // PR should have a new reviewer terminal
+    const updated = prManager.get('fixer-pr-5');
+    expect(updated!.reviewerTerminalId).not.toBeNull();
+    expect(updated!.reviewerTerminalId).not.toBe(fixerTerm.id);
+  });
+
+  it('handles orphan conflict fixer with no matching PR', async () => {
+    // Create a terminal and register it as conflict fixer, but don't associate with any PR
+    const term = terminalManager.create({ command: '/bin/true' });
+    (prManager as any).conflictFixerTerminals.add(term.id);
+
+    // Wait for exit
+    await new Promise((r) => setTimeout(r, 1500));
+    // Terminal should still exist (waiting for delayed kill)
+    expect(terminalManager.get(term.id)).toBeDefined();
+
+    // Wait for delayed removal
+    await new Promise((r) => setTimeout(r, 5500));
+    // Terminal should be removed
+    expect(terminalManager.get(term.id)).toBeUndefined();
+  }, 10000);
+});
+
 describe('PR API — Relaunch Review', () => {
   let terminalManager: TerminalManager;
   let worktreeManager: WorktreeManager;
@@ -325,5 +464,85 @@ describe('PR API — Relaunch Review', () => {
     expect(res.status).toBe(200);
     // The stale review.md should be deleted
     expect(existsSync(join(reviewDir, 'review.md'))).toBe(false);
+  });
+});
+
+describe('PR API — Screenshots', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let issueManager: IssueManager;
+  let server: Server;
+  let screenshotDir: string;
+
+  beforeEach(async () => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+
+    const app = express();
+    app.use('/api', createPRApiRouter(prManager, issueManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    terminalManager.killAll();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    // Clean up screenshot dirs
+    if (screenshotDir) {
+      try { rmSync(screenshotDir, { recursive: true, force: true }); } catch {}
+    }
+  });
+
+  it('GET /api/prs/:id/screenshots returns empty array when no screenshots', async () => {
+    insertTestPR(prManager, { id: 'pr-no-ss', issueId: 'issue-no-ss' });
+    const res = await request(server, 'GET', '/api/prs/pr-no-ss/screenshots');
+    expect(res.status).toBe(200);
+    expect(res.body.screenshots).toEqual([]);
+  });
+
+  it('GET /api/prs/:id/screenshots returns 404 for unknown PR', async () => {
+    const res = await request(server, 'GET', '/api/prs/nonexistent/screenshots');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('PR not found');
+  });
+
+  it('GET /api/prs/:id/screenshots lists uploaded screenshots', async () => {
+    const issueId = 'issue-with-ss';
+    insertTestPR(prManager, { id: 'pr-with-ss', issueId });
+
+    // Create fake screenshot files
+    screenshotDir = join(config.screenshotBase, issueId);
+    mkdirSync(screenshotDir, { recursive: true });
+    writeFileSync(join(screenshotDir, 'before-abc12345.png'), 'fake-png-data');
+    writeFileSync(join(screenshotDir, 'after-def67890.png'), 'fake-png-data');
+
+    const res = await request(server, 'GET', '/api/prs/pr-with-ss/screenshots');
+    expect(res.status).toBe(200);
+    expect(res.body.screenshots).toHaveLength(2);
+    expect(res.body.screenshots[0].filename).toBeTruthy();
+    expect(res.body.screenshots[0].url).toContain(`/screenshots/${issueId}/`);
+    expect(res.body.screenshots[1].url).toContain(`/screenshots/${issueId}/`);
+  });
+
+  it('GET /api/prs/:id/screenshots only lists image files', async () => {
+    const issueId = 'issue-mixed-files';
+    insertTestPR(prManager, { id: 'pr-mixed', issueId });
+
+    screenshotDir = join(config.screenshotBase, issueId);
+    mkdirSync(screenshotDir, { recursive: true });
+    writeFileSync(join(screenshotDir, 'screenshot.png'), 'fake-png');
+    writeFileSync(join(screenshotDir, 'photo.jpg'), 'fake-jpg');
+    writeFileSync(join(screenshotDir, 'notes.txt'), 'not an image');
+    writeFileSync(join(screenshotDir, 'data.json'), '{}');
+
+    const res = await request(server, 'GET', '/api/prs/pr-mixed/screenshots');
+    expect(res.status).toBe(200);
+    expect(res.body.screenshots).toHaveLength(2);
+    const filenames = res.body.screenshots.map((s: any) => s.filename);
+    expect(filenames).toContain('screenshot.png');
+    expect(filenames).toContain('photo.jpg');
   });
 });
