@@ -64,7 +64,7 @@ server/src/
 
   issue-api.ts          UI-facing REST: /api/issues/*
   pr-api.ts             UI-facing REST: /api/prs/*, /api/config
-  api.ts                UI-facing REST: /api/terminals/*
+  terminal-api.ts       UI-facing REST: /api/terminals/*
   git-api.ts            UI-facing REST: /api/git/*
   ticket-api.ts         AGENT-facing REST: /ticket/:id/* (called BY agents)
 
