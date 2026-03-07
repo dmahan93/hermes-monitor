@@ -10,6 +10,7 @@ import { PRList } from './components/PRList';
 import { GitGraph } from './components/GitGraph';
 import { DiffViewer } from './components/DiffViewer';
 import { ConfigView } from './components/ConfigView';
+import { ResearchView } from './components/ResearchView';
 import { ViewSwitcher, type ViewMode } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
 import { useTerminals } from './hooks/useTerminals';
@@ -421,6 +422,11 @@ export default function App() {
               onRelaunchReview={relaunchReview}
               onMoveToInProgress={(issueId) => handleStatusChange(issueId, 'in_progress')}
             />
+          </div>
+
+          {/* Research view */}
+          <div className={`view-panel ${view === 'research' ? 'view-active' : 'view-hidden'}`}>
+            <ResearchView send={send} subscribe={subscribe} />
           </div>
 
           {/* Config view */}
