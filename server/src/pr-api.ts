@@ -2,6 +2,7 @@ import { Router, json } from 'express';
 import type { PRManager } from './pr-manager.js';
 import type { IssueManager } from './issue-manager.js';
 import { config, updateConfig } from './config.js';
+import { getUploadedScreenshots } from './screenshot-utils.js';
 
 export function createPRApiRouter(prManager: PRManager, issueManager?: IssueManager): Router {
   const router = Router();
@@ -87,6 +88,24 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
       return;
     }
     res.json(updated);
+  });
+
+  // List screenshots associated with a PR (via its linked issue)
+  router.get('/prs/:id/screenshots', (req, res) => {
+    const pr = prManager.get(req.params.id);
+    if (!pr) {
+      res.status(404).json({ error: 'PR not found' });
+      return;
+    }
+
+    const files = getUploadedScreenshots(pr.issueId);
+
+    const screenshots = files.map((f) => ({
+      filename: f,
+      url: `/screenshots/${pr.issueId}/${f}`,
+    }));
+
+    res.json({ screenshots });
   });
 
   // Check if merge would have conflicts (dry run, async to not block event loop)
