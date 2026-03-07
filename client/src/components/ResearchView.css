@@ -1,0 +1,83 @@
+/* ── Research View ── */
+
+.research-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.research-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.167rem 0.5rem;
+  background: var(--chrome-dark);
+  border-bottom: 1px solid var(--bevel-dark);
+  min-height: 1.667rem;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.research-title {
+  font-family: 'VT323', monospace;
+  font-size: 1rem;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+}
+
+.research-terminal {
+  flex: 1;
+  overflow: hidden;
+}
+
+.research-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  font-size: 1.333rem;
+}
+
+.research-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 1rem;
+}
+
+.research-empty-text {
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  font-size: 1.333rem;
+}
+
+.research-recreate-btn {
+  background: transparent;
+  border: 1px solid var(--chrome-light);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.833rem;
+  padding: 0.167rem 0.5rem;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.research-recreate-btn:hover {
+  background: var(--accent-dim);
+}
+
+.research-recreate-btn:active {
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}

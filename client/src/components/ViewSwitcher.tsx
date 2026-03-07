@@ -1,3 +1,5 @@
+import './ViewSwitcher.css';
+
 export type ViewMode = 'kanban' | 'terminals' | 'prs' | 'research' | 'config';
 
 interface ViewSwitcherProps {

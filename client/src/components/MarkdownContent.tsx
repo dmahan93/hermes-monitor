@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import './MarkdownContent.css';
 
 interface MarkdownContentProps {
   text: string;

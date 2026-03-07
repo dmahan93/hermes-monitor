@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { DiffViewer } from './DiffViewer';
 import { MarkdownContent, ImageWithZoom } from './MarkdownContent';
 import type { PullRequest, IssueStatus, Screenshot } from '../types';
+import './PRDetail.css';
 
 interface PRDetailProps {
   pr: PullRequest;

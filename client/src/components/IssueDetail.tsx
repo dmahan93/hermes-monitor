@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Issue, IssueStatus, PullRequest, AgentPreset } from '../types';
+import './IssueDetail.css';
 
 interface IssueDetailProps {
   issue: Issue;

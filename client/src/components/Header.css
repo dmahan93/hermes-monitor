@@ -1,0 +1,100 @@
+/* ── Header ── */
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.333rem 0.667rem;
+  background: var(--chrome-dark);
+  /* webcore: subtle top bevel */
+  border-bottom: 1px solid var(--bevel-dark);
+  border-top: 1px solid var(--bevel-light);
+  min-height: 2.333rem;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.header-title {
+  font-family: 'VT323', monospace;
+  font-size: 1.333rem;
+  font-weight: 400;
+  letter-spacing: 0.167rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.header-count {
+  color: var(--text-muted);
+  font-size: 0.917rem;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.header-add-btn {
+  background: transparent;
+  border: 1px solid var(--chrome-light);
+  /* webcore: beveled button */
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.917rem;
+  padding: 0.167rem 0.667rem;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.header-add-btn:hover {
+  background: var(--accent-dim);
+}
+
+.header-add-btn:active {
+  /* webcore: pressed button inverts bevel */
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: 0.333rem;
+  font-size: 0.833rem;
+  color: var(--text-muted);
+}
+
+.header-status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.header-status.connected .header-status-dot {
+  background: var(--accent);
+  box-shadow: 0 0 4px var(--accent);
+}
+
+.header-status.disconnected .header-status-dot {
+  background: var(--error);
+  box-shadow: 0 0 4px var(--error);
+}
+
+/* Header awaiting input badge */
+.header-awaiting-input {
+  font-family: 'VT323', monospace;
+  font-size: 0.917rem;
+  color: var(--warn);
+  animation: awaiting-pulse 1.5s ease-in-out infinite;
+}

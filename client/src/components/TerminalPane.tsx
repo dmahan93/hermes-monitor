@@ -1,5 +1,6 @@
 import { TerminalView } from './TerminalView';
 import type { TerminalInfo, ServerMessage } from '../types';
+import './TerminalPane.css';
 
 interface TerminalPaneProps {
   terminal: TerminalInfo;
