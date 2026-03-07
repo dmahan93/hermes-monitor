@@ -176,21 +176,6 @@ export class WorktreeManager {
     }
   }
 
-  /**
-   * Merge the issue branch into the target branch.
-   */
-  merge(issueId: string): boolean {
-    const info = this.worktrees.get(issueId);
-    if (!info) return false;
-
-    try {
-      git(`merge ${info.branch} --no-ff -m "Merge ${info.branch}"`, config.repoPath);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   list(): WorktreeInfo[] {
     return Array.from(this.worktrees.values());
   }

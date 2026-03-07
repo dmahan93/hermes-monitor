@@ -1,4 +1,5 @@
 import { existsSync } from 'fs';
+import { resolve } from 'path';
 import { execSync } from 'child_process';
 
 export interface AppConfig {
@@ -24,8 +25,6 @@ function detectDefaultBranch(repoPath: string): string {
 }
 
 // Default to parent of server/ dir (project root), or HERMES_REPO_PATH env var
-import { dirname, resolve } from 'path';
-
 const defaultRepo = process.env.HERMES_REPO_PATH || resolve(process.cwd(), '..');
 
 export const config: AppConfig = {
