@@ -147,6 +147,7 @@ export function TerminalView({ terminalId, send, subscribe, onResize, reconnectC
       termRef.current?.reset();
       sendRef.current({ type: 'replay', terminalId });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reconnectCount]); // terminalId omitted — mount effect handles terminalId changes
 
   return (

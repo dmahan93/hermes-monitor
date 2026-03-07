@@ -51,8 +51,13 @@ export function useWebSocket(url: string) {
   useEffect(() => {
     connect();
     return () => {
-      clearTimeout(reconnectTimer.current);
+      // Reset so StrictMode re-mount doesn't misidentify the first
+      // onopen of the new WS instance as a reconnect.
+      hasConnectedRef.current = false;
+      // Close first — triggers onclose which sets a new reconnect timer —
+      // then clear that timer so it doesn't fire after cleanup.
       wsRef.current?.close();
+      clearTimeout(reconnectTimer.current);
     };
   }, [connect]);
 

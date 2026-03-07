@@ -125,6 +125,32 @@ describe('useWebSocket', () => {
       unmount();
     });
 
+    it('does not increment reconnectCount on unmount + remount (StrictMode)', async () => {
+      // Simulates React StrictMode: mount → unmount → remount
+      // The cleanup resets hasConnectedRef so the remount's onopen
+      // is correctly identified as an initial connect, not a reconnect.
+      const { result, unmount } = renderHook(() => useWebSocket('ws://localhost:4000/ws'));
+
+      // Initial connect
+      await act(async () => { vi.advanceTimersByTime(1); });
+      expect(result.current.connected).toBe(true);
+      expect(result.current.reconnectCount).toBe(0);
+
+      // Unmount (triggers cleanup which resets hasConnectedRef)
+      unmount();
+
+      // Re-mount — simulates StrictMode re-run
+      wsInstances = []; // clear tracked instances
+      const { result: result2, unmount: unmount2 } = renderHook(() => useWebSocket('ws://localhost:4000/ws'));
+      await act(async () => { vi.advanceTimersByTime(1); });
+
+      expect(result2.current.connected).toBe(true);
+      // Should still be 0 — this is a fresh mount, not a reconnect
+      expect(result2.current.reconnectCount).toBe(0);
+
+      unmount2();
+    });
+
     it('subscribers persist across reconnects', async () => {
       const { result, unmount } = renderHook(() => useWebSocket('ws://localhost:4000/ws'));
       const received: any[] = [];
