@@ -1,5 +1,5 @@
 import { Router, json, raw } from 'express';
-import { mkdirSync, writeFileSync, readdirSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 import { join, extname } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type { IssueManager } from './issue-manager.js';
@@ -7,29 +7,12 @@ import type { PRManager } from './pr-manager.js';
 import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
 import { config } from './config.js';
-
-const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+import { ALLOWED_EXTENSIONS, getUploadedScreenshots } from './screenshot-utils.js';
 
 /** File extensions that indicate UI changes requiring screenshots */
 const UI_FILE_EXTENSIONS = new Set([
   '.tsx', '.jsx', '.css', '.scss', '.less', '.html', '.vue', '.svelte',
 ]);
-/**
- * Get uploaded screenshot filenames for an issue.
- * Returns an array of filenames (images only), or empty array if none exist.
- */
-function getUploadedScreenshots(issueId: string): string[] {
-  const screenshotDir = join(config.screenshotBase, issueId);
-  try {
-    return readdirSync(screenshotDir).filter((f) => {
-      const ext = extname(f).toLowerCase();
-      return ALLOWED_EXTENSIONS.has(ext);
-    });
-  } catch {
-    // Directory doesn't exist — no screenshots
-    return [];
-  }
-}
 
 const MIME_TO_EXT: Record<string, string> = {
   'image/png': '.png',

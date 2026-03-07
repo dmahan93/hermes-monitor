@@ -40,14 +40,19 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
 
   // Fetch screenshots for this PR
   useEffect(() => {
+    let cancelled = false;
     fetch(`/api/prs/${pr.id}/screenshots`)
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error(`Failed to fetch screenshots: ${res.status}`);
+        return res.json();
+      })
       .then((data) => {
-        setScreenshots(data.screenshots || []);
+        if (!cancelled) setScreenshots(data.screenshots || []);
       })
       .catch(() => {
-        setScreenshots([]);
+        if (!cancelled) setScreenshots([]);
       });
+    return () => { cancelled = true; };
   }, [pr.id]);
 
   // Check merge status on open

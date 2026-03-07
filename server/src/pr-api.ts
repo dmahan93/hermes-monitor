@@ -1,11 +1,8 @@
 import { Router, json } from 'express';
-import { readdirSync } from 'fs';
-import { join, extname } from 'path';
 import type { PRManager } from './pr-manager.js';
 import type { IssueManager } from './issue-manager.js';
 import { config, updateConfig } from './config.js';
-
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+import { getUploadedScreenshots } from './screenshot-utils.js';
 
 export function createPRApiRouter(prManager: PRManager, issueManager?: IssueManager): Router {
   const router = Router();
@@ -101,16 +98,7 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
       return;
     }
 
-    const screenshotDir = join(config.screenshotBase, pr.issueId);
-    let files: string[] = [];
-    try {
-      files = readdirSync(screenshotDir).filter((f) => {
-        const ext = extname(f).toLowerCase();
-        return IMAGE_EXTENSIONS.has(ext);
-      });
-    } catch {
-      // Directory doesn't exist — no screenshots
-    }
+    const files = getUploadedScreenshots(pr.issueId);
 
     const screenshots = files.map((f) => ({
       filename: f,

@@ -140,11 +140,13 @@ describe('PRDetail — Screenshots section', () => {
       const urlStr = typeof url === 'string' ? url : url.toString();
       if (urlStr.includes('/screenshots')) {
         return Promise.resolve({
+          ok: true,
           json: () => Promise.resolve(screenshotsResponse),
         } as Response);
       }
       // merge-check default
       return Promise.resolve({
+        ok: true,
         json: () => Promise.resolve({ canMerge: false, hasConflicts: false }),
       } as Response);
     }) as any;
