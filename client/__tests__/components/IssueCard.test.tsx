@@ -124,13 +124,22 @@ describe('IssueCard', () => {
       expect(msg).not.toContain('1 subtasks');
     });
 
-    it('shows generic subtask warning when no subtaskInfo', () => {
+    it('shows generic subtask warning when no subtaskInfo for top-level issue', () => {
       window.confirm = vi.fn(() => false);
       renderCard(mockIssue);
       fireEvent.click(screen.getByTitle('Delete issue'));
       expect(window.confirm).toHaveBeenCalledWith(
-        expect.stringContaining('delete all subtasks'),
+        expect.stringContaining('may also delete associated subtasks'),
       );
+    });
+
+    it('does not show subtask warning for child issues without subtaskInfo', () => {
+      window.confirm = vi.fn(() => false);
+      const childIssue = { ...mockIssue, parentId: 'parent-1' };
+      renderCard(childIssue);
+      fireEvent.click(screen.getByTitle('Delete issue'));
+      const msg = (window.confirm as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(msg).not.toContain('subtask');
     });
   });
 
