@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { TerminalInfo, GridItem, ServerMessage } from '../types';
-
-const API = '/api';
+import { API_BASE } from '../config';
 
 export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void) => () => void) {
   const [terminals, setTerminals] = useState<TerminalInfo[]>([]);
@@ -10,7 +9,7 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
 
   const fetchTerminals = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/terminals`);
+      const res = await fetch(`${API_BASE}/terminals`);
       const data: TerminalInfo[] = await res.json();
       setTerminals(data);
       // Generate layout for any terminals not already in layout
@@ -40,7 +39,7 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
 
   const addTerminal = useCallback(async (title?: string, command?: string) => {
     try {
-      const res = await fetch(`${API}/terminals`, {
+      const res = await fetch(`${API_BASE}/terminals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, command }),
@@ -64,7 +63,7 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
 
   const removeTerminal = useCallback(async (id: string) => {
     try {
-      await fetch(`${API}/terminals/${id}`, { method: 'DELETE' });
+      await fetch(`${API_BASE}/terminals/${id}`, { method: 'DELETE' });
       setTerminals((prev) => prev.filter((t) => t.id !== id));
       setLayout((prev) => prev.filter((l) => l.i !== id));
     } catch (err) {

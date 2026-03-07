@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { PullRequest, ServerMessage } from '../types';
-
-const API = '/api';
+import { API_BASE } from '../config';
 
 export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () => void) {
   const [prs, setPRs] = useState<PullRequest[]>([]);
@@ -9,7 +8,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
 
   const fetchPRs = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/prs`);
+      const res = await fetch(`${API_BASE}/prs`);
       const data: PullRequest[] = await res.json();
       setPRs(data);
     } catch (err) {
@@ -42,7 +41,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
 
   const addComment = useCallback(async (prId: string, body: string) => {
     try {
-      await fetch(`${API}/prs/${prId}/comments`, {
+      await fetch(`${API_BASE}/prs/${prId}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ author: 'human', body }),
@@ -54,7 +53,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
 
   const setVerdict = useCallback(async (prId: string, verdict: 'approved' | 'changes_requested') => {
     try {
-      await fetch(`${API}/prs/${prId}/verdict`, {
+      await fetch(`${API_BASE}/prs/${prId}/verdict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ verdict }),
@@ -66,7 +65,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
 
   const mergePR = useCallback(async (prId: string): Promise<{ error?: string }> => {
     try {
-      const res = await fetch(`${API}/prs/${prId}/merge`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/prs/${prId}/merge`, { method: 'POST' });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         return { error: data?.error || 'Merge failed' };
@@ -80,7 +79,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
 
   const fixConflicts = useCallback(async (prId: string) => {
     try {
-      await fetch(`${API}/prs/${prId}/fix-conflicts`, { method: 'POST' });
+      await fetch(`${API_BASE}/prs/${prId}/fix-conflicts`, { method: 'POST' });
     } catch (err) {
       console.error('Failed to fix conflicts:', err);
     }
@@ -88,7 +87,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
 
   const relaunchReview = useCallback(async (prId: string) => {
     try {
-      const res = await fetch(`${API}/prs/${prId}/relaunch-review`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/prs/${prId}/relaunch-review`, { method: 'POST' });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         console.error('Failed to relaunch review:', data?.error || res.statusText);
