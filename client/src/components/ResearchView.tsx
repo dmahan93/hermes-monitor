@@ -8,6 +8,7 @@ const STORAGE_KEY = 'hermes:researchTerminalId';
 interface ResearchViewProps {
   send: (msg: any) => void;
   subscribe: (handler: (msg: ServerMessage) => void) => () => void;
+  onTerminalIdChange?: (id: string | null) => void;
 }
 
 /**
@@ -15,20 +16,34 @@ interface ResearchViewProps {
  * Lazily creates a dedicated terminal on first visit. The terminal ID is
  * persisted in localStorage so it survives page reloads.
  */
-export function ResearchView({ send, subscribe }: ResearchViewProps) {
+export function ResearchView({ send, subscribe, onTerminalIdChange }: ResearchViewProps) {
   const [terminalId, setTerminalId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initRef = useRef(false);
+  const creatingRef = useRef(false);
 
-  // Check if a terminal ID from storage still exists on the server
+  // Notify parent when terminal ID changes
+  const updateTerminalId = useCallback((id: string | null) => {
+    setTerminalId(id);
+    onTerminalIdChange?.(id);
+  }, [onTerminalIdChange]);
+
+  // Check if a terminal ID from storage still exists on the server.
+  // Throws on network errors so callers can distinguish "not found" from "unreachable".
   const validateTerminal = useCallback(async (id: string): Promise<boolean> => {
+    const res = await fetch(`${API}/terminals`);
+    if (!res.ok) throw new Error('Failed to fetch terminals');
+    const terminals = await res.json();
+    return terminals.some((t: { id: string }) => t.id === id);
+  }, []);
+
+  // Delete a terminal on the server (best-effort, errors are swallowed)
+  const deleteTerminal = useCallback(async (id: string) => {
     try {
-      const res = await fetch(`${API}/terminals`);
-      const terminals = await res.json();
-      return terminals.some((t: { id: string }) => t.id === id);
+      await fetch(`${API}/terminals/${id}`, { method: 'DELETE' });
     } catch {
-      return false;
+      // Best-effort cleanup — if it fails the server will reap eventually
     }
   }, []);
 
@@ -61,9 +76,16 @@ export function ResearchView({ send, subscribe }: ResearchViewProps) {
       // Try to restore a saved terminal
       const savedId = localStorage.getItem(STORAGE_KEY);
       if (savedId) {
-        const exists = await validateTerminal(savedId);
-        if (exists) {
-          setTerminalId(savedId);
+        try {
+          const exists = await validateTerminal(savedId);
+          if (exists) {
+            updateTerminalId(savedId);
+            setLoading(false);
+            return;
+          }
+        } catch {
+          // Network error — show error instead of creating a duplicate
+          setError('Could not reach server to validate terminal. Try again.');
           setLoading(false);
           return;
         }
@@ -75,11 +97,11 @@ export function ResearchView({ send, subscribe }: ResearchViewProps) {
       const newId = await createTerminal();
       if (newId) {
         localStorage.setItem(STORAGE_KEY, newId);
-        setTerminalId(newId);
+        updateTerminalId(newId);
       }
       setLoading(false);
     })();
-  }, [validateTerminal, createTerminal]);
+  }, [validateTerminal, createTerminal, updateTerminalId]);
 
   // Listen for terminal removal — if our research terminal gets killed,
   // clear state so we can recreate on next interaction
@@ -88,23 +110,37 @@ export function ResearchView({ send, subscribe }: ResearchViewProps) {
     const unsub = subscribe((msg) => {
       if (msg.type === 'terminal:removed' && msg.terminalId === terminalId) {
         localStorage.removeItem(STORAGE_KEY);
-        setTerminalId(null);
+        updateTerminalId(null);
       }
     });
     return unsub;
-  }, [terminalId, subscribe]);
+  }, [terminalId, subscribe, updateTerminalId]);
 
-  // Recreate terminal if it was removed
+  // Recreate terminal — kills the old one first to prevent orphans
   const handleRecreate = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const newId = await createTerminal();
-    if (newId) {
-      localStorage.setItem(STORAGE_KEY, newId);
-      setTerminalId(newId);
+    if (creatingRef.current) return;
+    creatingRef.current = true;
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Kill old terminal first
+      if (terminalId) {
+        await deleteTerminal(terminalId);
+      }
+      localStorage.removeItem(STORAGE_KEY);
+      updateTerminalId(null);
+
+      const newId = await createTerminal();
+      if (newId) {
+        localStorage.setItem(STORAGE_KEY, newId);
+        updateTerminalId(newId);
+      }
+      setLoading(false);
+    } finally {
+      creatingRef.current = false;
     }
-    setLoading(false);
-  }, [createTerminal]);
+  }, [createTerminal, deleteTerminal, terminalId, updateTerminalId]);
 
   if (loading) {
     return (
