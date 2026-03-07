@@ -54,6 +54,11 @@ export interface PRComment {
   createdAt: number;
 }
 
+export interface Screenshot {
+  filename: string;
+  url: string;
+}
+
 export interface PullRequest {
   id: string;
   issueId: string;
@@ -68,6 +73,8 @@ export interface PullRequest {
   verdict: string;
   reviewerTerminalId: string | null;
   comments: PRComment[];
+  screenshots?: Screenshot[];
+  screenshotCount?: number;
   createdAt: number;
   updatedAt: number;
 }

@@ -1,12 +1,7 @@
 import { useState, useEffect } from 'react';
 import { DiffViewer } from './DiffViewer';
 import { MarkdownContent, ImageWithZoom } from './MarkdownContent';
-import type { PullRequest, IssueStatus } from '../types';
-
-interface Screenshot {
-  filename: string;
-  url: string;
-}
+import type { PullRequest, IssueStatus, Screenshot } from '../types';
 
 interface PRDetailProps {
   pr: PullRequest;
@@ -35,11 +30,16 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
     checking: true, canMerge: false, hasConflicts: false,
   });
   const [mergeError, setMergeError] = useState<string | null>(null);
-  const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
+  const [screenshots, setScreenshots] = useState<Screenshot[]>(pr.screenshots || []);
   const status = STATUS_LABELS[pr.status] || STATUS_LABELS.open;
 
-  // Fetch screenshots for this PR
+  // Use screenshots from PR data if available, otherwise fetch them
+  // (WS-updated PRs may not include screenshots since they come from the model directly)
   useEffect(() => {
+    if (pr.screenshots && pr.screenshots.length > 0) {
+      setScreenshots(pr.screenshots);
+      return;
+    }
     let cancelled = false;
     fetch(`/api/prs/${pr.id}/screenshots`)
       .then((res) => {
@@ -53,7 +53,7 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
         if (!cancelled) setScreenshots([]);
       });
     return () => { cancelled = true; };
-  }, [pr.id]);
+  }, [pr.id, pr.screenshots]);
 
   // Check merge status on open
   useEffect(() => {

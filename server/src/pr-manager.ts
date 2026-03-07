@@ -6,6 +6,7 @@ import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
 import type { Store } from './store.js';
 import { config } from './config.js';
+import { getUploadedScreenshots } from './screenshot-utils.js';
 
 export type PRStatus = 'open' | 'reviewing' | 'approved' | 'changes_requested' | 'merged' | 'closed';
 export type Verdict = 'pending' | 'approved' | 'changes_requested';
@@ -164,6 +165,48 @@ export class PRManager {
     // Write context for the reviewer
     const reviewDir = join(config.reviewBase, prId);
     mkdirSync(reviewDir, { recursive: true });
+
+    // Look up uploaded screenshots for this PR's issue
+    const screenshotFiles = getUploadedScreenshots(pr.issueId);
+    const port = process.env.PORT || '4000';
+    const screenshotUrls = screenshotFiles.map(
+      (f) => `http://localhost:${port}/screenshots/${pr.issueId}/${f}`
+    );
+
+    const screenshotSection: string[] = [];
+    if (screenshotUrls.length > 0) {
+      screenshotSection.push(
+        '## Screenshots',
+        `${screenshotUrls.length} screenshot(s) uploaded for this PR:`,
+        '',
+        ...screenshotUrls.map((url, i) => {
+          const filename = screenshotFiles[i];
+          const label = filename.replace(/\.[^.]+$/, '').replace(/[-_][a-f0-9]{8}$/, '').replace(/[-_]/g, ' ');
+          return `- ![${label}](${url})`;
+        }),
+        '',
+        'Review the screenshots to verify the visual changes look correct.',
+        'If something looks wrong in the screenshots, flag it in your review.',
+      );
+    } else {
+      const uiExtensions = ['.tsx', '.jsx', '.css', '.scss', '.less', '.html', '.vue', '.svelte'];
+      const hasUiFiles = pr.changedFiles.some((f) => uiExtensions.some((ext) => f.endsWith(ext)));
+      if (hasUiFiles) {
+        screenshotSection.push(
+          '## Screenshots',
+          '⚠ WARNING: This PR modifies UI files but NO screenshots were uploaded.',
+          'UI files changed: ' + pr.changedFiles.filter((f) => uiExtensions.some((ext) => f.endsWith(ext))).join(', '),
+          '',
+          'Flag this in your review and request screenshots with VERDICT: CHANGES_REQUESTED.',
+        );
+      } else {
+        screenshotSection.push(
+          '## Screenshots',
+          'No screenshots uploaded (no UI files changed — this is expected).',
+        );
+      }
+    }
+
     writeFileSync(join(reviewDir, 'context.md'), [
       `# PR Review: ${pr.title}`,
       '',
@@ -177,9 +220,6 @@ export class PRManager {
       `Run: git diff ${pr.targetBranch}...${pr.sourceBranch}`,
       `Or:  git log ${pr.targetBranch}..${pr.sourceBranch} --oneline`,
       '',
-      '## How to view the diff',
-      `Run: git diff ${pr.targetBranch}...${pr.sourceBranch}`,
-      '',
       '## Instructions',
       `Compare branch ${pr.sourceBranch} against ${pr.targetBranch} using git diff.`,
       'Be critical and thorough. Look for:',
@@ -189,12 +229,7 @@ export class PRManager {
       '- Code style and readability issues',
       '- Missing tests or documentation',
       '',
-      '## Screenshots for UI Changes',
-      'If the PR modifies UI components (.tsx, .css, .html files), check that:',
-      '- The PR description includes before/after screenshots showing the visual changes',
-      '- Screenshots use markdown image syntax: ![description](url)',
-      '- If screenshots are missing for UI changes, flag this in your review',
-      '  and request them with VERDICT: CHANGES_REQUESTED',
+      ...screenshotSection,
       '',
       'Write your complete review to review.md in this directory.',
       'Start with a verdict line: VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED',
