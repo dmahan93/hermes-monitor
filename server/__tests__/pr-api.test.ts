@@ -31,6 +31,7 @@ function insertTestPR(prManager: PRManager, overrides: Partial<PullRequest> = {}
     issueId: 'test-issue-1',
     title: 'Test PR',
     description: 'A test pull request',
+    submitterNotes: '',
     sourceBranch: 'issue/test-branch',
     targetBranch: 'master',
     repoPath: '/tmp/test-repo',

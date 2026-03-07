@@ -137,6 +137,40 @@ describe('Ticket API (Agent Communication)', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('not in_progress');
   });
+
+  it('POST /ticket/:id/review accepts details in body', async () => {
+    const issue = issueManager.create({ title: 'With details' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const res = await request(server, 'POST', `/ticket/${issue.id}/review`, {
+      details: 'I refactored the auth module and added edge case tests.',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    // Verify submitterNotes was set on the issue (transient)
+    const updated = issueManager.get(issue.id);
+    expect(updated?.submitterNotes).toBe('I refactored the auth module and added edge case tests.');
+  });
+
+  it('POST /ticket/:id/review works without details (backward compat)', async () => {
+    const issue = issueManager.create({ title: 'No details' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('POST /ticket/:id/review ignores non-string details', async () => {
+    const issue = issueManager.create({ title: 'Bad details' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const res = await request(server, 'POST', `/ticket/${issue.id}/review`, {
+      details: 12345,
+    });
+    expect(res.status).toBe(200);
+    // Non-string details should be silently ignored
+    const updated = issueManager.get(issue.id);
+    expect(updated?.submitterNotes).toBeUndefined();
+  });
 });
 
 describe('Ticket API — Screenshot Upload', () => {

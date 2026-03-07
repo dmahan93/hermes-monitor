@@ -257,6 +257,6 @@ describe('IssueManager', () => {
 
     // Should NOT create a new PR, should relaunch review instead
     expect(mockPRManager.create).toHaveBeenCalledTimes(1); // still 1
-    expect(mockPRManager.relaunchReview).toHaveBeenCalledWith('pr-123');
+    expect(mockPRManager.relaunchReview).toHaveBeenCalledWith('pr-123', undefined);
   });
 });
