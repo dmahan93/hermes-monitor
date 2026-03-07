@@ -78,12 +78,16 @@ export function createIssueApiRouter(manager: IssueManager): Router {
       res.status(400).json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}` });
       return;
     }
-    const issue = manager.changeStatus(req.params.id, status);
-    if (!issue) {
-      res.status(404).json({ error: 'Issue not found' });
-      return;
+    try {
+      const issue = manager.changeStatus(req.params.id, status);
+      if (!issue) {
+        res.status(404).json({ error: 'Issue not found' });
+        return;
+      }
+      res.json(issue);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
     }
-    res.json(issue);
   });
 
   // Start planning terminal for a backlog issue

@@ -78,21 +78,29 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
     }
   }, []);
 
-  const changeStatus = useCallback(async (id: string, status: IssueStatus) => {
+  const changeStatus = useCallback(async (id: string, status: IssueStatus): Promise<string | null> => {
     // Optimistic update
     setIssues((prev) =>
       prev.map((i) => (i.id === id ? { ...i, status } : i))
     );
     try {
-      await fetch(`${API}/issues/${id}/status`, {
+      const res = await fetch(`${API}/issues/${id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
+      if (!res.ok) {
+        // Server rejected the status change — revert optimistic update
+        const body = await res.json().catch(() => ({ error: 'Status change failed' }));
+        fetchIssues();
+        return body.error || 'Status change failed';
+      }
+      return null;
     } catch (err) {
       console.error('Failed to change issue status:', err);
       // Revert on failure — refetch
       fetchIssues();
+      return 'Network error — failed to change status';
     }
   }, [fetchIssues]);
 

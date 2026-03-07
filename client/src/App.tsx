@@ -193,10 +193,11 @@ export default function App() {
     createIssue(title, description || undefined, agent || undefined, command || undefined, branch || undefined);
   }, [createIssue]);
 
-  const handleStatusChange = useCallback(async (id: string, status: IssueStatus) => {
-    await changeStatus(id, status);
+  const handleStatusChange = useCallback(async (id: string, status: IssueStatus): Promise<string | null> => {
+    const error = await changeStatus(id, status);
     refetchTerminals();
     refetchPRs();
+    return error;
   }, [changeStatus, refetchTerminals, refetchPRs]);
 
   const handleDeleteIssue = useCallback(async (id: string) => {
@@ -426,7 +427,7 @@ export default function App() {
               onMerge={mergePR}
               onFixConflicts={fixConflicts}
               onRelaunchReview={relaunchReview}
-              onMoveToInProgress={(issueId) => handleStatusChange(issueId, 'in_progress')}
+              onMoveToInProgress={async (issueId) => { await handleStatusChange(issueId, 'in_progress'); }}
             />
           </div>
 
@@ -459,7 +460,7 @@ export default function App() {
           parentIssue={detailIssue.parentId ? issues.find((i) => i.id === detailIssue.parentId) : undefined}
           onClose={closeDetail}
           onUpdate={(id, updates) => updateIssue(id, updates)}
-          onStatusChange={(id, status) => { handleStatusChange(id, status); closeDetail(); }}
+          onStatusChange={async (id, status) => { const err = await handleStatusChange(id, status); if (!err) closeDetail(); return err; }}
           onDelete={(id) => { handleDeleteIssue(id); closeDetail(); }}
           onTerminalClick={(issueId) => { closeDetail(); handleTerminalClick(issueId); }}
           onPRClick={() => { closeDetail(); setView('prs'); }}

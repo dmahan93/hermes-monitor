@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Droppable } from '@hello-pangea/dnd';
 import { IssueCard, type SubtaskInfo } from './IssueCard';
 import type { Issue, IssueStatus, AgentPreset } from '../types';
@@ -15,28 +16,33 @@ interface KanbanColumnProps {
 }
 
 export function KanbanColumn({ columnId, label, issues, agents, allIssues, onDelete, onEdit, onTerminalClick, onIssueClick }: KanbanColumnProps) {
-  // Build an O(1) title lookup, then derive parent titles and subtask info in O(n)
-  const titleById = new Map(allIssues.map((i) => [i.id, i.title]));
+  // Memoize derived maps to avoid recomputing on every render
+  const { parentTitleMap, subtaskInfoMap } = useMemo(() => {
+    // Build an O(1) title lookup, then derive parent titles and subtask info in O(n)
+    const titleById = new Map(allIssues.map((i) => [i.id, i.title]));
 
-  const parentTitleMap = new Map<string, string>();
-  for (const issue of issues) {
-    if (issue.parentId) {
-      const title = titleById.get(issue.parentId);
-      if (title) parentTitleMap.set(issue.id, title);
+    const parentTitles = new Map<string, string>();
+    for (const issue of issues) {
+      if (issue.parentId) {
+        const title = titleById.get(issue.parentId);
+        if (title) parentTitles.set(issue.id, title);
+      }
     }
-  }
 
-  // Count subtasks scoped to this column's issues
-  const subtaskInfoMap = new Map<string, SubtaskInfo>();
-  const columnIds = new Set(issues.map((i) => i.id));
-  for (const issue of allIssues) {
-    if (issue.parentId && columnIds.has(issue.parentId)) {
-      const info = subtaskInfoMap.get(issue.parentId) || { total: 0, done: 0 };
-      info.total++;
-      if (issue.status === 'done') info.done++;
-      subtaskInfoMap.set(issue.parentId, info);
+    // Count all subtasks for parent issues in this column
+    const subtaskInfos = new Map<string, SubtaskInfo>();
+    const columnIds = new Set(issues.map((i) => i.id));
+    for (const issue of allIssues) {
+      if (issue.parentId && columnIds.has(issue.parentId)) {
+        const info = subtaskInfos.get(issue.parentId) || { total: 0, done: 0 };
+        info.total++;
+        if (issue.status === 'done') info.done++;
+        subtaskInfos.set(issue.parentId, info);
+      }
     }
-  }
+
+    return { parentTitleMap: parentTitles, subtaskInfoMap: subtaskInfos };
+  }, [issues, allIssues]);
 
   return (
     <div className="kanban-column">

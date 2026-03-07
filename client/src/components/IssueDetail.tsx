@@ -10,11 +10,11 @@ interface IssueDetailProps {
   parentIssue?: Issue;
   onClose: () => void;
   onUpdate: (id: string, updates: Partial<Issue>) => void;
-  onStatusChange: (id: string, status: IssueStatus) => void;
+  onStatusChange: (id: string, status: IssueStatus) => Promise<string | null>;
   onDelete: (id: string) => void;
   onTerminalClick?: (issueId: string) => void;
   onPRClick?: (prId: string) => void;
-  onCreateSubtask?: (parentId: string, title: string, description?: string) => void;
+  onCreateSubtask?: (parentId: string, title: string, description?: string) => Promise<unknown | null>;
   onSubtaskClick?: (issueId: string) => void;
   onParentClick?: (issueId: string) => void;
 }
@@ -41,15 +41,30 @@ export function IssueDetail({
   const [showSubtaskForm, setShowSubtaskForm] = useState(false);
   const [subtaskTitle, setSubtaskTitle] = useState('');
   const [subtaskDesc, setSubtaskDesc] = useState('');
+  const [subtaskError, setSubtaskError] = useState<string | null>(null);
+  const [subtaskSaving, setSubtaskSaving] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const agent = agents.find((a) => a.id === issue.agent);
   const status = STATUS_LABELS[issue.status] || STATUS_LABELS.todo;
 
-  const handleAddSubtask = () => {
+  const handleAddSubtask = async () => {
     if (!subtaskTitle.trim() || !onCreateSubtask) return;
-    onCreateSubtask(issue.id, subtaskTitle.trim(), subtaskDesc.trim() || undefined);
-    setSubtaskTitle('');
-    setSubtaskDesc('');
-    setShowSubtaskForm(false);
+    setSubtaskError(null);
+    setSubtaskSaving(true);
+    try {
+      const result = await onCreateSubtask(issue.id, subtaskTitle.trim(), subtaskDesc.trim() || undefined);
+      if (result) {
+        setSubtaskTitle('');
+        setSubtaskDesc('');
+        setShowSubtaskForm(false);
+      } else {
+        setSubtaskError('Failed to create subtask. Please try again.');
+      }
+    } catch {
+      setSubtaskError('Failed to create subtask. Please try again.');
+    } finally {
+      setSubtaskSaving(false);
+    }
   };
 
   const handleSave = () => {
@@ -61,6 +76,14 @@ export function IssueDetail({
     setTitle(issue.title);
     setDescription(issue.description);
     setEditing(false);
+  };
+
+  const handleStatusChange = async (newStatus: IssueStatus) => {
+    setStatusError(null);
+    const error = await onStatusChange(issue.id, newStatus);
+    if (error) {
+      setStatusError(error);
+    }
   };
 
   return (
@@ -182,10 +205,11 @@ export function IssueDetail({
                     className="issue-detail-subtask-title-input"
                     type="text"
                     value={subtaskTitle}
-                    onChange={(e) => setSubtaskTitle(e.target.value)}
+                    onChange={(e) => { setSubtaskTitle(e.target.value); setSubtaskError(null); }}
                     placeholder="Subtask title..."
                     autoFocus
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubtask(); if (e.key === 'Escape') setShowSubtaskForm(false); }}
+                    disabled={subtaskSaving}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubtask(); if (e.key === 'Escape') { setShowSubtaskForm(false); setSubtaskError(null); } }}
                   />
                   <input
                     className="issue-detail-subtask-desc-input"
@@ -193,11 +217,15 @@ export function IssueDetail({
                     value={subtaskDesc}
                     onChange={(e) => setSubtaskDesc(e.target.value)}
                     placeholder="Description (optional)"
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubtask(); if (e.key === 'Escape') setShowSubtaskForm(false); }}
+                    disabled={subtaskSaving}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubtask(); if (e.key === 'Escape') { setShowSubtaskForm(false); setSubtaskError(null); } }}
                   />
+                  {subtaskError && (
+                    <div className="issue-detail-subtask-error">{subtaskError}</div>
+                  )}
                   <div className="issue-detail-subtask-form-actions">
-                    <button className="modal-btn modal-btn-cancel" onClick={() => setShowSubtaskForm(false)}>[CANCEL]</button>
-                    <button className="modal-btn modal-btn-submit" onClick={handleAddSubtask} disabled={!subtaskTitle.trim()}>[ADD]</button>
+                    <button className="modal-btn modal-btn-cancel" onClick={() => { setShowSubtaskForm(false); setSubtaskError(null); }} disabled={subtaskSaving}>[CANCEL]</button>
+                    <button className="modal-btn modal-btn-submit" onClick={handleAddSubtask} disabled={!subtaskTitle.trim() || subtaskSaving}>{subtaskSaving ? '[ADDING...]' : '[ADD]'}</button>
                   </div>
                 </div>
               )}
@@ -242,26 +270,31 @@ export function IssueDetail({
         </div>
 
         <div className="issue-detail-footer">
-          <div className="issue-detail-status-actions">
-            {issue.status !== 'backlog' && (
-              <button className="modal-btn" onClick={() => onStatusChange(issue.id, 'backlog')}>→ BACKLOG</button>
-            )}
-            {issue.status !== 'todo' && (
-              <button className="modal-btn" onClick={() => onStatusChange(issue.id, 'todo')}>→ TODO</button>
-            )}
-            {issue.status !== 'in_progress' && (
-              <button className="modal-btn" onClick={() => onStatusChange(issue.id, 'in_progress')}>→ IN PROGRESS</button>
-            )}
-            {issue.status !== 'review' && (
-              <button className="modal-btn" onClick={() => onStatusChange(issue.id, 'review')}>→ REVIEW</button>
-            )}
-            {issue.status !== 'done' && (
-              <button className="modal-btn" onClick={() => onStatusChange(issue.id, 'done')}>→ DONE</button>
-            )}
+          {statusError && (
+            <div className="issue-detail-status-error">{statusError}</div>
+          )}
+          <div className="issue-detail-footer-actions">
+            <div className="issue-detail-status-actions">
+              {issue.status !== 'backlog' && (
+                <button className="modal-btn" onClick={() => handleStatusChange('backlog')}>→ BACKLOG</button>
+              )}
+              {issue.status !== 'todo' && (
+                <button className="modal-btn" onClick={() => handleStatusChange('todo')}>→ TODO</button>
+              )}
+              {issue.status !== 'in_progress' && (
+                <button className="modal-btn" onClick={() => handleStatusChange('in_progress')}>→ IN PROGRESS</button>
+              )}
+              {issue.status !== 'review' && (
+                <button className="modal-btn" onClick={() => handleStatusChange('review')}>→ REVIEW</button>
+              )}
+              {issue.status !== 'done' && (
+                <button className="modal-btn" onClick={() => handleStatusChange('done')}>→ DONE</button>
+              )}
+            </div>
+            <button className="modal-btn issue-detail-delete-btn" onClick={() => { onDelete(issue.id); onClose(); }} aria-label="Delete issue">
+              [DELETE]
+            </button>
           </div>
-          <button className="modal-btn issue-detail-delete-btn" onClick={() => { onDelete(issue.id); onClose(); }} aria-label="Delete issue">
-            [DELETE]
-          </button>
         </div>
       </div>
     </div>

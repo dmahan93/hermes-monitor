@@ -187,6 +187,15 @@ export class IssueManager {
     const oldStatus = issue.status;
     if (oldStatus === newStatus) return issue;
 
+    // Guard: cannot mark parent as done while subtasks are still open
+    if (newStatus === 'done' && !issue.parentId) {
+      const openSubtasks = this.getSubtasks(id).filter((s) => s.status !== 'done');
+      if (openSubtasks.length > 0) {
+        const count = openSubtasks.length;
+        throw new Error(`Cannot mark as done — ${count} subtask${count > 1 ? 's' : ''} still open`);
+      }
+    }
+
     issue.status = newStatus;
     issue.updatedAt = Date.now();
 
@@ -328,6 +337,15 @@ export class IssueManager {
     // Kill associated terminal if any
     if (issue.terminalId) {
       this.terminalManager.kill(issue.terminalId);
+    }
+
+    // Clean up worktree if the issue had one
+    if (this.worktreeManager) {
+      try {
+        this.worktreeManager.remove(id, false); // keep branch for history
+      } catch {
+        // Worktree may not exist (e.g. never moved to in_progress) — ignore
+      }
     }
 
     this.issues.delete(id);

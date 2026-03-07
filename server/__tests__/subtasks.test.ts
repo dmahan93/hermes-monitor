@@ -216,6 +216,52 @@ describe('Subtasks', () => {
     expect(deleteEvents.map((e) => e.issueId)).toContain(parent.id);
   });
 
+  // ── Parent done guard ──
+
+  it('throws when marking parent as done with open subtasks', () => {
+    setup();
+    const parent = issueManager.create({ title: 'Parent' });
+    issueManager.create({ title: 'Sub 1', parentId: parent.id });
+    issueManager.create({ title: 'Sub 2', parentId: parent.id });
+
+    expect(() => {
+      issueManager.changeStatus(parent.id, 'done');
+    }).toThrow(/2 subtasks still open/);
+  });
+
+  it('throws when marking parent as done with one open subtask', () => {
+    setup();
+    const parent = issueManager.create({ title: 'Parent' });
+    const sub1 = issueManager.create({ title: 'Sub 1', parentId: parent.id });
+    const sub2 = issueManager.create({ title: 'Sub 2', parentId: parent.id });
+
+    issueManager.changeStatus(sub1.id, 'done');
+
+    expect(() => {
+      issueManager.changeStatus(parent.id, 'done');
+    }).toThrow(/1 subtask still open/);
+  });
+
+  it('allows marking parent as done when all subtasks are done', () => {
+    setup();
+    const parent = issueManager.create({ title: 'Parent' });
+    const sub1 = issueManager.create({ title: 'Sub 1', parentId: parent.id });
+    const sub2 = issueManager.create({ title: 'Sub 2', parentId: parent.id });
+
+    issueManager.changeStatus(sub1.id, 'done');
+    issueManager.changeStatus(sub2.id, 'done');
+
+    const result = issueManager.changeStatus(parent.id, 'done');
+    expect(result!.status).toBe('done');
+  });
+
+  it('allows marking parent as done when it has no subtasks', () => {
+    setup();
+    const parent = issueManager.create({ title: 'No subs parent' });
+    const result = issueManager.changeStatus(parent.id, 'done');
+    expect(result!.status).toBe('done');
+  });
+
   // ── list() includes subtasks ──
 
   it('list returns both parent and subtask issues', () => {

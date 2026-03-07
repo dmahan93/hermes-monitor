@@ -220,6 +220,33 @@ describe('Issue API', () => {
     expect(par.parentId).toBeNull();
   });
 
+  it('PATCH /api/issues/:id/status rejects parent done with open subtasks', async () => {
+    const parent = await request(server, 'POST', '/api/issues', { title: 'Parent' });
+    const sub = await request(server, 'POST', `/api/issues/${parent.body.id}/subtasks`, { title: 'Sub' });
+    expect(sub.status).toBe(201);
+
+    const res = await request(server, 'PATCH', `/api/issues/${parent.body.id}/status`, { status: 'done' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/subtask.*still open/);
+
+    // Verify parent status is unchanged
+    const check = await request(server, 'GET', `/api/issues/${parent.body.id}`);
+    expect(check.body.status).toBe('backlog');
+  });
+
+  it('PATCH /api/issues/:id/status allows parent done when all subtasks done', async () => {
+    const parent = await request(server, 'POST', '/api/issues', { title: 'Parent' });
+    const sub = await request(server, 'POST', `/api/issues/${parent.body.id}/subtasks`, { title: 'Sub' });
+
+    // Complete the subtask first
+    await request(server, 'PATCH', `/api/issues/${sub.body.id}/status`, { status: 'done' });
+
+    // Now parent can be completed
+    const res = await request(server, 'PATCH', `/api/issues/${parent.body.id}/status`, { status: 'done' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('done');
+  });
+
   it('deleting parent cascades to subtasks via API', async () => {
     const parent = await request(server, 'POST', '/api/issues', { title: 'Parent' });
     await request(server, 'POST', `/api/issues/${parent.body.id}/subtasks`, { title: 'Sub 1' });
