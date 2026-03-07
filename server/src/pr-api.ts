@@ -1,7 +1,11 @@
 import { Router, json } from 'express';
+import { readdirSync } from 'fs';
+import { join, extname } from 'path';
 import type { PRManager } from './pr-manager.js';
 import type { IssueManager } from './issue-manager.js';
 import { config, updateConfig } from './config.js';
+
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
 
 export function createPRApiRouter(prManager: PRManager, issueManager?: IssueManager): Router {
   const router = Router();
@@ -87,6 +91,33 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
       return;
     }
     res.json(updated);
+  });
+
+  // List screenshots associated with a PR (via its linked issue)
+  router.get('/prs/:id/screenshots', (req, res) => {
+    const pr = prManager.get(req.params.id);
+    if (!pr) {
+      res.status(404).json({ error: 'PR not found' });
+      return;
+    }
+
+    const screenshotDir = join(config.screenshotBase, pr.issueId);
+    let files: string[] = [];
+    try {
+      files = readdirSync(screenshotDir).filter((f) => {
+        const ext = extname(f).toLowerCase();
+        return IMAGE_EXTENSIONS.has(ext);
+      });
+    } catch {
+      // Directory doesn't exist — no screenshots
+    }
+
+    const screenshots = files.map((f) => ({
+      filename: f,
+      url: `/screenshots/${pr.issueId}/${f}`,
+    }));
+
+    res.json({ screenshots });
   });
 
   // Check if merge would have conflicts (dry run, async to not block event loop)

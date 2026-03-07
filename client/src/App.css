@@ -1871,3 +1871,10 @@ body {
 .pr-screenshot-close:hover {
   color: var(--text);
 }
+
+/* Screenshot gallery in PR detail */
+.pr-screenshot-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 0.667rem;
+}

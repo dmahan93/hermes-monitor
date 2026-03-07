@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react';
 import { DiffViewer } from './DiffViewer';
-import { MarkdownContent } from './MarkdownContent';
+import { MarkdownContent, ImageWithZoom } from './MarkdownContent';
 import type { PullRequest, IssueStatus } from '../types';
+
+interface Screenshot {
+  filename: string;
+  url: string;
+}
 
 interface PRDetailProps {
   pr: PullRequest;
@@ -30,7 +35,20 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
     checking: true, canMerge: false, hasConflicts: false,
   });
   const [mergeError, setMergeError] = useState<string | null>(null);
+  const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
   const status = STATUS_LABELS[pr.status] || STATUS_LABELS.open;
+
+  // Fetch screenshots for this PR
+  useEffect(() => {
+    fetch(`/api/prs/${pr.id}/screenshots`)
+      .then((res) => res.json())
+      .then((data) => {
+        setScreenshots(data.screenshots || []);
+      })
+      .catch(() => {
+        setScreenshots([]);
+      });
+  }, [pr.id]);
 
   // Check merge status on open
   useEffect(() => {
@@ -71,6 +89,22 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
           <MarkdownContent text={pr.description} className="pr-detail-desc" />
         )}
       </div>
+
+      {screenshots.length > 0 && (
+        <div className="pr-section">
+          <h3 className="pr-section-title">SCREENSHOTS ({screenshots.length})</h3>
+          <div className="pr-screenshot-gallery">
+            {screenshots.map((s) => (
+              <ImageWithZoom
+                key={s.filename}
+                src={s.url}
+                alt={s.filename.replace(/\.[^.]+$/, '').replace(/[-_][a-f0-9]{8}$/, '').replace(/[-_]/g, ' ')}
+                showCaption={true}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="pr-detail-actions">
         {pr.status !== 'merged' && pr.status !== 'closed' && (

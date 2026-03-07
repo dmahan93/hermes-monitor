@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { PRDetail } from '../../src/components/PRDetail';
 import type { PullRequest, IssueStatus, PRStatus } from '../../src/types';
@@ -121,5 +121,106 @@ describe('PRDetail — Back to In Progress button', () => {
 
     // Verify order: move first, then back
     expect(callOrder).toEqual(['moveToInProgress', 'onBack']);
+  });
+});
+
+describe('PRDetail — Screenshots section', () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function mockFetch(screenshotsResponse: any) {
+    globalThis.fetch = vi.fn((url: string | URL | Request) => {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+      if (urlStr.includes('/screenshots')) {
+        return Promise.resolve({
+          json: () => Promise.resolve(screenshotsResponse),
+        } as Response);
+      }
+      // merge-check default
+      return Promise.resolve({
+        json: () => Promise.resolve({ canMerge: false, hasConflicts: false }),
+      } as Response);
+    }) as any;
+  }
+
+  it('renders SCREENSHOTS section when screenshots exist', async () => {
+    mockFetch({
+      screenshots: [
+        { filename: 'before-abc12345.png', url: '/screenshots/issue-1/before-abc12345.png' },
+        { filename: 'after-def67890.png', url: '/screenshots/issue-1/after-def67890.png' },
+      ],
+    });
+
+    const props = defaultProps();
+    render(<PRDetail {...props} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/SCREENSHOTS \(2\)/)).toBeInTheDocument();
+    });
+  });
+
+  it('does not render SCREENSHOTS section when no screenshots', async () => {
+    mockFetch({ screenshots: [] });
+
+    const props = defaultProps();
+    render(<PRDetail {...props} />);
+
+    // Wait for fetch to complete
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalled();
+    });
+
+    expect(screen.queryByText(/SCREENSHOTS/)).not.toBeInTheDocument();
+  });
+
+  it('renders images with correct src attributes', async () => {
+    mockFetch({
+      screenshots: [
+        { filename: 'homepage-abc12345.png', url: '/screenshots/issue-1/homepage-abc12345.png' },
+      ],
+    });
+
+    const props = defaultProps();
+    render(<PRDetail {...props} />);
+
+    await waitFor(() => {
+      const img = screen.getByRole('button', { name: /View.*full size/ });
+      expect(img).toBeInTheDocument();
+      expect(img).toHaveAttribute('src', '/screenshots/issue-1/homepage-abc12345.png');
+    });
+  });
+
+  it('generates clean caption from filename', async () => {
+    mockFetch({
+      screenshots: [
+        { filename: 'my-screenshot-abc12345.png', url: '/screenshots/issue-1/my-screenshot-abc12345.png' },
+      ],
+    });
+
+    const props = defaultProps();
+    render(<PRDetail {...props} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('my screenshot')).toBeInTheDocument();
+    });
+  });
+
+  it('fetches screenshots for the correct PR id', async () => {
+    mockFetch({ screenshots: [] });
+
+    const props = defaultProps();
+    props.pr = makePR({ id: 'custom-pr-id' });
+    render(<PRDetail {...props} />);
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/prs/custom-pr-id/screenshots');
+    });
   });
 });
