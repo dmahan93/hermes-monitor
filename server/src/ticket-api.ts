@@ -14,6 +14,23 @@ const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.
 const UI_FILE_EXTENSIONS = new Set([
   '.tsx', '.jsx', '.css', '.scss', '.less', '.html', '.vue', '.svelte',
 ]);
+/**
+ * Get uploaded screenshot filenames for an issue.
+ * Returns an array of filenames (images only), or empty array if none exist.
+ */
+function getUploadedScreenshots(issueId: string): string[] {
+  const screenshotDir = join(config.screenshotBase, issueId);
+  try {
+    return readdirSync(screenshotDir).filter((f) => {
+      const ext = extname(f).toLowerCase();
+      return ALLOWED_EXTENSIONS.has(ext);
+    });
+  } catch {
+    // Directory doesn't exist — no screenshots
+    return [];
+  }
+}
+
 const MIME_TO_EXT: Record<string, string> = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
@@ -183,16 +200,7 @@ export function createTicketApiRouter(
       return;
     }
 
-    const screenshotDir = join(config.screenshotBase, issue.id);
-    let files: string[] = [];
-    try {
-      files = readdirSync(screenshotDir).filter((f) => {
-        const ext = extname(f).toLowerCase();
-        return ALLOWED_EXTENSIONS.has(ext);
-      });
-    } catch {
-      // Directory doesn't exist yet — no screenshots
-    }
+    const files = getUploadedScreenshots(issue.id);
 
     const port = process.env.PORT || '4000';
     const screenshots = files.map((f) => ({
@@ -220,7 +228,9 @@ export function createTicketApiRouter(
 
     // Check screenshot requirement for UI changes
     if (config.requireScreenshotsForUiChanges) {
-      const noUiChanges = req.query.no_ui_changes === 'true' || req.body?.noUiChanges === true;
+      const noUiChanges = req.query.no_ui_changes === 'true'
+        || req.body?.noUiChanges === true
+        || req.body?.noUiChanges === 'true';
 
       if (!noUiChanges) {
         // Check if changed files include UI files
@@ -232,17 +242,7 @@ export function createTicketApiRouter(
 
         if (uiFiles.length > 0) {
           // Check if screenshots have been uploaded
-          const screenshotDir = join(config.screenshotBase, issue.id);
-          let hasScreenshots = false;
-          try {
-            const files = readdirSync(screenshotDir).filter((f) => {
-              const ext = extname(f).toLowerCase();
-              return ALLOWED_EXTENSIONS.has(ext);
-            });
-            hasScreenshots = files.length > 0;
-          } catch {
-            // Directory doesn't exist — no screenshots
-          }
+          const hasScreenshots = getUploadedScreenshots(issue.id).length > 0;
 
           if (!hasScreenshots) {
             res.status(400).json({
