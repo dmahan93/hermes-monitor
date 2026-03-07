@@ -33,8 +33,9 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
   const [screenshots, setScreenshots] = useState<Screenshot[]>(pr.screenshots || []);
   const status = STATUS_LABELS[pr.status] || STATUS_LABELS.open;
 
-  // Use screenshots from PR data if available, otherwise fetch them
-  // (WS-updated PRs may not include screenshots since they come from the model directly)
+  // Use screenshots from PR data if available, otherwise fetch them.
+  // Depend on screenshotCount (stable scalar) instead of the screenshots array
+  // reference, which changes identity on every parent re-render.
   useEffect(() => {
     if (pr.screenshots && pr.screenshots.length > 0) {
       setScreenshots(pr.screenshots);
@@ -53,7 +54,7 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
         if (!cancelled) setScreenshots([]);
       });
     return () => { cancelled = true; };
-  }, [pr.id, pr.screenshots]);
+  }, [pr.id, pr.screenshotCount]);
 
   // Check merge status on open
   useEffect(() => {

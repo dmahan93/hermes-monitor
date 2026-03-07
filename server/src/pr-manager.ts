@@ -6,7 +6,7 @@ import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
 import type { Store } from './store.js';
 import { config } from './config.js';
-import { getUploadedScreenshots } from './screenshot-utils.js';
+import { buildScreenshotSection } from './screenshot-utils.js';
 
 export type PRStatus = 'open' | 'reviewing' | 'approved' | 'changes_requested' | 'merged' | 'closed';
 export type Verdict = 'pending' | 'approved' | 'changes_requested';
@@ -166,46 +166,9 @@ export class PRManager {
     const reviewDir = join(config.reviewBase, prId);
     mkdirSync(reviewDir, { recursive: true });
 
-    // Look up uploaded screenshots for this PR's issue
-    const screenshotFiles = getUploadedScreenshots(pr.issueId);
+    // Build screenshot section for the review context
     const port = process.env.PORT || '4000';
-    const screenshotUrls = screenshotFiles.map(
-      (f) => `http://localhost:${port}/screenshots/${pr.issueId}/${f}`
-    );
-
-    const screenshotSection: string[] = [];
-    if (screenshotUrls.length > 0) {
-      screenshotSection.push(
-        '## Screenshots',
-        `${screenshotUrls.length} screenshot(s) uploaded for this PR:`,
-        '',
-        ...screenshotUrls.map((url, i) => {
-          const filename = screenshotFiles[i];
-          const label = filename.replace(/\.[^.]+$/, '').replace(/[-_][a-f0-9]{8}$/, '').replace(/[-_]/g, ' ');
-          return `- ![${label}](${url})`;
-        }),
-        '',
-        'Review the screenshots to verify the visual changes look correct.',
-        'If something looks wrong in the screenshots, flag it in your review.',
-      );
-    } else {
-      const uiExtensions = ['.tsx', '.jsx', '.css', '.scss', '.less', '.html', '.vue', '.svelte'];
-      const hasUiFiles = pr.changedFiles.some((f) => uiExtensions.some((ext) => f.endsWith(ext)));
-      if (hasUiFiles) {
-        screenshotSection.push(
-          '## Screenshots',
-          '⚠ WARNING: This PR modifies UI files but NO screenshots were uploaded.',
-          'UI files changed: ' + pr.changedFiles.filter((f) => uiExtensions.some((ext) => f.endsWith(ext))).join(', '),
-          '',
-          'Flag this in your review and request screenshots with VERDICT: CHANGES_REQUESTED.',
-        );
-      } else {
-        screenshotSection.push(
-          '## Screenshots',
-          'No screenshots uploaded (no UI files changed — this is expected).',
-        );
-      }
-    }
+    const screenshotSection = buildScreenshotSection(pr.issueId, pr.changedFiles, port);
 
     writeFileSync(join(reviewDir, 'context.md'), [
       `# PR Review: ${pr.title}`,

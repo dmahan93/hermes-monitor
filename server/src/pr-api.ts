@@ -1,23 +1,8 @@
 import { Router, json } from 'express';
-import type { PRManager, PullRequest } from './pr-manager.js';
+import type { PRManager } from './pr-manager.js';
 import type { IssueManager } from './issue-manager.js';
 import { config, updateConfig } from './config.js';
-import { getUploadedScreenshots } from './screenshot-utils.js';
-
-interface ScreenshotInfo {
-  filename: string;
-  url: string;
-}
-
-/** Enrich a PR with screenshot data for API responses */
-function enrichPRWithScreenshots(pr: PullRequest): PullRequest & { screenshots: ScreenshotInfo[]; screenshotCount: number } {
-  const files = getUploadedScreenshots(pr.issueId);
-  const screenshots = files.map((f) => ({
-    filename: f,
-    url: `/screenshots/${pr.issueId}/${f}`,
-  }));
-  return { ...pr, screenshots, screenshotCount: screenshots.length };
-}
+import { enrichPRWithScreenshots, getScreenshotInfos } from './screenshot-utils.js';
 
 export function createPRApiRouter(prManager: PRManager, issueManager?: IssueManager): Router {
   const router = Router();
@@ -113,13 +98,7 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
       return;
     }
 
-    const files = getUploadedScreenshots(pr.issueId);
-
-    const screenshots = files.map((f) => ({
-      filename: f,
-      url: `/screenshots/${pr.issueId}/${f}`,
-    }));
-
+    const screenshots = getScreenshotInfos(pr.issueId);
     res.json({ screenshots });
   });
 
