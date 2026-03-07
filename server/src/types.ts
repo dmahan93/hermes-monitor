@@ -28,7 +28,6 @@ export type ServerMessage =
   | { type: 'exit'; terminalId: string; exitCode: number }
   | { type: 'terminal:removed'; terminalId: string }
   | { type: 'error'; terminalId: string; message: string }
-  | { type: 'terminal:removed'; terminalId: string }
   | { type: 'terminal:awaitingInput'; terminalId: string; awaitingInput: boolean }
   | { type: 'issue:created'; issue: any }
   | { type: 'issue:updated'; issue: any }

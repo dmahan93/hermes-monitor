@@ -14,9 +14,12 @@ export function StatusBar({ connected, terminalCount, issueCount, awaitingInputC
       </span>
       <span className="status-bar-item">
         {awaitingInputCount !== undefined && awaitingInputCount > 0 && (
-          <span className="status-bar-awaiting">
-            ⏳ {awaitingInputCount} awaiting input ·{' '}
-          </span>
+          <>
+            <span className="status-bar-awaiting">
+              ⏳ {awaitingInputCount} awaiting input
+            </span>
+            {' · '}
+          </>
         )}
         ws: {connected ? 'ok' : 'lost'}
       </span>
