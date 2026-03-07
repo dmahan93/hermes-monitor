@@ -19,6 +19,7 @@ describe('useTerminals', () => {
 
   it('fetches terminals on mount', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
       json: () => Promise.resolve([mockTerminal]),
     }) as any;
 
@@ -35,8 +36,8 @@ describe('useTerminals', () => {
 
   it('addTerminal calls POST and updates state', async () => {
     globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ json: () => Promise.resolve([]) }) // initial fetch
-      .mockResolvedValueOnce({ json: () => Promise.resolve(mockTerminal) }) as any; // POST
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockTerminal) }) as any; // POST
 
     const { result } = renderHook(() => useTerminals());
 
@@ -56,8 +57,8 @@ describe('useTerminals', () => {
 
   it('removeTerminal calls DELETE and updates state', async () => {
     globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ json: () => Promise.resolve([mockTerminal]) }) // initial fetch
-      .mockResolvedValueOnce({ json: () => Promise.resolve({ ok: true }) }) as any; // DELETE
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockTerminal]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true }) }) as any; // DELETE
 
     const { result } = renderHook(() => useTerminals());
 
