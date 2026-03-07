@@ -22,12 +22,12 @@ export interface Issue {
   title: string;
   description: string;
   status: IssueStatus;
-  agent: string;
-  command: string;
+  agent: string;        // agent preset id
+  command: string;       // resolved command (from preset or custom)
   terminalId: string | null;
   branch: string | null;
-  parentId: string | null;
-  submitterNotes?: string;
+  parentId: string | null;  // if set, this issue is a subtask of the parent
+  submitterNotes?: string;  // transient: notes from agent when submitting for review
   createdAt: number;
   updatedAt: number;
 }
@@ -38,10 +38,10 @@ export interface AgentPreset {
   id: string;
   name: string;
   icon: string;
-  command: string;
-  planningCommand: string;
+  command: string;          // template with {{var}} placeholders (execution)
+  planningCommand: string;  // template for interactive planning sessions
   description: string;
-  installed?: boolean;
+  installed?: boolean;      // populated at runtime
 }
 
 // ── Pull Requests ──

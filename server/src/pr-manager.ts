@@ -9,8 +9,8 @@ import { config } from './config.js';
 import { buildScreenshotSection } from './screenshot-utils.js';
 
 // Re-export shared types so existing server imports continue to work.
-export type { PRStatus, Verdict, PRComment, PullRequest } from '@hermes-monitor/shared/types';
-import type { PRStatus, Verdict, PRComment, PullRequest } from '@hermes-monitor/shared/types';
+export type { PRStatus, Verdict, PRComment, Screenshot, PullRequest } from '@hermes-monitor/shared/types';
+import type { PRStatus, Verdict, PRComment, Screenshot, PullRequest } from '@hermes-monitor/shared/types';
 
 export type PREvent = 'pr:created' | 'pr:updated';
 

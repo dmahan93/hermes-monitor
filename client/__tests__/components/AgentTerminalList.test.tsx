@@ -32,7 +32,7 @@ const makePR = (id: string, title: string, opts?: Partial<PullRequest>): PullReq
   status: 'reviewing',
   diff: '',
   changedFiles: [],
-  verdict: '',
+  verdict: 'pending',
   reviewerTerminalId: `review-term-${id}`,
   comments: [],
   createdAt: Date.now(),
