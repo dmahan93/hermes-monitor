@@ -4,6 +4,12 @@ import type { WorktreeManager } from './worktree-manager.js';
 import type { PRManager } from './pr-manager.js';
 import type { Store } from './store.js';
 import { getPreset } from './agents.js';
+
+// Auto-resume constants
+const MAX_RESUME_ATTEMPTS = 3;       // max retries before giving up
+const RESUME_DELAY_MS = 5000;        // wait 5s before resuming (avoid tight loops)
+const RESUME_WINDOW_MS = 5 * 60000;  // reset attempt counter after 5 minutes of quiet
+
 export type IssueStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
 
 export interface Issue {
@@ -45,6 +51,11 @@ export class IssueManager {
   private store: Store | null = null;
   private eventCallbacks: IssueEventCallback[] = [];
   private repoPath: string | undefined;
+  private resumeAttempts = new Map<string, { count: number; lastAttempt: number }>();
+  private resumeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private resumeDelayMs = RESUME_DELAY_MS;
+  private resumeWindowMs = RESUME_WINDOW_MS;
+  private autoResumeActive = false;
 
   constructor(terminalManager: TerminalManager, repoPath?: string) {
     this.terminalManager = terminalManager;
@@ -173,6 +184,9 @@ export class IssueManager {
   }
 
   private handleTransition(issue: Issue, from: IssueStatus, to: IssueStatus): void {
+    // Reset resume attempts on any status transition — a fresh start gets fresh retries
+    this.resetResumeAttempts(issue.id);
+
     // Kill planning terminal when leaving backlog.
     // This must happen before the in_progress spawn logic below so the planning
     // terminal is cleaned up before an agent terminal is created.
@@ -293,6 +307,9 @@ export class IssueManager {
     const issue = this.issues.get(id);
     if (!issue) return false;
 
+    // Clean up resume state
+    this.resetResumeAttempts(id);
+
     // Kill associated terminal if any
     if (issue.terminalId) {
       this.terminalManager.kill(issue.terminalId);
@@ -306,5 +323,171 @@ export class IssueManager {
 
   get size(): number {
     return this.issues.size;
+  }
+
+  // ── Auto-resume ──
+
+  /**
+   * Register an onExit handler on the terminal manager to detect when agent
+   * terminals exit unexpectedly (i.e., the agent decides to stop or crashes)
+   * while the issue is still in_progress. Automatically respawns the terminal
+   * after a short delay, with retry limits to prevent infinite loops.
+   */
+  setupAutoResume(): void {
+    if (this.autoResumeActive) return;
+    this.autoResumeActive = true;
+    this.terminalManager.onExit((terminalId, exitCode) => {
+      this.handleAgentExit(terminalId, exitCode);
+    });
+  }
+
+  /**
+   * Handle a terminal exit event. Determines if this was an agent that
+   * stopped prematurely and should be resumed.
+   */
+  private handleAgentExit(terminalId: string, exitCode: number): void {
+    // Key insight: when a terminal is killed intentionally (via kill()),
+    // it's removed from the TerminalManager map BEFORE onExit fires.
+    // So if the terminal is still in the map, it was a natural exit.
+    const terminalInfo = this.terminalManager.get(terminalId);
+    if (!terminalInfo) return; // Killed intentionally (review, status change, etc.)
+
+    // Find the issue that owns this terminal
+    const issue = this.findIssueByTerminalId(terminalId);
+    if (!issue) return; // Not an issue terminal (maybe a planning or orphan terminal)
+
+    // Only auto-resume in_progress issues
+    if (issue.status !== 'in_progress') return;
+
+    // Check resume attempts (with sliding window)
+    const attempts = this.getOrCreateResumeAttempts(issue.id);
+    if (Date.now() - attempts.lastAttempt > this.resumeWindowMs) {
+      attempts.count = 0; // Reset counter after quiet period
+    }
+
+    if (attempts.count >= MAX_RESUME_ATTEMPTS) {
+      console.log(
+        `[auto-resume] Max retries (${MAX_RESUME_ATTEMPTS}) reached for "${issue.title}" — not resuming`
+      );
+      return;
+    }
+
+    // Log last few lines of terminal output for debugging
+    const scrollback = this.terminalManager.getScrollback(terminalId);
+    if (scrollback) {
+      const lastLines = scrollback.split('\n').filter(Boolean).slice(-10).join('\n');
+      if (lastLines) {
+        console.log(`[auto-resume] Last output from "${issue.title}":\n${lastLines}`);
+      }
+    }
+
+    console.log(
+      `[auto-resume] Agent exited (code ${exitCode}) for "${issue.title}" — ` +
+      `resuming in ${this.resumeDelayMs / 1000}s (attempt ${attempts.count + 1}/${MAX_RESUME_ATTEMPTS})`
+    );
+
+    // Clear any existing timer for this issue (shouldn't happen, but be safe)
+    const existingTimer = this.resumeTimers.get(issue.id);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    // Schedule resume after delay
+    const timer = setTimeout(() => {
+      this.resumeTimers.delete(issue.id);
+      this.performResume(issue.id, terminalId);
+    }, this.resumeDelayMs);
+    this.resumeTimers.set(issue.id, timer);
+  }
+
+  /** Find an issue by its current terminalId */
+  private findIssueByTerminalId(terminalId: string): Issue | undefined {
+    return Array.from(this.issues.values()).find(
+      (issue) => issue.terminalId === terminalId
+    );
+  }
+
+  /** Get or create resume attempt tracking for an issue */
+  private getOrCreateResumeAttempts(issueId: string): { count: number; lastAttempt: number } {
+    let attempts = this.resumeAttempts.get(issueId);
+    if (!attempts) {
+      attempts = { count: 0, lastAttempt: 0 };
+      this.resumeAttempts.set(issueId, attempts);
+    }
+    return attempts;
+  }
+
+  /**
+   * Actually perform the resume: clean up the old terminal, spawn a new one.
+   * Re-checks state in case things changed during the delay.
+   */
+  private performResume(issueId: string, oldTerminalId: string): void {
+    const issue = this.issues.get(issueId);
+    if (!issue) return;
+
+    // Re-check: status may have changed during the delay (e.g., user moved to done)
+    if (issue.status !== 'in_progress') return;
+
+    // Re-check: terminalId may have changed (e.g., user manually restarted)
+    if (issue.terminalId !== oldTerminalId) return;
+
+    // Clean up the old (exited) terminal from the manager
+    this.terminalManager.kill(oldTerminalId);
+
+    // Track the attempt
+    const attempts = this.getOrCreateResumeAttempts(issue.id);
+    attempts.count++;
+    attempts.lastAttempt = Date.now();
+
+    // Get worktree path for cwd
+    let cwd: string | undefined;
+    if (this.worktreeManager) {
+      const worktree = this.worktreeManager.get(issue.id);
+      if (worktree) {
+        cwd = worktree.path;
+      }
+    }
+
+    // Spawn a new terminal with the same command
+    const command = issue.command
+      ? this.interpolateCommand(issue.command, issue)
+      : undefined;
+    const terminal = this.terminalManager.create({
+      title: issue.title,
+      command,
+      cwd,
+    });
+
+    issue.terminalId = terminal.id;
+    issue.updatedAt = Date.now();
+
+    this.persist(issue);
+    this.emit('issue:updated', issue);
+
+    console.log(`[auto-resume] Resumed "${issue.title}" with new terminal ${terminal.id}`);
+  }
+
+  /** Reset resume attempt tracking for an issue (e.g., on status change) */
+  private resetResumeAttempts(issueId: string): void {
+    this.resumeAttempts.delete(issueId);
+    const timer = this.resumeTimers.get(issueId);
+    if (timer) {
+      clearTimeout(timer);
+      this.resumeTimers.delete(issueId);
+    }
+  }
+
+  /** Clean up all pending resume timers (call on shutdown) */
+  clearResumeTimers(): void {
+    this.resumeTimers.forEach((timer) => clearTimeout(timer));
+    this.resumeTimers.clear();
+  }
+
+  /** Override resume delay (for testing) */
+  setResumeDelay(ms: number): void {
+    this.resumeDelayMs = ms;
+  }
+
+  /** Override resume window (for testing) */
+  setResumeWindow(ms: number): void {
+    this.resumeWindowMs = ms;
   }
 }
