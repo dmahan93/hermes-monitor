@@ -22,7 +22,7 @@ export class Store {
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         description TEXT NOT NULL DEFAULT '',
-        status TEXT NOT NULL DEFAULT 'todo',
+        status TEXT NOT NULL DEFAULT 'backlog',
         agent TEXT NOT NULL DEFAULT 'hermes',
         command TEXT NOT NULL DEFAULT '',
         terminalId TEXT,
@@ -98,16 +98,16 @@ export class Store {
 
   /** Reset stale terminal state on startup: move in_progress → todo, clear backlog planning terminals.
    *  Terminals don't survive server restart, so all terminal refs must be cleared. */
-  resetStaleTerminals(): number {
+  resetStaleTerminals(): { inProgress: number; backlog: number } {
     const now = Date.now();
-    const result = this.db.prepare(
+    const inProgressResult = this.db.prepare(
       "UPDATE issues SET status = 'todo', terminalId = NULL, updatedAt = ? WHERE status = 'in_progress'"
     ).run(now);
     // Also clear planning terminal refs for backlog issues (terminals don't survive restart)
-    this.db.prepare(
+    const backlogResult = this.db.prepare(
       "UPDATE issues SET terminalId = NULL, updatedAt = ? WHERE status = 'backlog' AND terminalId IS NOT NULL"
     ).run(now);
-    return result.changes;
+    return { inProgress: inProgressResult.changes, backlog: backlogResult.changes };
   }
 
   // ── Pull Requests ──

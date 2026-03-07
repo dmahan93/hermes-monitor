@@ -72,8 +72,8 @@ describe('Store', () => {
       agent: 'hermes', command: '', terminalId: null, branch: 'b2',
       createdAt: Date.now(), updatedAt: Date.now(),
     });
-    const count = store.resetStaleTerminals();
-    expect(count).toBe(1);
+    const result = store.resetStaleTerminals();
+    expect(result).toEqual({ inProgress: 1, backlog: 0 });
     const issues = store.loadIssues();
     const wip = issues.find((i) => i.id === 'ip-1')!;
     expect(wip.status).toBe('todo');

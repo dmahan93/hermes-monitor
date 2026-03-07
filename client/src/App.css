@@ -2114,9 +2114,14 @@ body {
   align-self: flex-start;
 }
 
-.planning-save-btn:hover {
+.planning-save-btn:hover:not(:disabled) {
   background: var(--backlog-glow);
   color: var(--backlog-bright);
+}
+
+.planning-save-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .planning-terminal {

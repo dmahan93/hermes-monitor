@@ -34,9 +34,12 @@ issueManager.setStore(store);
 prManager.setStore(store);
 
 // Load persisted state (clear stale terminal refs from previous session)
-const resetCount = store.resetStaleTerminals();
-if (resetCount > 0) {
-  console.log(`Reset ${resetCount} in-progress issue(s) to todo`);
+const { inProgress, backlog } = store.resetStaleTerminals();
+if (inProgress > 0) {
+  console.log(`Reset ${inProgress} in-progress issue(s) to todo`);
+}
+if (backlog > 0) {
+  console.log(`Cleared ${backlog} stale planning terminal(s) from backlog`);
 }
 issueManager.loadFromStore();
 prManager.loadFromStore();

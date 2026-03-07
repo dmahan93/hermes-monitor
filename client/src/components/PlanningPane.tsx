@@ -53,13 +53,19 @@ export function PlanningPane({
 
   const handlePromote = useCallback(async () => {
     // Save any unsaved changes first, then promote
-    if (dirty) {
-      const trimmed = title.trim();
-      if (trimmed) {
-        await onUpdate(issue.id, { title: trimmed, description: description.trim() });
+    try {
+      if (dirty) {
+        const trimmed = title.trim();
+        if (trimmed) {
+          await onUpdate(issue.id, { title: trimmed, description: description.trim() });
+        }
       }
+      onPromote(issue.id);
+    } catch (err) {
+      console.error('Failed to save before promoting:', err);
+      // Still promote even if save failed — the user explicitly requested promotion
+      onPromote(issue.id);
     }
-    onPromote(issue.id);
   }, [issue.id, title, description, dirty, onUpdate, onPromote]);
 
   return (
