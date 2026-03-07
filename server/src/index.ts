@@ -33,6 +33,7 @@ const issueManager = new IssueManager(terminalManager, config.repoPath);
 issueManager.setWorktreeManager(worktreeManager);
 issueManager.setPRManager(prManager);
 issueManager.setStore(store);
+issueManager.setupAutoResume();
 prManager.setStore(store);
 
 // Load persisted state (clear stale terminal refs from previous session)
@@ -99,6 +100,7 @@ prManager.onEvent((event, pr) => {
 // Cleanup on shutdown
 const shutdown = () => {
   console.log('\nShutting down...');
+  issueManager.clearResumeTimers();
   terminalManager.killAll();
   store.close();
   server.close();
