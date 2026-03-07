@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useAgents } from '../../src/hooks/useAgents';
+import { API_BASE } from '../../src/config';
 
 const mockAgent = {
   id: 'agent-1',
@@ -31,7 +32,7 @@ describe('useAgents', () => {
 
     expect(result.current[0].id).toBe('agent-1');
     expect(result.current[0].name).toBe('Hermes');
-    expect(fetch).toHaveBeenCalledWith('/api/agents');
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/agents`);
   });
 
   // --- Error-path tests ---

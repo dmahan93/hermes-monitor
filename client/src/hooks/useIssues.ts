@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { Issue, IssueStatus, ServerMessage } from '../types';
-
-const API = '/api';
+import { API_BASE } from '../config';
 
 export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => () => void) {
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -9,7 +8,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
 
   const fetchIssues = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/issues`);
+      const res = await fetch(`${API_BASE}/issues`);
       if (!res.ok) throw new Error(`Failed to fetch issues (${res.status})`);
       const data: Issue[] = await res.json();
       setIssues(data);
@@ -49,7 +48,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
 
   const createIssue = useCallback(async (title: string, description?: string, agent?: string, command?: string, branch?: string) => {
     try {
-      const res = await fetch(`${API}/issues`, {
+      const res = await fetch(`${API_BASE}/issues`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, description, agent, command, branch }),
@@ -70,7 +69,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
 
   const updateIssue = useCallback(async (id: string, updates: Partial<Issue>) => {
     try {
-      const res = await fetch(`${API}/issues/${id}`, {
+      const res = await fetch(`${API_BASE}/issues/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
@@ -87,7 +86,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
       prev.map((i) => (i.id === id ? { ...i, status } : i))
     );
     try {
-      const res = await fetch(`${API}/issues/${id}/status`, {
+      const res = await fetch(`${API_BASE}/issues/${id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
@@ -111,7 +110,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
     // Optimistic removal — also cascade-remove subtasks to match server behavior
     setIssues((prev) => prev.filter((i) => i.id !== id && i.parentId !== id));
     try {
-      const res = await fetch(`${API}/issues/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE}/issues/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         // Server rejected deletion — throw to trigger catch block's refetch
         throw new Error(`Failed to delete issue (${res.status})`);
@@ -124,7 +123,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
 
   const startPlanning = useCallback(async (id: string) => {
     try {
-      const res = await fetch(`${API}/issues/${id}/plan`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/issues/${id}/plan`, { method: 'POST' });
       if (!res.ok) return null;
       const issue = await res.json();
       setIssues((prev) => prev.map((i) => (i.id === issue.id ? issue : i)));
@@ -137,7 +136,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
 
   const stopPlanning = useCallback(async (id: string) => {
     try {
-      const res = await fetch(`${API}/issues/${id}/plan`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE}/issues/${id}/plan`, { method: 'DELETE' });
       if (!res.ok) return null;
       const issue = await res.json();
       setIssues((prev) => prev.map((i) => (i.id === issue.id ? issue : i)));
@@ -150,7 +149,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
 
   const createSubtask = useCallback(async (parentId: string, title: string, description?: string, agent?: string, command?: string, branch?: string) => {
     try {
-      const res = await fetch(`${API}/issues/${parentId}/subtasks`, {
+      const res = await fetch(`${API_BASE}/issues/${parentId}/subtasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, description, agent, command, branch }),

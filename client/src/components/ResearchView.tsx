@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { TerminalView } from './TerminalView';
 import type { ServerMessage } from '../types';
-
-const API = '/api';
+import { API_BASE } from '../config';
 const STORAGE_KEY = 'hermes:researchTerminalId';
 
 interface ResearchViewProps {
@@ -32,7 +31,7 @@ export function ResearchView({ send, subscribe, onTerminalIdChange }: ResearchVi
   // Check if a terminal ID from storage still exists on the server.
   // Throws on network errors so callers can distinguish "not found" from "unreachable".
   const validateTerminal = useCallback(async (id: string): Promise<boolean> => {
-    const res = await fetch(`${API}/terminals`);
+    const res = await fetch(`${API_BASE}/terminals`);
     if (!res.ok) throw new Error('Failed to fetch terminals');
     const terminals = await res.json();
     return terminals.some((t: { id: string }) => t.id === id);
@@ -41,7 +40,7 @@ export function ResearchView({ send, subscribe, onTerminalIdChange }: ResearchVi
   // Delete a terminal on the server (best-effort, errors are swallowed)
   const deleteTerminal = useCallback(async (id: string) => {
     try {
-      await fetch(`${API}/terminals/${id}`, { method: 'DELETE' });
+      await fetch(`${API_BASE}/terminals/${id}`, { method: 'DELETE' });
     } catch {
       // Best-effort cleanup — if it fails the server will reap eventually
     }
@@ -50,7 +49,7 @@ export function ResearchView({ send, subscribe, onTerminalIdChange }: ResearchVi
   // Create a fresh research terminal
   const createTerminal = useCallback(async (): Promise<string | null> => {
     try {
-      const res = await fetch(`${API}/terminals`, {
+      const res = await fetch(`${API_BASE}/terminals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'Research' }),

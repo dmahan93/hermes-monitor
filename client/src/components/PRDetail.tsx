@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { DiffViewer } from './DiffViewer';
 import { MarkdownContent, ImageWithZoom } from './MarkdownContent';
 import type { PullRequest, IssueStatus, Screenshot } from '../types';
+import { API_BASE } from '../config';
 
 interface PRDetailProps {
   pr: PullRequest;
@@ -42,7 +43,7 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
       return;
     }
     let cancelled = false;
-    fetch(`/api/prs/${pr.id}/screenshots`)
+    fetch(`${API_BASE}/prs/${pr.id}/screenshots`)
       .then((res) => {
         if (!res.ok) throw new Error(`Failed to fetch screenshots: ${res.status}`);
         return res.json();
@@ -63,7 +64,7 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
       return;
     }
     setMergeCheck({ checking: true, canMerge: false, hasConflicts: false });
-    fetch(`/api/prs/${pr.id}/merge-check`)
+    fetch(`${API_BASE}/prs/${pr.id}/merge-check`)
       .then((res) => res.json())
       .then((data) => {
         setMergeCheck({ checking: false, canMerge: data.canMerge, hasConflicts: data.hasConflicts });
