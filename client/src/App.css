@@ -1646,45 +1646,6 @@ body {
   border-bottom: 1px solid var(--bevel-dark);
 }
 
-/* ── Diff Viewer ── */
-
-.diff-viewer {
-  background: var(--surface);
-  border: 1px solid var(--chrome);
-  border-top-color: var(--bevel-dark);
-  border-left-color: var(--bevel-dark);
-  border-bottom-color: var(--bevel-light);
-  border-right-color: var(--bevel-light);
-  overflow-x: auto;
-  max-height: 33.333rem;
-  overflow-y: auto;
-}
-
-.diff-viewer-empty {
-  color: var(--text-muted);
-  font-size: 0.917rem;
-  padding: 1rem;
-  text-align: center;
-}
-
-.diff-content {
-  margin: 0;
-  padding: 0.333rem;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.917rem;
-  line-height: 1.5;
-}
-
-.diff-line {
-  padding: 0 0.333rem;
-  white-space: pre;
-}
-
-.diff-header { color: var(--link); }
-.diff-add { color: var(--accent); background: #33dd7710; }
-.diff-remove { color: var(--error); background: #dd444410; }
-.diff-context { color: var(--text-muted); }
-
 /* ── PR Comments ── */
 
 .pr-comments {
@@ -1776,6 +1737,20 @@ body {
 .pr-comment-form .pr-action-btn {
   align-self: flex-end;
 }
+
+/* ═══════════════════════════════════════════
+   APP BODY (sidebar + main content)
+   ═══════════════════════════════════════════ */
+
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Git graph sidebar and diff viewer styles are in
+   components/GitGraph.css and components/DiffViewer.css */
 
 /* ── PR Screenshots / Markdown Content ── */
 

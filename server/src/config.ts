@@ -49,11 +49,22 @@ export function updateConfig(updates: Partial<AppConfig>): void {
   if (updates.requireScreenshotsForUiChanges !== undefined) config.requireScreenshotsForUiChanges = updates.requireScreenshotsForUiChanges;
 }
 
+// Cache isGitRepo result per path — the repo status doesn't change during
+// a server session, so there's no need to spawn a blocking execSync on
+// every API request.
+const gitRepoCache = new Map<string, boolean>();
+
 export function isGitRepo(path: string): boolean {
+  const cached = gitRepoCache.get(path);
+  if (cached !== undefined) return cached;
+
+  let result: boolean;
   try {
     execSync('git rev-parse --git-dir', { cwd: path, stdio: 'pipe' });
-    return true;
+    result = true;
   } catch {
-    return false;
+    result = false;
   }
+  gitRepoCache.set(path, result);
+  return result;
 }
