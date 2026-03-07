@@ -139,7 +139,7 @@ describe('IssueManager', () => {
     expect(terminalManager.size).toBe(0);
   });
 
-  it('in_progress→review keeps terminal alive', () => {
+  it('in_progress→review kills agent terminal', () => {
     setup();
     const issue = issueManager.create({ title: 'Review me' });
     issueManager.changeStatus(issue.id, 'in_progress');
@@ -148,8 +148,8 @@ describe('IssueManager', () => {
 
     issueManager.changeStatus(issue.id, 'review');
     const updated = issueManager.get(issue.id);
-    expect(updated!.terminalId).toBe(termId);
-    expect(terminalManager.size).toBe(1);
+    expect(updated!.terminalId).toBeNull();
+    expect(terminalManager.size).toBe(0);
   });
 
   it('command template variables are interpolated', () => {

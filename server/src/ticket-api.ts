@@ -213,7 +213,7 @@ export function createTicketApiRouter(
     // Capture submitter notes/details for the reviewer
     const details = req.body?.details;
     if (details && typeof details === 'string') {
-      issue.submitterNotes = details;
+      issueManager.update(issue.id, { submitterNotes: details });
     }
 
     // Check screenshot requirement for UI changes
@@ -256,12 +256,6 @@ export function createTicketApiRouter(
           }
         }
       }
-    }
-
-    // Kill the agent's terminal BEFORE moving to review
-    if (issue.terminalId) {
-      terminalManager.kill(issue.terminalId);
-      issue.terminalId = null;
     }
 
     // Move to review — triggers PR creation + reviewer spawn via handleTransition
