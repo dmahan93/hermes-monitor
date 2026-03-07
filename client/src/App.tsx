@@ -28,7 +28,7 @@ function getWsUrl(): string {
 }
 
 export default function App() {
-  const { connected, send, subscribe } = useWebSocket(getWsUrl());
+  const { connected, reconnectCount, send, subscribe } = useWebSocket(getWsUrl());
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals(subscribe);
   const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning, createSubtask } = useIssues(subscribe);
   const { prs = [], addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe);
@@ -362,6 +362,7 @@ export default function App() {
                     issue={termViewAgentIssue}
                     send={send}
                     subscribe={subscribe}
+                    reconnectCount={reconnectCount}
                     onMinimize={() => setTermViewSelection(null)}
                     awaitingInput={awaitingInputIds.has(termViewAgentIssue.terminalId)}
                   />
@@ -372,6 +373,7 @@ export default function App() {
                     onLayoutChange={updateLayout}
                     send={send}
                     subscribe={subscribe}
+                    reconnectCount={reconnectCount}
                     onClose={handleCloseTerminal}
                     awaitingInputIds={awaitingInputIds}
                   />
@@ -402,6 +404,7 @@ export default function App() {
                 agents={agents}
                 send={send}
                 subscribe={subscribe}
+                reconnectCount={reconnectCount}
                 onUpdate={updateIssue}
                 onPromote={handlePromote}
                 onStartPlanning={handleStartPlanning}
@@ -429,6 +432,7 @@ export default function App() {
                       issue={expandedIssue}
                       send={send}
                       subscribe={subscribe}
+                      reconnectCount={reconnectCount}
                       onMinimize={() => setExpandedIssueId(null)}
                       awaitingInput={expandedIssue.terminalId ? awaitingInputIds.has(expandedIssue.terminalId) : false}
                     />
@@ -458,6 +462,7 @@ export default function App() {
               <ResearchView
                 send={send}
                 subscribe={subscribe}
+                reconnectCount={reconnectCount}
                 onTerminalIdChange={setResearchTerminalId}
               />
             </div>

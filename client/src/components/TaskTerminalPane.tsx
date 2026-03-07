@@ -8,9 +8,10 @@ interface TaskTerminalPaneProps {
   subscribe: (handler: (msg: ServerMessage) => void) => () => void;
   onMinimize: () => void;
   awaitingInput?: boolean;
+  reconnectCount?: number;
 }
 
-export function TaskTerminalPane({ issue, send, subscribe, onMinimize, awaitingInput }: TaskTerminalPaneProps) {
+export function TaskTerminalPane({ issue, send, subscribe, onMinimize, awaitingInput, reconnectCount }: TaskTerminalPaneProps) {
   if (!issue.terminalId) return null;
 
   return (
@@ -37,6 +38,7 @@ export function TaskTerminalPane({ issue, send, subscribe, onMinimize, awaitingI
           terminalId={issue.terminalId}
           send={send}
           subscribe={subscribe}
+          reconnectCount={reconnectCount}
         />
       </div>
     </div>

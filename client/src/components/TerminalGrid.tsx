@@ -16,6 +16,7 @@ interface TerminalGridProps {
   subscribe: (handler: (msg: ServerMessage) => void) => () => void;
   onClose: (id: string) => void;
   awaitingInputIds?: Set<string>;
+  reconnectCount?: number;
 }
 
 export function TerminalGrid({
@@ -26,6 +27,7 @@ export function TerminalGrid({
   subscribe,
   onClose,
   awaitingInputIds,
+  reconnectCount,
 }: TerminalGridProps) {
   const terminalMap = useMemo(() => {
     const map = new Map<string, TerminalInfo>();
@@ -75,6 +77,7 @@ export function TerminalGrid({
               subscribe={subscribe}
               onClose={onClose}
               awaitingInput={awaitingInputIds?.has(terminal.id) ?? false}
+              reconnectCount={reconnectCount}
             />
           </div>
         );
