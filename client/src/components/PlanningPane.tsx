@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { TerminalView } from './TerminalView';
 import type { Issue, AgentPreset, ClientMessage, ServerMessage } from '../types';
+import './PlanningPane.css';
 
 interface PlanningPaneProps {
   issue: Issue;

@@ -1,5 +1,6 @@
 import { TerminalView } from './TerminalView';
 import type { Issue, ServerMessage } from '../types';
+import './TaskTerminalPane.css';
 
 interface TaskTerminalPaneProps {
   issue: Issue;

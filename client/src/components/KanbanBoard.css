@@ -1,0 +1,253 @@
+/* ═══════════════════════════════════════════
+   KANBAN BOARD
+   ═══════════════════════════════════════════ */
+/* NOTE: App-level layout styles for the kanban split view (.kanban-split,
+ * .kanban-split-left, .kanban-split-right) are in App.css.
+ */
+
+/* ── Kanban Board ── */
+
+.kanban-board {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.kanban-toolbar {
+  padding: 0.333rem 0.667rem;
+  flex-shrink: 0;
+}
+
+.kanban-drag-error {
+  color: #ff6b6b;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 4px 8px;
+  margin: 0 0.667rem 4px;
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  cursor: pointer;
+  animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.kanban-columns {
+  display: flex;
+  flex: 1;
+  gap: 0.167rem;
+  padding: 0 0.167rem 0.167rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* ── Kanban Column ── */
+
+.kanban-column {
+  flex: 1;
+  min-width: 16.667rem;
+  display: flex;
+  flex-direction: column;
+  background: var(--chrome-dark);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.kanban-column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.333rem 0.667rem;
+  border-bottom: 1px solid var(--bevel-dark);
+  flex-shrink: 0;
+}
+
+.kanban-column-label {
+  font-family: 'VT323', monospace;
+  font-size: 1.083rem;
+  color: var(--text-muted);
+  letter-spacing: 0.083rem;
+}
+
+.kanban-column-count {
+  font-size: 0.833rem;
+  color: var(--text-muted);
+  background: var(--bg);
+  padding: 0 0.333rem;
+  border: 1px solid var(--chrome);
+}
+
+.kanban-column-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.333rem;
+  min-height: 5rem;
+  transition: background 0.15s;
+}
+
+.kanban-column-body.drag-over {
+  background: var(--accent-dim);
+}
+
+/* ── Issue Card ── */
+
+.issue-card {
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  padding: 0.5rem 0.667rem;
+  margin-bottom: 0.333rem;
+  cursor: grab;
+  transition: border-color 0.15s;
+}
+
+.issue-card:hover {
+  border-color: var(--accent);
+}
+
+.issue-card.dragging {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px var(--accent-dim);
+  opacity: 0.9;
+}
+
+.issue-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.333rem;
+}
+
+.issue-card-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  flex: 1;
+  word-break: break-word;
+}
+
+.issue-card-title-clickable {
+  cursor: pointer;
+}
+
+.issue-card-title-clickable:hover {
+  color: var(--accent);
+}
+
+.issue-card-actions {
+  display: flex;
+  gap: 0.167rem;
+  flex-shrink: 0;
+}
+
+/* Edit button is hidden by default and revealed on hover/focus.
+   Delete button stays always visible — intentional: destructive actions
+   remain visible as a signal, while edit uses progressive disclosure. */
+.issue-card-edit {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.833rem;
+  cursor: pointer;
+  padding: 0 0.167rem;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.issue-card:hover .issue-card-edit,
+.issue-card:focus-within .issue-card-edit,
+.issue-card-edit:focus-visible {
+  opacity: 1;
+}
+
+.issue-card-edit:hover {
+  color: var(--accent);
+}
+
+.issue-card-delete {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0 0.167rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.issue-card-delete:hover {
+  color: var(--error);
+}
+
+.issue-card-desc {
+  font-size: 0.833rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.issue-card-meta {
+  display: flex;
+  gap: 0.667rem;
+  margin-top: 0.333rem;
+  font-size: 0.75rem;
+  font-family: 'VT323', monospace;
+}
+
+.issue-card-agent {
+  color: var(--warn);
+}
+
+.issue-card-terminal-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: 9px;
+  font-family: 'VT323', monospace;
+  cursor: pointer;
+  padding: 0;
+}
+
+.issue-card-terminal-btn:hover {
+  text-decoration: underline;
+}
+
+.issue-card-branch {
+  color: var(--link);
+}
+
+.issue-card-subtask {
+  border-left: 2px solid var(--link);
+  opacity: 0.9;
+}
+
+.issue-card-parent {
+  font-size: 9px;
+  color: var(--link);
+  font-family: 'VT323', monospace;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.issue-card-subtasks {
+  color: var(--text-muted);
+  font-size: 9px;
+}

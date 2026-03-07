@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AgentPreset } from '../types';
+import './NewIssueModal.css';
 
 interface NewIssueModalProps {
   agents: AgentPreset[];

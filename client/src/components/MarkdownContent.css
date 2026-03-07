@@ -1,0 +1,101 @@
+/* ── PR Screenshots / Markdown Content ── */
+
+.markdown-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.333rem;
+}
+
+.markdown-content pre,
+.markdown-text-block {
+  margin: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.917rem;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pr-screenshot {
+  margin: 0.5rem 0;
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+  background: var(--bg);
+  padding: 0.333rem;
+}
+
+.pr-screenshot-img {
+  max-width: 100%;
+  max-height: 25rem;
+  display: block;
+  cursor: zoom-in;
+  image-rendering: auto;
+}
+
+.pr-screenshot-error {
+  display: block;
+  padding: 1rem;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.833rem;
+  text-align: center;
+}
+
+.pr-screenshot-caption {
+  font-family: 'VT323', monospace;
+  font-size: 0.833rem;
+  color: var(--text-muted);
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--bevel-dark);
+  margin-top: 0.25rem;
+}
+
+/* Zoomed screenshot overlay */
+.pr-screenshot-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+  cursor: pointer;
+}
+
+.pr-screenshot-zoomed {
+  max-width: 90vw;
+  max-height: 85vh;
+  object-fit: contain;
+  border: 1px solid var(--chrome-light);
+}
+
+.pr-screenshot-close {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.917rem;
+  color: var(--text-muted);
+  margin-top: 0.667rem;
+  padding: 0.167rem 0.667rem;
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.pr-screenshot-close:hover {
+  color: var(--text);
+}
+
+/* Screenshot gallery in PR detail */
+.pr-screenshot-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 0.667rem;
+}

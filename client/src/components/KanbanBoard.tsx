@@ -5,6 +5,7 @@ import { BacklogSection } from './BacklogSection';
 import { NewIssueModal } from './NewIssueModal';
 import type { Issue, IssueStatus, AgentPreset } from '../types';
 import { COLUMNS } from '../types';
+import './KanbanBoard.css';
 
 const noop = () => {};
 

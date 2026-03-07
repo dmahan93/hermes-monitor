@@ -1,0 +1,200 @@
+/* ── Modal ── */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--chrome-dark);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  width: 35rem;
+  max-width: 90vw;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.333rem 0.667rem;
+  border-bottom: 1px solid var(--bevel-dark);
+}
+
+.modal-title {
+  font-family: 'VT323', monospace;
+  font-size: 1.167rem;
+  color: var(--text-muted);
+  letter-spacing: 0.083rem;
+}
+
+.modal-title-hint {
+  color: var(--backlog);
+  font-size: 0.917rem;
+  opacity: 0.8;
+}
+
+.modal-backlog-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+  padding: 0.25rem 0;
+  opacity: 0.7;
+}
+
+.modal-close {
+  background: transparent;
+  border: 1px solid transparent;
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  color: var(--text-muted);
+  font-size: 1.167rem;
+  cursor: pointer;
+  padding: 0 0.333rem;
+}
+
+.modal-close:hover {
+  color: var(--error);
+}
+
+.modal-body {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.833rem;
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.modal-label {
+  font-size: 0.833rem;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  letter-spacing: 0.083rem;
+}
+
+.modal-field input,
+.modal-field textarea {
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1rem;
+  padding: 0.333rem 0.5rem;
+  outline: none;
+  resize: vertical;
+}
+
+.modal-field input:focus,
+.modal-field textarea:focus {
+  border-color: var(--accent);
+}
+
+.modal-field input::placeholder,
+.modal-field textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.modal-select {
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1rem;
+  padding: 0.333rem 0.5rem;
+  outline: none;
+  cursor: pointer;
+}
+
+.modal-select:focus {
+  border-color: var(--accent);
+}
+
+.modal-select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.modal-select option:disabled {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.modal-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.333rem;
+}
+
+.modal-btn {
+  background: transparent;
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.917rem;
+  padding: 0.167rem 0.667rem;
+  cursor: pointer;
+}
+
+.modal-btn:active {
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.modal-btn-cancel {
+  color: var(--text-muted);
+}
+
+.modal-btn-cancel:hover {
+  color: var(--text);
+}
+
+.modal-btn-submit {
+  color: var(--accent);
+}
+
+.modal-btn-submit:hover {
+  background: var(--accent-dim);
+}
+
+.modal-btn-submit:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.5;
+}

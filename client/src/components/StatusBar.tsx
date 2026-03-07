@@ -1,3 +1,5 @@
+import './StatusBar.css';
+
 interface StatusBarProps {
   connected: boolean;
   terminalCount: number;

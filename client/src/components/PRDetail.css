@@ -1,0 +1,271 @@
+/* ── PR Detail ── */
+/* NOTE: Cross-component references:
+ *   .markdown-content (defined in MarkdownContent.css)
+ * Used as descendant selectors under .pr-submitter-notes and .pr-comment-body.
+ */
+
+.pr-detail {
+  padding: 0.667rem;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.pr-detail-header {
+  margin-bottom: 1rem;
+}
+
+.pr-back-btn {
+  background: transparent;
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.833rem;
+  padding: 0.083rem 0.5rem;
+  cursor: pointer;
+  margin-bottom: 0.667rem;
+}
+
+.pr-back-btn:hover { color: var(--text); }
+
+.pr-detail-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.667rem;
+  margin-bottom: 0.333rem;
+}
+
+.pr-detail-title {
+  font-size: 1.333rem;
+  font-weight: 500;
+  color: var(--text);
+  margin: 0;
+}
+
+.pr-status-badge {
+  font-family: 'VT323', monospace;
+  font-size: 0.917rem;
+  padding: 0.083rem 0.5rem;
+  border: 1px solid;
+}
+
+.status-open { color: var(--text-muted); border-color: var(--chrome); }
+.status-reviewing { color: var(--warn); border-color: var(--warn); }
+.status-approved { color: var(--accent); border-color: var(--accent); }
+.status-changes { color: var(--error); border-color: var(--error); }
+.status-merged { color: var(--link); border-color: var(--link); }
+
+.pr-detail-meta {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.833rem;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+}
+
+.pr-detail-desc {
+  margin-top: 0.5rem;
+  font-size: 0.917rem;
+  color: var(--text-muted);
+}
+
+.pr-detail-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.pr-action-btn {
+  background: transparent;
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.917rem;
+  padding: 0.167rem 0.667rem;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.pr-action-btn:active {
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.pr-approve-btn { color: var(--accent); }
+.pr-approve-btn:hover { background: var(--accent-dim); }
+.pr-reject-btn { color: var(--error); }
+.pr-reject-btn:hover { background: #dd444420; }
+.pr-relaunch-btn { color: #ddaa33; }
+.pr-relaunch-btn:hover { background: #ddaa3320; }
+.pr-inprogress-btn { color: #66bbcc; }
+.pr-inprogress-btn:hover { background: #66bbcc20; }
+.pr-merge-btn { color: var(--link); }
+.pr-merge-btn:hover { background: #4488dd20; }
+.pr-fix-btn { color: var(--warn); }
+.pr-fix-btn:hover { background: #ddaa2220; }
+
+.pr-merge-checking {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  padding: 2px 8px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.pr-merge-error {
+  width: 100%;
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--error);
+  background: #dd444415;
+  border: 1px solid var(--error);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.pr-action-btn:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ── PR Sections ── */
+
+.pr-section {
+  margin-bottom: 1.333rem;
+}
+
+.pr-section-title {
+  font-family: 'VT323', monospace;
+  font-size: 1rem;
+  color: var(--text-muted);
+  letter-spacing: 0.083rem;
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.167rem;
+  border-bottom: 1px solid var(--bevel-dark);
+}
+
+/* ── PR Submitter Notes ── */
+
+.pr-submitter-notes {
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  border-left: 2px solid var(--accent);
+  padding: 0.5rem 0.667rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.917rem;
+  color: var(--text);
+}
+
+.pr-submitter-notes pre,
+.pr-submitter-notes > .markdown-plain,
+.pr-submitter-notes > .markdown-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── PR Comments ── */
+
+.pr-comments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.667rem;
+}
+
+.pr-comment {
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  padding: 0.5rem 0.667rem;
+}
+
+.pr-comment-bot {
+  border-left: 2px solid var(--warn);
+}
+
+.pr-comment-human {
+  border-left: 2px solid var(--link);
+}
+
+.pr-comment-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.333rem;
+}
+
+.pr-comment-author {
+  font-size: 0.833rem;
+  font-family: 'VT323', monospace;
+  color: var(--text-muted);
+}
+
+.pr-comment-time {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.pr-comment-body pre,
+.pr-comment-body > .markdown-plain,
+.pr-comment-body > .markdown-content {
+  margin: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.917rem;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pr-no-comments {
+  color: var(--text-muted);
+  font-size: 0.917rem;
+  padding: 0.667rem 0;
+  text-align: center;
+}
+
+.pr-comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.333rem;
+}
+
+.pr-comment-form textarea {
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.917rem;
+  padding: 0.333rem 0.5rem;
+  outline: none;
+  resize: vertical;
+}
+
+.pr-comment-form textarea:focus {
+  border-color: var(--accent);
+}
+
+.pr-comment-form textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.pr-comment-form .pr-action-btn {
+  align-self: flex-end;
+}

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { PRDetail } from './PRDetail';
 import type { PullRequest, Issue } from '../types';
+import './PRList.css';
 
 type PRView = 'open' | 'closed' | 'all';
 

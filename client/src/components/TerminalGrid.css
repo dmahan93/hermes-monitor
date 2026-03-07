@@ -1,0 +1,49 @@
+/* ── Terminal Grid ── */
+/* NOTE: App-level layout styles for the terminals view (.terminals-layout,
+ * .terminals-sidebar, .terminals-main) are in App.css.
+ */
+
+.terminal-grid {
+  min-height: 100%;
+}
+
+.terminal-grid-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(100vh - 4.667rem);
+  color: var(--text-muted);
+}
+
+.terminal-grid-empty-text {
+  text-align: center;
+  font-family: 'VT323', monospace;
+  font-size: 1.333rem;
+  line-height: 1.6;
+}
+
+.terminal-grid-empty-text .accent {
+  color: var(--accent);
+}
+
+/* ── react-grid-layout overrides ── */
+
+.react-grid-item.react-grid-placeholder {
+  background: var(--accent-dim) !important;
+  border: 1px dashed var(--accent) !important;
+  opacity: 0.3 !important;
+  border-radius: 0 !important;
+}
+
+.react-grid-item > .react-resizable-handle {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.react-grid-item:hover > .react-resizable-handle {
+  opacity: 0.5;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  border-color: var(--accent) !important;
+}

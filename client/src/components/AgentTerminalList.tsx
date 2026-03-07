@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Issue, AgentPreset, PullRequest } from '../types';
+import './AgentTerminalList.css';
 
 export type AgentListFilter = 'all' | 'agents' | 'reviewers';
 

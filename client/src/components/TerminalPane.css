@@ -1,0 +1,159 @@
+/* ── Terminal Pane ── */
+/* NOTE: Cross-component references:
+ *   .task-terminal-header (defined in TaskTerminalPane.css)
+ *   .header-awaiting-input (defined in Header.css)
+ *   .status-bar-awaiting (defined in StatusBar.css)
+ * These selectors are scoped under .terminal-pane-awaiting for awaiting-input state styling.
+ */
+
+.terminal-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--surface);
+  /* webcore: inset bevel border */
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+  overflow: hidden;
+}
+
+.terminal-pane-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.083rem 0.333rem;
+  background: var(--chrome-dark);
+  /* webcore: raised header bar */
+  border-bottom: 1px solid var(--bevel-dark);
+  min-height: 1.667rem;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.terminal-pane-drag-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  font-size: 0.833rem;
+  padding: 0 0.167rem;
+}
+
+.terminal-pane-drag-handle:active {
+  cursor: grabbing;
+}
+
+.terminal-pane-title {
+  flex: 1;
+  font-size: 0.917rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-pane-pid {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+}
+
+.terminal-pane-close {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 1.167rem;
+  line-height: 1;
+  padding: 0 0.25rem;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  /* webcore: tiny beveled close button */
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+}
+
+.terminal-pane-close:hover {
+  color: var(--error);
+  background: #dd444420;
+}
+
+.terminal-pane-close:active {
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.terminal-pane-body {
+  flex: 1;
+  overflow: hidden;
+  /* subtle phosphor glow on terminal content */
+}
+
+.terminal-pane-body .xterm {
+  padding: 0.167rem;
+}
+
+/* phosphor text glow — subtle webcore CRT nod */
+.terminal-pane-body .xterm-rows {
+  text-shadow: 0 0 2px #33dd7715;
+}
+
+
+/* ── Terminal Awaiting Input Alert ── */
+
+@keyframes awaiting-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes awaiting-border-glow {
+  0%, 100% { border-color: var(--warn); box-shadow: 0 0 4px var(--warn); }
+  50% { border-color: color-mix(in srgb, var(--warn) 38%, transparent); box-shadow: 0 0 2px color-mix(in srgb, var(--warn) 25%, transparent); }
+}
+
+.terminal-pane.terminal-pane-awaiting,
+.task-terminal-pane.terminal-pane-awaiting {
+  border-color: var(--warn);
+  animation: awaiting-border-glow 2s ease-in-out infinite;
+}
+
+.terminal-pane-awaiting .terminal-pane-header,
+.terminal-pane-awaiting .task-terminal-header {
+  border-bottom-color: var(--warn);
+}
+
+.terminal-pane-alert {
+  font-family: 'VT323', monospace;
+  font-size: 0.833rem;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  padding: 0 0.333rem;
+  border: 1px solid var(--warn);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  animation: awaiting-pulse 1.5s ease-in-out infinite;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* Accessibility: disable animations for users with motion sensitivity */
+@media (prefers-reduced-motion: reduce) {
+  .terminal-pane-alert,
+  .header-awaiting-input,
+  .status-bar-awaiting {
+    animation: none;
+  }
+
+  .terminal-pane.terminal-pane-awaiting,
+  .task-terminal-pane.terminal-pane-awaiting {
+    animation: none;
+    border-color: var(--warn);
+    box-shadow: 0 0 4px var(--warn);
+  }
+}

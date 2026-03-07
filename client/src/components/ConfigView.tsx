@@ -1,3 +1,5 @@
+import './ConfigView.css';
+
 const GITHUB_URL = 'https://github.com/dmahan93/hermes-monitor';
 
 export function ConfigView() {

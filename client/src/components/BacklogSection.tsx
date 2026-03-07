@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Droppable, Draggable } from '@hello-pangea/dnd';
 import type { Issue, AgentPreset } from '../types';
+import './BacklogSection.css';
 
 interface BacklogSectionProps {
   issues: Issue[];

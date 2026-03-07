@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { TerminalView } from './TerminalView';
 import type { ServerMessage } from '../types';
+import './ResearchView.css';
 import { API_BASE } from '../config';
 const STORAGE_KEY = 'hermes:researchTerminalId';
 
