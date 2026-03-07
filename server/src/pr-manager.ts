@@ -53,6 +53,7 @@ export class PRManager {
   private store: Store | null = null;
   private eventCallbacks: PREventCallback[] = [];
   private conflictFixerTerminals = new Set<string>();
+  private pendingRemovalTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(terminalManager: TerminalManager, worktreeManager: WorktreeManager) {
     this.terminalManager = terminalManager;
@@ -86,6 +87,30 @@ export class PRManager {
 
   onEvent(cb: PREventCallback): void {
     this.eventCallbacks.push(cb);
+  }
+
+  /**
+   * Cancel a pending delayed removal for a terminal.
+   * Called when a terminal is killed through another path (e.g., relaunchReview, fixConflicts)
+   * to prevent the stale timer from firing on a destroyed object.
+   */
+  private cancelPendingRemoval(terminalId: string): void {
+    const timer = this.pendingRemovalTimers.get(terminalId);
+    if (timer) {
+      clearTimeout(timer);
+      this.pendingRemovalTimers.delete(terminalId);
+    }
+  }
+
+  /**
+   * Clear all pending removal timers. Call during shutdown to prevent
+   * callbacks firing on destroyed objects.
+   */
+  clearAllPendingTimers(): void {
+    this.pendingRemovalTimers.forEach((timer) => {
+      clearTimeout(timer);
+    });
+    this.pendingRemovalTimers.clear();
   }
 
   private emit(event: string, pr: PullRequest): void {
@@ -199,14 +224,10 @@ export class PRManager {
    */
   private handleReviewerExit(terminalId: string): void {
     // Find the PR this reviewer belongs to
-    let targetPr: PullRequest | null = null;
-    this.prs.forEach((pr) => {
-      if (pr.reviewerTerminalId === terminalId) {
-        targetPr = pr;
-      }
-    });
-    if (!targetPr) return;
-    const pr = targetPr as PullRequest;
+    const pr = Array.from(this.prs.values()).find(
+      (p) => p.reviewerTerminalId === terminalId
+    );
+    if (!pr) return;
 
     const reviewDir = join(config.reviewBase, pr.id);
     const reviewPath = join(reviewDir, 'review.md');
@@ -261,22 +282,19 @@ export class PRManager {
     this.conflictFixerTerminals.delete(terminalId);
 
     // Find the PR this conflict fixer belongs to
-    let targetPr: PullRequest | null = null;
-    this.prs.forEach((pr) => {
-      if (pr.reviewerTerminalId === terminalId) {
-        targetPr = pr;
-      }
-    });
+    const pr = Array.from(this.prs.values()).find(
+      (p) => p.reviewerTerminalId === terminalId
+    );
 
-    if (!targetPr) {
+    if (!pr) {
       // No PR found — just remove the terminal after delay
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        this.pendingRemovalTimers.delete(terminalId);
         this.terminalManager.kill(terminalId);
       }, 5000);
+      this.pendingRemovalTimers.set(terminalId, timer);
       return;
     }
-
-    const pr = targetPr as PullRequest;
 
     // Clear the terminal reference on the PR immediately
     pr.reviewerTerminalId = null;
@@ -286,10 +304,12 @@ export class PRManager {
 
     // Remove the terminal after a short delay so the user can see the final output,
     // then emit pr:updated again to trigger a terminal list refetch on the client
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      this.pendingRemovalTimers.delete(terminalId);
       this.terminalManager.kill(terminalId);
       this.emit('pr:updated', pr);
     }, 5000);
+    this.pendingRemovalTimers.set(terminalId, timer);
   }
 
   /**
@@ -300,8 +320,10 @@ export class PRManager {
     const pr = this.prs.get(prId);
     if (!pr) return null;
 
-    // Kill existing reviewer terminal if it's still around
+    // Kill existing reviewer/fixer terminal if it's still around
     if (pr.reviewerTerminalId) {
+      this.cancelPendingRemoval(pr.reviewerTerminalId);
+      this.conflictFixerTerminals.delete(pr.reviewerTerminalId);
       this.terminalManager.kill(pr.reviewerTerminalId);
       pr.reviewerTerminalId = null;
     }
@@ -432,6 +454,14 @@ export class PRManager {
           // Already exists, just use it
         }
       }
+    }
+
+    // Kill existing terminal before spawning a new one (avoids orphaned terminals)
+    if (pr.reviewerTerminalId) {
+      this.cancelPendingRemoval(pr.reviewerTerminalId);
+      this.conflictFixerTerminals.delete(pr.reviewerTerminalId);
+      this.terminalManager.kill(pr.reviewerTerminalId);
+      pr.reviewerTerminalId = null;
     }
 
     // Spawn agent to merge target branch in and resolve conflicts
