@@ -3,17 +3,24 @@ import type { Server } from 'http';
 import type { TerminalManager } from './terminal-manager.js';
 import type { ClientMessage, ServerMessage } from './types.js';
 
+/**
+ * Broadcast a JSON message to all connected WebSocket clients.
+ * Shared helper used by both terminal events (ws.ts) and
+ * issue/PR events (index.ts).
+ */
+export function broadcastToAll(wss: WebSocketServer, msg: object): void {
+  const payload = JSON.stringify(msg);
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(payload);
+    }
+  });
+}
+
 export function setupWebSocket(server: Server, manager: TerminalManager): WebSocketServer {
   const wss = new WebSocketServer({ server, path: '/ws' });
 
-  const broadcast = (msg: ServerMessage) => {
-    const payload = JSON.stringify(msg);
-    wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(payload);
-      }
-    });
-  };
+  const broadcast = (msg: ServerMessage) => broadcastToAll(wss, msg);
 
   // Forward PTY output to all connected clients
   manager.onData((terminalId, data) => {
