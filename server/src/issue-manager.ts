@@ -11,6 +11,7 @@ const RESUME_DELAY_MS = 5000;        // wait 5s before resuming (avoid tight loo
 const RESUME_WINDOW_MS = 5 * 60000;  // reset attempt counter after 5 minutes of quiet
 
 export type IssueStatus = 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
+export type IssueEvent = 'issue:created' | 'issue:updated' | 'issue:deleted';
 
 export interface Issue {
   id: string;
@@ -44,7 +45,7 @@ export interface UpdateIssueOptions {
   submitterNotes?: string;
 }
 
-export type IssueEventCallback = (event: string, issue: Issue) => void;
+export type IssueEventCallback = (event: IssueEvent, issue: Issue) => void;
 
 export class IssueManager {
   private issues = new Map<string, Issue>();
@@ -99,7 +100,7 @@ export class IssueManager {
     this.eventCallbacks.push(cb);
   }
 
-  private emit(event: string, issue: Issue): void {
+  private emit(event: IssueEvent, issue: Issue): void {
     for (const cb of this.eventCallbacks) {
       cb(event, issue);
     }

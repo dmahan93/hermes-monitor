@@ -1,3 +1,6 @@
+import type { Issue } from './issue-manager.js';
+import type { PullRequest } from './pr-manager.js';
+
 export interface TerminalInfo {
   id: string;
   title: string;
@@ -29,6 +32,8 @@ export type ServerMessage =
   | { type: 'terminal:removed'; terminalId: string }
   | { type: 'error'; terminalId: string; message: string }
   | { type: 'terminal:awaitingInput'; terminalId: string; awaitingInput: boolean }
-  | { type: 'issue:created'; issue: any }
-  | { type: 'issue:updated'; issue: any }
-  | { type: 'issue:deleted'; issueId: string };
+  | { type: 'issue:created'; issue: Issue }
+  | { type: 'issue:updated'; issue: Issue }
+  | { type: 'issue:deleted'; issueId: string }
+  | { type: 'pr:created'; pr: PullRequest }
+  | { type: 'pr:updated'; pr: PullRequest };

@@ -9,6 +9,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
   const fetchIssues = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/issues`);
+      if (!res.ok) throw new Error(`Failed to fetch issues (${res.status})`);
       const data: Issue[] = await res.json();
       setIssues(data);
     } catch (err) {
@@ -52,6 +53,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, description, agent, command, branch }),
       });
+      if (!res.ok) throw new Error(`Failed to create issue (${res.status})`);
       const issue = await res.json();
       // Optimistically add the issue immediately (WS event will deduplicate)
       setIssues((prev) => {
@@ -67,11 +69,12 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
 
   const updateIssue = useCallback(async (id: string, updates: Partial<Issue>) => {
     try {
-      await fetch(`${API_BASE}/issues/${id}`, {
+      const res = await fetch(`${API_BASE}/issues/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       });
+      if (!res.ok) throw new Error(`Failed to update issue (${res.status})`);
     } catch (err) {
       console.error('Failed to update issue:', err);
     }
@@ -107,7 +110,11 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
     // Optimistic removal — also cascade-remove subtasks to match server behavior
     setIssues((prev) => prev.filter((i) => i.id !== id && i.parentId !== id));
     try {
-      await fetch(`${API_BASE}/issues/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE}/issues/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        // Server rejected deletion — throw to trigger catch block's refetch
+        throw new Error(`Failed to delete issue (${res.status})`);
+      }
     } catch (err) {
       console.error('Failed to delete issue:', err);
       fetchIssues();

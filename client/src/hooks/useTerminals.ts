@@ -10,6 +10,7 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
   const fetchTerminals = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/terminals`);
+      if (!res.ok) throw new Error(`Failed to fetch terminals (${res.status})`);
       const data: TerminalInfo[] = await res.json();
       setTerminals(data);
       // Generate layout for any terminals not already in layout
@@ -44,6 +45,7 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, command }),
       });
+      if (!res.ok) throw new Error(`Failed to create terminal (${res.status})`);
       const term: TerminalInfo = await res.json();
       setTerminals((prev) => [...prev, term]);
       setLayout((prev) => {
@@ -63,7 +65,8 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
 
   const removeTerminal = useCallback(async (id: string) => {
     try {
-      await fetch(`${API_BASE}/terminals/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE}/terminals/${id}`, { method: 'DELETE' });
+      if (!res.ok && res.status !== 404) throw new Error(`Failed to remove terminal (${res.status})`);
       setTerminals((prev) => prev.filter((t) => t.id !== id));
       setLayout((prev) => prev.filter((l) => l.i !== id));
     } catch (err) {

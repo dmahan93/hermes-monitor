@@ -31,7 +31,8 @@ const defaultProps = () => ({
   onBack: vi.fn(),
   onComment: vi.fn(),
   onVerdict: vi.fn(),
-  onMerge: vi.fn(),
+  onMerge: vi.fn<[string], Promise<{ error?: string }>>().mockResolvedValue({}),
+  onFixConflicts: vi.fn(),
   onRelaunchReview: vi.fn(),
   onMoveToInProgress: vi.fn<[string], Promise<void>>().mockResolvedValue(undefined),
 });
@@ -278,5 +279,99 @@ describe('PRDetail — Screenshots section', () => {
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(`${API_BASE}/prs/custom-pr-id/screenshots`);
     });
+  });
+});
+
+describe('PRDetail — Merge confirmation', () => {
+  let originalFetch: typeof globalThis.fetch;
+  let originalConfirm: typeof window.confirm;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    originalConfirm = window.confirm;
+    // Mock fetch: merge-check returns canMerge: true, no conflicts
+    globalThis.fetch = vi.fn((url: string | URL | Request) => {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+      if (urlStr.includes('/merge-check')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ canMerge: true, hasConflicts: false }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ screenshots: [] }),
+      } as Response);
+    }) as any;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    window.confirm = originalConfirm;
+  });
+
+  it('shows confirmation dialog before merging', async () => {
+    window.confirm = vi.fn(() => true);
+    const props = defaultProps();
+    props.pr = makePR({ verdict: 'approved' });
+    render(<PRDetail {...props} />);
+
+    // Wait for merge button to appear (after merge-check resolves)
+    await waitFor(() => {
+      expect(screen.getByText(/MERGE/)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/MERGE/));
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('Test PR'),
+    );
+  });
+
+  it('calls onMerge when user confirms', async () => {
+    window.confirm = vi.fn(() => true);
+    const props = defaultProps();
+    props.pr = makePR({ verdict: 'approved' });
+    render(<PRDetail {...props} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/MERGE/)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/MERGE/));
+
+    await waitFor(() => {
+      expect(props.onMerge).toHaveBeenCalledWith('pr-1');
+    });
+  });
+
+  it('does not call onMerge when user cancels', async () => {
+    window.confirm = vi.fn(() => false);
+    const props = defaultProps();
+    props.pr = makePR({ verdict: 'approved' });
+    render(<PRDetail {...props} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/MERGE/)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/MERGE/));
+    expect(window.confirm).toHaveBeenCalled();
+    expect(props.onMerge).not.toHaveBeenCalled();
+  });
+
+  it('includes target branch in confirmation message', async () => {
+    window.confirm = vi.fn(() => false);
+    const props = defaultProps();
+    props.pr = makePR({ verdict: 'approved', targetBranch: 'production' });
+    render(<PRDetail {...props} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/MERGE/)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/MERGE/));
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('production'),
+    );
   });
 });

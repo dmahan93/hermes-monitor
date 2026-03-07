@@ -164,6 +164,7 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
               <button
                 className="pr-action-btn pr-merge-btn"
                 onClick={async () => {
+                  if (!window.confirm(`Merge "${pr.title}" into ${pr.targetBranch}?`)) return;
                   setMergeError(null);
                   const result = await onMerge(pr.id);
                   if (result.error) setMergeError(result.error);

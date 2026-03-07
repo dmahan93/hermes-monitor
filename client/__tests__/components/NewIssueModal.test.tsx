@@ -1,0 +1,109 @@
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { NewIssueModal } from '../../src/components/NewIssueModal';
+import type { AgentPreset } from '../../src/types';
+
+const mockAgents: AgentPreset[] = [
+  { id: 'hermes', name: 'Hermes', icon: '⚗', command: '', planningCommand: 'hermes chat', description: 'Hermes agent', installed: true },
+  { id: 'custom', name: 'Custom', icon: '⚙', command: '', planningCommand: '', description: 'Custom command', installed: true },
+];
+
+const renderModal = (overrides = {}) => {
+  const onSubmit = vi.fn();
+  const onClose = vi.fn();
+  const result = render(
+    <NewIssueModal
+      agents={mockAgents}
+      onSubmit={onSubmit}
+      onClose={onClose}
+      {...overrides}
+    />
+  );
+  return { onSubmit, onClose, ...result };
+};
+
+describe('NewIssueModal', () => {
+  it('renders the modal with title, description, agent, and branch fields', () => {
+    renderModal();
+    expect(screen.getByText('NEW ISSUE')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('What needs to be done?')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Details, context, acceptance criteria...')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('e.g. fix/login-bug')).toBeInTheDocument();
+  });
+
+  it('closes on Escape key', () => {
+    const { onClose } = renderModal();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not close on other key presses', () => {
+    const { onClose } = renderModal();
+    fireEvent.keyDown(document, { key: 'Enter' });
+    fireEvent.keyDown(document, { key: 'a' });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('closes when clicking the overlay', () => {
+    const { onClose } = renderModal();
+    const overlay = screen.getByText('NEW ISSUE').closest('.modal-overlay');
+    expect(overlay).toBeTruthy();
+    fireEvent.click(overlay!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not close when clicking inside the modal', () => {
+    const { onClose } = renderModal();
+    fireEvent.click(screen.getByPlaceholderText('What needs to be done?'));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('auto-focuses the title input', () => {
+    renderModal();
+    const titleInput = screen.getByPlaceholderText('What needs to be done?');
+    expect(document.activeElement).toBe(titleInput);
+  });
+
+  it('disables CREATE button when title is empty', () => {
+    renderModal();
+    const createBtn = screen.getByText('[CREATE]');
+    expect(createBtn).toBeDisabled();
+  });
+
+  it('enables CREATE button when title is entered', () => {
+    renderModal();
+    fireEvent.change(screen.getByPlaceholderText('What needs to be done?'), {
+      target: { value: 'My issue' },
+    });
+    const createBtn = screen.getByText('[CREATE]');
+    expect(createBtn).not.toBeDisabled();
+  });
+
+  it('calls onSubmit with form data when submitted', () => {
+    const { onSubmit } = renderModal();
+    fireEvent.change(screen.getByPlaceholderText('What needs to be done?'), {
+      target: { value: 'Fix the bug' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Details, context, acceptance criteria...'), {
+      target: { value: 'Some details' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('e.g. fix/login-bug'), {
+      target: { value: 'fix/my-branch' },
+    });
+    fireEvent.click(screen.getByText('[CREATE]'));
+    expect(onSubmit).toHaveBeenCalledWith('Fix the bug', 'Some details', 'hermes', '', 'fix/my-branch');
+  });
+
+  it('calls onClose when CANCEL is clicked', () => {
+    const { onClose } = renderModal();
+    fireEvent.click(screen.getByText('[CANCEL]'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('cleans up Escape key listener on unmount', () => {
+    const { onClose, unmount } = renderModal();
+    unmount();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
