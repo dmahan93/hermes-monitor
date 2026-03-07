@@ -31,7 +31,14 @@ function laneColor(col: number): string {
 
 const LANE_W = 12;
 const NODE_R = 3;
-const ROW_H = 22;
+// Row height must exactly match .git-graph-row CSS height so that the SVG
+// fills each row with zero gap. The row uses a fixed height (not min-height)
+// to guarantee alignment between the SVG graph and the text content.
+const ROW_H = 28;
+
+// Small extension past SVG boundaries to eliminate sub-pixel rendering gaps
+// between adjacent rows. Requires overflow:visible on .git-graph-svg.
+const LINE_EXT = 0.5;
 
 function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
   const w = (maxCols + 1) * LANE_W + 4;
@@ -51,9 +58,9 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
             <line
               key={i}
               x1={x1}
-              y1={0}
+              y1={-LINE_EXT}
               x2={x2}
-              y2={ROW_H}
+              y2={ROW_H + LINE_EXT}
               stroke={color}
               strokeWidth={1.5}
               opacity={line.fromCol === node.col ? 0.8 : 0.35}
@@ -69,7 +76,7 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
             {/* Straight segment from top to node center on the source lane */}
             <line
               x1={x1}
-              y1={0}
+              y1={-LINE_EXT}
               x2={x1}
               y2={cy}
               stroke={color}
@@ -78,7 +85,7 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
             />
             {/* Curve from node center on source lane to bottom of target lane */}
             <path
-              d={`M ${x1} ${cy} C ${x1} ${ROW_H * 0.75}, ${x2} ${ROW_H * 0.25}, ${x2} ${ROW_H}`}
+              d={`M ${x1} ${cy} C ${x1} ${ROW_H * 0.75}, ${x2} ${ROW_H * 0.25}, ${x2} ${ROW_H + LINE_EXT}`}
               stroke={laneColor(line.toCol)}
               strokeWidth={1.5}
               fill="none"
