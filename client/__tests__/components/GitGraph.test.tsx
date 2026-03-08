@@ -435,6 +435,65 @@ describe('GitGraph', () => {
     expect(secondRowPaths.length).toBe(1);
   });
 
+  it('first row SVG has git-graph-svg-first class for CSS clip-path', () => {
+    const commits = [
+      makeCommit('abc1234567890', 'HEAD commit'),
+      makeCommit('def4567890123', 'Second commit'),
+    ];
+    const graph = [
+      makeNode('abc1234567890', 0, [{ fromCol: 0, toCol: 0, type: 'straight' }]),
+      makeNode('def4567890123', 0, [{ fromCol: 0, toCol: 0, type: 'straight' }]),
+    ];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} />,
+    );
+
+    const svgs = container.querySelectorAll('.git-graph-svg');
+    expect(svgs.length).toBe(2);
+    // First row SVG has the -first class
+    expect(svgs[0].classList.contains('git-graph-svg-first')).toBe(true);
+    // Second row SVG does not
+    expect(svgs[1].classList.contains('git-graph-svg-first')).toBe(false);
+  });
+
+  it('first row merge commit: straight line starts at cy, branch bezier still renders', () => {
+    // A merge commit at HEAD has both a straight line (first parent) and
+    // a branch-right line (second parent). The straight line should start
+    // at cy, and the branch-right bezier should render without a straight
+    // segment above the circle.
+    const commits = [
+      makeCommit('abc1234567890', 'Merge at HEAD'),
+      makeCommit('def4567890123', 'Parent commit'),
+    ];
+    const graph = [
+      makeNode('abc1234567890', 0, [
+        { fromCol: 0, toCol: 0, type: 'straight' },
+        { fromCol: 0, toCol: 1, type: 'branch-right' },
+      ]),
+      makeNode('def4567890123', 0, [{ fromCol: 0, toCol: 0, type: 'straight' }]),
+    ];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} />,
+    );
+
+    const rows = container.querySelectorAll('.git-graph-row');
+    const firstRowSvg = rows[0].querySelector('svg')!;
+
+    // The straight line should start at cy=14
+    const straightLine = firstRowSvg.querySelector('line');
+    expect(straightLine).toBeInTheDocument();
+    expect(straightLine?.getAttribute('y1')).toBe('14');
+
+    // The branch-right bezier group should have a <path> but NO <line>
+    // (the straight segment above the circle is suppressed for first row)
+    const gElements = firstRowSvg.querySelectorAll('g');
+    expect(gElements.length).toBe(1);
+    expect(gElements[0].querySelectorAll('path').length).toBe(1);
+    expect(gElements[0].querySelectorAll('line').length).toBe(0);
+  });
+
   it('renders unknown file status with fallback', () => {
     const commits = [makeCommit('abc1234567890', 'Unknown status')];
     const graph = [makeNode('abc1234567890')];

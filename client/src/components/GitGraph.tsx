@@ -61,7 +61,7 @@ function GraphSvg({ node, maxCols, isFirstRow }: { node: GraphNode; maxCols: num
       viewBox={`0 0 ${vW} ${ROW_H}`}
       preserveAspectRatio="none"
       style={{ width: `${wRem}rem`, height: `${ROW_H_REM}rem` }}
-      className="git-graph-svg"
+      className={`git-graph-svg${isFirstRow ? ' git-graph-svg-first' : ''}`}
     >
       {/* Pass-through and branch lines */}
       {node.lines.map((line, i) => {

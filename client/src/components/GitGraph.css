@@ -148,6 +148,13 @@
   overflow: visible;
 }
 
+/* First row: clip the top edge so nothing renders above the topmost commit
+   circle, even if a line coordinate is accidentally negative.  The bottom
+   extends slightly (LINE_EXT ≈ 0.13rem) to keep the overlap with row 2. */
+.git-graph-svg-first {
+  clip-path: inset(0 0 -0.5rem 0);
+}
+
 .git-graph-info {
   flex: 1;
   min-width: 0;
