@@ -323,6 +323,51 @@ describe('GitGraph', () => {
     expect(statusEl).toBeInTheDocument();
   });
 
+  it('renders tag ref labels with tag style', () => {
+    const commits = [
+      makeCommit('abc1234567890', 'Release', ['tag: v1.0.0']),
+    ];
+    const graph = [makeNode('abc1234567890')];
+
+    render(<GitGraph {...defaultProps} commits={commits} graph={graph} />);
+    // tag: prefix is stripped and replaced with ⚑ prefix
+    const tagRef = screen.getByText('⚑ v1.0.0');
+    expect(tagRef).toBeInTheDocument();
+    expect(tagRef).toHaveClass('git-ref-tag');
+  });
+
+  it('renders multiple ref types on a single commit', () => {
+    const commits = [
+      makeCommit('abc1234567890', 'Tagged release', [
+        'HEAD -> main',
+        'tag: v2.0',
+        'origin/main',
+      ]),
+    ];
+    const graph = [makeNode('abc1234567890')];
+
+    render(<GitGraph {...defaultProps} commits={commits} graph={graph} />);
+    expect(screen.getByText('HEAD -> main')).toHaveClass('git-ref-head');
+    expect(screen.getByText('⚑ v2.0')).toHaveClass('git-ref-tag');
+    expect(screen.getByText('○ main')).toHaveClass('git-ref-remote');
+  });
+
+  it('handles long commit messages with ellipsis via CSS class', () => {
+    const longMsg =
+      'This is a very long commit message that should be truncated with an ellipsis when it overflows the container width';
+    const commits = [makeCommit('abc1234567890', longMsg)];
+    const graph = [makeNode('abc1234567890')];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} />,
+    );
+    const subject = container.querySelector('.git-graph-subject');
+    expect(subject).toBeInTheDocument();
+    expect(subject?.textContent).toBe(longMsg);
+    // The CSS class handles truncation — verify the element exists with the right class
+    expect(subject?.classList.contains('git-graph-subject')).toBe(true);
+  });
+
   it('renders unknown file status with fallback', () => {
     const commits = [makeCommit('abc1234567890', 'Unknown status')];
     const graph = [makeNode('abc1234567890')];

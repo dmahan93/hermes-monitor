@@ -124,6 +124,22 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
   );
 }
 
+/** Classify a git ref string into a CSS modifier class. */
+function refClass(ref: string): string {
+  if (ref.startsWith('HEAD')) return 'git-ref-head';
+  if (ref.startsWith('tag:')) return 'git-ref-tag';
+  if (ref.startsWith('origin/')) return 'git-ref-remote';
+  return 'git-ref-branch';
+}
+
+/** Format a git ref string for display — strip prefixes and add icons. */
+function refLabel(ref: string): string {
+  if (ref.startsWith('tag: ')) return '⚑ ' + ref.slice(5);
+  if (ref.startsWith('tag:')) return '⚑ ' + ref.slice(4);
+  if (ref.startsWith('origin/')) return '○ ' + ref.slice(7);
+  return ref;
+}
+
 function statusIcon(status: string): string {
   switch (status) {
     case 'A': return '+';
@@ -209,12 +225,9 @@ export function GitGraph({
                         {commit.refs.map((r) => (
                           <span
                             key={r}
-                            className={`git-graph-ref ${
-                              r.startsWith('HEAD') ? 'git-ref-head' : 
-                              r.startsWith('origin/') ? 'git-ref-remote' : 'git-ref-branch'
-                            }`}
+                            className={`git-graph-ref ${refClass(r)}`}
                           >
-                            {r.startsWith('origin/') ? '○ ' + r.slice(7) : r}
+                            {refLabel(r)}
                           </span>
                         ))}
                       </span>
