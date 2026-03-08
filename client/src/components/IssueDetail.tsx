@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Issue, IssueStatus, PullRequest, AgentPreset } from '../types';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import './IssueDetail.css';
 
 interface IssueDetailProps {
@@ -33,6 +34,9 @@ export function IssueDetail({
   onClose, onUpdate, onStatusChange, onDelete, onTerminalClick, onPRClick,
   onCreateSubtask, onSubtaskClick, onParentClick,
 }: IssueDetailProps) {
+  const detailRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(detailRef);
+
   // initialEditing is only read at mount. This works because App.tsx renders
   // <IssueDetail key={`${detailIssueId}-${detailEditing}`}>, forcing a full
   // remount when switching issues OR when toggling between view/edit mode.
@@ -95,7 +99,7 @@ export function IssueDetail({
 
   return (
     <div className="issue-detail-overlay" onClick={onClose}>
-      <div className="issue-detail" onClick={(e) => e.stopPropagation()}>
+      <div className="issue-detail" ref={detailRef} onClick={(e) => e.stopPropagation()}>
         <div className="issue-detail-header">
           <span className={`issue-detail-status ${status.className}`}>{status.label}</span>
           <button className="issue-detail-close" onClick={onClose}>×</button>

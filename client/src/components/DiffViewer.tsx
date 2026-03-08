@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import './DiffViewer.css';
 
 interface DiffViewerProps {
@@ -109,6 +110,10 @@ function DiffTable({ diff, loading }: { diff: string; loading?: boolean }) {
 }
 
 export function DiffViewer({ diff, sha, file, loading, onClose }: DiffViewerProps) {
+  const viewerRef = useRef<HTMLDivElement>(null);
+  // Only trap focus when in overlay mode (onClose is provided)
+  useFocusTrap(onClose ? viewerRef : { current: null });
+
   // Close on Escape key (overlay mode only)
   useEffect(() => {
     if (!onClose) return;
@@ -134,7 +139,7 @@ export function DiffViewer({ diff, sha, file, loading, onClose }: DiffViewerProp
 
   return (
     <div className="diff-overlay" onClick={onClose}>
-      <div className="diff-viewer" onClick={(e) => e.stopPropagation()}>
+      <div className="diff-viewer" ref={viewerRef} onClick={(e) => e.stopPropagation()}>
         <div className="diff-header">
           <div className="diff-header-info">
             <span className="diff-header-path">
