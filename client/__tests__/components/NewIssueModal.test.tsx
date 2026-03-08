@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { NewIssueModal } from '../../src/components/NewIssueModal';
@@ -8,12 +9,14 @@ const mockAgents: AgentPreset[] = [
   { id: 'custom', name: 'Custom', icon: '⚙', command: '', planningCommand: '', description: 'Custom command', installed: true },
 ];
 
-const renderModal = (overrides = {}) => {
+const renderModal = (overrides: Partial<React.ComponentProps<typeof NewIssueModal>> = {}) => {
   const onSubmit = vi.fn();
   const onClose = vi.fn();
   const result = render(
     <NewIssueModal
       agents={mockAgents}
+      agentsLoading={false}
+      agentsError={null}
       onSubmit={onSubmit}
       onClose={onClose}
       {...overrides}
@@ -105,5 +108,63 @@ describe('NewIssueModal', () => {
     unmount();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('shows loading placeholder and disables dropdown when agentsLoading is true', () => {
+    renderModal({ agentsLoading: true, agents: [] });
+    const select = screen.getByRole('combobox');
+    expect(select).toBeDisabled();
+    expect(screen.getByText('Loading agents...')).toBeInTheDocument();
+  });
+
+  it('shows error message when agentsError is set', () => {
+    renderModal({ agentsError: 'Network error', agents: [] });
+    expect(screen.getByText(/Failed to load agents: Network error/)).toBeInTheDocument();
+    // The select dropdown should not be present when there's an error
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
+
+  it('disables CREATE button when agentsLoading is true even if title is entered', () => {
+    renderModal({ agentsLoading: true, agents: [] });
+    fireEvent.change(screen.getByPlaceholderText('What needs to be done?'), {
+      target: { value: 'My issue' },
+    });
+    const createBtn = screen.getByText('[CREATE]');
+    expect(createBtn).toBeDisabled();
+  });
+
+  it('disables CREATE button when agentsError is set even if title is entered', () => {
+    renderModal({ agentsError: 'Network error', agents: [] });
+    fireEvent.change(screen.getByPlaceholderText('What needs to be done?'), {
+      target: { value: 'My issue' },
+    });
+    const createBtn = screen.getByText('[CREATE]');
+    expect(createBtn).toBeDisabled();
+  });
+
+  it('does not submit form when agents are loading', () => {
+    const { onSubmit } = renderModal({ agentsLoading: true, agents: [] });
+    fireEvent.change(screen.getByPlaceholderText('What needs to be done?'), {
+      target: { value: 'My issue' },
+    });
+    fireEvent.click(screen.getByText('[CREATE]'));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('does not submit form when agents have an error', () => {
+    const { onSubmit } = renderModal({ agentsError: 'Connection refused', agents: [] });
+    fireEvent.change(screen.getByPlaceholderText('What needs to be done?'), {
+      target: { value: 'My issue' },
+    });
+    fireEvent.click(screen.getByText('[CREATE]'));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('shows agent dropdown normally when not loading and no error', () => {
+    renderModal({ agentsLoading: false, agentsError: null });
+    const select = screen.getByRole('combobox');
+    expect(select).not.toBeDisabled();
+    expect(screen.queryByText('Loading agents...')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Failed to load agents/)).not.toBeInTheDocument();
   });
 });

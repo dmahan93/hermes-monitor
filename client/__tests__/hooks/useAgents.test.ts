@@ -26,18 +26,23 @@ describe('useAgents', () => {
 
     const { result } = renderHook(() => useAgents());
 
+    // Initially loading
+    expect(result.current.loading).toBe(true);
+
     await waitFor(() => {
-      expect(result.current).toHaveLength(1);
+      expect(result.current.agents).toHaveLength(1);
     });
 
-    expect(result.current[0].id).toBe('agent-1');
-    expect(result.current[0].name).toBe('Hermes');
+    expect(result.current.agents[0].id).toBe('agent-1');
+    expect(result.current.agents[0].name).toBe('Hermes');
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeNull();
     expect(fetch).toHaveBeenCalledWith(`${API_BASE}/agents`, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   // --- Error-path tests ---
 
-  it('stays as empty array when fetch returns non-ok', async () => {
+  it('stays as empty array when fetch returns non-ok and sets error', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -53,12 +58,14 @@ describe('useAgents', () => {
       expect(consoleSpy).toHaveBeenCalled();
     });
 
-    expect(result.current).toHaveLength(0);
+    expect(result.current.agents).toHaveLength(0);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBe('Failed to fetch agents (500)');
     expect(consoleSpy).toHaveBeenCalledWith('Failed to fetch agents:', expect.any(Error));
     consoleSpy.mockRestore();
   });
 
-  it('stays as empty array on network error', async () => {
+  it('stays as empty array on network error and sets error', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error')) as any;
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -69,7 +76,9 @@ describe('useAgents', () => {
       expect(consoleSpy).toHaveBeenCalled();
     });
 
-    expect(result.current).toHaveLength(0);
+    expect(result.current.agents).toHaveLength(0);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBe('Network error');
     expect(consoleSpy).toHaveBeenCalledWith('Failed to fetch agents:', expect.any(Error));
     consoleSpy.mockRestore();
   });
