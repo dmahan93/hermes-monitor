@@ -22,6 +22,8 @@ const DEFAULT_DB_PATH = join(HERMES_DIR, 'hermes-hub.db');
 const BASE_PORT = 4001;
 const MAX_PORT = 65535;
 
+const VALID_STATUSES = new Set<string>(['stopped', 'starting', 'running', 'error']);
+
 export type RepoStatus = 'stopped' | 'starting' | 'running' | 'error';
 
 export interface RepoEntry {
@@ -59,67 +61,81 @@ export class Registry {
       this._db = new Database(this.dbPath);
       this._db.pragma('journal_mode = WAL');
       this._db.pragma('foreign_keys = ON');
-      this._db.exec(`
-        CREATE TABLE IF NOT EXISTS repos (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          path TEXT NOT NULL UNIQUE,
-          port INTEGER NOT NULL UNIQUE,
-          pid INTEGER,
-          status TEXT NOT NULL DEFAULT 'stopped',
-          createdAt INTEGER NOT NULL,
-          updatedAt INTEGER NOT NULL
-        )
-      `);
+      this.migrate();
     }
     return this._db;
   }
 
+  /** Create tables if they don't exist. Separated for clarity and future migrations. */
+  private migrate(): void {
+    this._db!.exec(`
+      CREATE TABLE IF NOT EXISTS repos (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        path TEXT NOT NULL UNIQUE,
+        port INTEGER NOT NULL UNIQUE,
+        pid INTEGER,
+        status TEXT NOT NULL DEFAULT 'stopped',
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL
+      )
+    `);
+  }
+
   /**
    * Resolve a path, following symlinks when the path exists on disk.
-   * Falls back to path.resolve() for paths that don't exist yet (e.g.,
-   * direct Registry usage in tests or pre-clone registration).
+   * Falls back to path.resolve() only for ENOENT/ENOTDIR (path doesn't
+   * exist yet). Other filesystem errors (EACCES, ELOOP, etc.) are re-thrown
+   * to avoid silently registering duplicate entries for the same real path.
    */
   private resolvePath(p: string): string {
     try {
       return realpathSync(p);
-    } catch {
-      // Path doesn't exist — normalize without symlink resolution
-      return resolve(p);
+    } catch (err: any) {
+      if (err.code === 'ENOENT' || err.code === 'ENOTDIR') {
+        return resolve(p);
+      }
+      throw err;
     }
   }
 
   /**
    * Register a new repo. Auto-assigns a port and detects name from directory
    * if not provided.
+   *
+   * The check-and-insert is wrapped in a transaction to prevent TOCTOU races
+   * where concurrent registrations could claim the same path or port.
    */
   register(repoPath: string, name?: string): RepoEntry {
     const resolved = this.resolvePath(repoPath);
 
-    // Check if already registered
-    const existing = this.findByPath(resolved);
-    if (existing) {
-      throw new Error(`Repo already registered at ${resolved} (id: ${existing.id})`);
-    }
+    const registerTx = this.db.transaction(() => {
+      const existing = this.findByPath(resolved);
+      if (existing) {
+        throw new Error(`Repo already registered at ${resolved} (id: ${existing.id})`);
+      }
 
-    const entry: RepoEntry = {
-      id: uuidv4(),
-      name: name || basename(resolved),
-      path: resolved,
-      port: this.nextPort(),
-      pid: null,
-      status: 'stopped',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
+      const entry: RepoEntry = {
+        id: uuidv4(),
+        name: name || basename(resolved),
+        path: resolved,
+        port: this.nextPort(),
+        pid: null,
+        status: 'stopped',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
 
-    this.db.prepare(`
-      INSERT INTO repos (id, name, path, port, pid, status, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(entry.id, entry.name, entry.path, entry.port, entry.pid, entry.status,
-           entry.createdAt, entry.updatedAt);
+      this.db.prepare(`
+        INSERT INTO repos (id, name, path, port, pid, status, createdAt, updatedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(entry.id, entry.name, entry.path, entry.port, entry.pid, entry.status,
+             entry.createdAt, entry.updatedAt);
 
-    return entry;
+      return entry;
+    });
+
+    return registerTx();
   }
 
   /** Remove a repo from the registry. */
@@ -140,18 +156,44 @@ export class Registry {
     return row ? this.rowToEntry(row) : null;
   }
 
-  /** Update the running state of a repo. Returns null if ID not found. */
+  /**
+   * Update the running state of a repo. Returns null if ID not found.
+   *
+   * When `pid` is `undefined`, the existing pid is preserved (no change).
+   * Pass `null` explicitly to clear the pid. When status is 'stopped',
+   * pid is always cleared regardless of what's passed.
+   *
+   * Validates `status` at runtime — throws if not one of the allowed values.
+   */
   updateStatus(id: string, status: RepoStatus, pid?: number | null): RepoEntry | null {
+    if (!VALID_STATUSES.has(status)) {
+      throw new Error(`Invalid status: ${status}. Must be one of: ${[...VALID_STATUSES].join(', ')}`);
+    }
+
     const now = Date.now();
-    const pidValue = pid !== undefined ? pid : null;
 
-    // If stopping, clear the pid
-    const effectivePid = status === 'stopped' ? null : pidValue;
+    // If stopping, always clear pid
+    if (status === 'stopped') {
+      const result = this.db.prepare(`
+        UPDATE repos SET status = ?, pid = NULL, updatedAt = ? WHERE id = ?
+      `).run(status, now, id);
+      if (result.changes === 0) return null;
+      return this.get(id);
+    }
 
+    // If pid explicitly provided, use it
+    if (pid !== undefined) {
+      const result = this.db.prepare(`
+        UPDATE repos SET status = ?, pid = ?, updatedAt = ? WHERE id = ?
+      `).run(status, pid, now, id);
+      if (result.changes === 0) return null;
+      return this.get(id);
+    }
+
+    // pid not provided — preserve existing pid
     const result = this.db.prepare(`
-      UPDATE repos SET status = ?, pid = ?, updatedAt = ? WHERE id = ?
-    `).run(status, effectivePid, now, id);
-
+      UPDATE repos SET status = ?, updatedAt = ? WHERE id = ?
+    `).run(status, now, id);
     if (result.changes === 0) return null;
     return this.get(id);
   }
@@ -163,6 +205,12 @@ export class Registry {
   findByPath(repoPath: string): RepoEntry | null {
     const resolved = this.resolvePath(repoPath);
     const row = this.db.prepare('SELECT * FROM repos WHERE path = ?').get(resolved) as any;
+    return row ? this.rowToEntry(row) : null;
+  }
+
+  /** Look up a repo by its assigned port. Useful for proxy routing. */
+  findByPort(port: number): RepoEntry | null {
+    const row = this.db.prepare('SELECT * FROM repos WHERE port = ?').get(port) as any;
     return row ? this.rowToEntry(row) : null;
   }
 

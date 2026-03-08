@@ -7,11 +7,12 @@
  *   GET    /hub/repos      — list all repos with status
  *   POST   /hub/repos      — register { path, name? }
  *   GET    /hub/repos/:id  — get repo details
+ *   PATCH  /hub/repos/:id  — update status/pid { status, pid? }
  *   DELETE /hub/repos/:id  — unregister
  */
 import { Router, json } from 'express';
 import { existsSync, statSync } from 'fs';
-import type { Registry } from './registry.js';
+import type { Registry, RepoStatus } from './registry.js';
 
 export function createRegistryApiRouter(registry: Registry): Router {
   const router = Router();
@@ -68,6 +69,37 @@ export function createRegistryApiRouter(registry: Registry): Router {
       return;
     }
     res.json(entry);
+  });
+
+  /** PATCH /hub/repos/:id — update status and optionally pid */
+  router.patch('/hub/repos/:id', (req, res) => {
+    const { status, pid } = req.body || {};
+
+    if (!status || typeof status !== 'string') {
+      res.status(400).json({ error: 'status is required and must be a string' });
+      return;
+    }
+
+    // Validate pid type if provided
+    if (pid !== undefined && pid !== null && typeof pid !== 'number') {
+      res.status(400).json({ error: 'pid must be a number or null' });
+      return;
+    }
+
+    try {
+      const updated = registry.updateStatus(req.params.id, status as RepoStatus, pid);
+      if (!updated) {
+        res.status(404).json({ error: 'Repo not found' });
+        return;
+      }
+      res.json(updated);
+    } catch (err: any) {
+      if (err.message?.includes('Invalid status')) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      res.status(500).json({ error: err.message || 'Failed to update repo status' });
+    }
   });
 
   /** DELETE /hub/repos/:id — unregister a repo */

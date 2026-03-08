@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
-import { mkdtempSync, mkdirSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, rmSync, existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { Registry, type RepoEntry } from '../src/manager/registry.js';
@@ -151,9 +151,39 @@ describe('Registry', () => {
     expect(stopped!.pid).toBeNull();
   });
 
+  it('clears pid when stopping even if pid is explicitly provided', () => {
+    const entry = registry.register('/tmp/my-repo');
+    registry.updateStatus(entry.id, 'running', 12345);
+    const stopped = registry.updateStatus(entry.id, 'stopped', 99999);
+    expect(stopped!.status).toBe('stopped');
+    expect(stopped!.pid).toBeNull();
+  });
+
+  it('preserves existing pid when pid is undefined', () => {
+    const entry = registry.register('/tmp/my-repo');
+    registry.updateStatus(entry.id, 'running', 12345);
+    // Update status without providing pid — should preserve existing
+    const updated = registry.updateStatus(entry.id, 'error');
+    expect(updated!.status).toBe('error');
+    expect(updated!.pid).toBe(12345);
+  });
+
+  it('clears pid when explicitly passing null', () => {
+    const entry = registry.register('/tmp/my-repo');
+    registry.updateStatus(entry.id, 'running', 12345);
+    const updated = registry.updateStatus(entry.id, 'running', null);
+    expect(updated!.status).toBe('running');
+    expect(updated!.pid).toBeNull();
+  });
+
   it('updateStatus returns null for nonexistent ID', () => {
     const result = registry.updateStatus('nonexistent-id', 'running', 1234);
     expect(result).toBeNull();
+  });
+
+  it('updateStatus throws on invalid status', () => {
+    const entry = registry.register('/tmp/my-repo');
+    expect(() => registry.updateStatus(entry.id, 'banana' as any)).toThrow('Invalid status');
   });
 
   it('finds by path', () => {
@@ -172,6 +202,18 @@ describe('Registry', () => {
 
   it('findByPath returns null for unknown path', () => {
     expect(registry.findByPath('/tmp/unknown')).toBeNull();
+  });
+
+  it('findByPort returns the repo on the given port', () => {
+    const entry = registry.register('/tmp/my-repo');
+    const found = registry.findByPort(4001);
+    expect(found).not.toBeNull();
+    expect(found!.id).toBe(entry.id);
+    expect(found!.port).toBe(4001);
+  });
+
+  it('findByPort returns null for unused port', () => {
+    expect(registry.findByPort(9999)).toBeNull();
   });
 
   it('nextPort returns 4001 when empty', () => {
@@ -197,7 +239,6 @@ describe('Registry', () => {
     const lazyDbPath = join(tmpDir, 'lazy-test.db');
     const lazyRegistry = new Registry(lazyDbPath);
     // DB file should not exist yet — no operations performed
-    const { existsSync } = require('fs');
     expect(existsSync(lazyDbPath)).toBe(false);
     // Trigger lazy init
     lazyRegistry.list();
@@ -322,7 +363,7 @@ describe('Registry API', () => {
 
   it('POST /api/hub/repos returns 400 when path is a file not a directory', async () => {
     const filePath = join(tmpDir, 'not-a-dir');
-    require('fs').writeFileSync(filePath, 'hello');
+    writeFileSync(filePath, 'hello');
     const res = await request(server, 'POST', '/api/hub/repos', { path: filePath });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('path must be an existing directory');
@@ -338,7 +379,7 @@ describe('Registry API', () => {
     expect(res.body.name).toBe('auto-name-repo');
   });
 
-  it('POST /api/hub/repos returns 400 when name is non-string truthy value', async () => {
+  it('POST /api/hub/repos returns 201 when name is non-string truthy value (auto-detects)', async () => {
     const repoPath = makeRepo('num-name-repo');
     const res = await request(server, 'POST', '/api/hub/repos', {
       path: repoPath,
@@ -405,6 +446,101 @@ describe('Registry API', () => {
     const res = await request(server, 'GET', '/api/hub/repos/nonexistent');
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('Repo not found');
+  });
+
+  // ── PATCH /api/hub/repos/:id ──
+
+  it('PATCH /api/hub/repos/:id updates status', async () => {
+    const repoPath = makeRepo('patch-repo');
+    const created = await request(server, 'POST', '/api/hub/repos', {
+      path: repoPath,
+    });
+    const res = await request(server, 'PATCH', `/api/hub/repos/${created.body.id}`, {
+      status: 'running',
+      pid: 12345,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('running');
+    expect(res.body.pid).toBe(12345);
+  });
+
+  it('PATCH /api/hub/repos/:id returns 404 for unknown id', async () => {
+    const res = await request(server, 'PATCH', '/api/hub/repos/nonexistent', {
+      status: 'running',
+    });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Repo not found');
+  });
+
+  it('PATCH /api/hub/repos/:id returns 400 when status missing', async () => {
+    const repoPath = makeRepo('no-status-repo');
+    const created = await request(server, 'POST', '/api/hub/repos', {
+      path: repoPath,
+    });
+    const res = await request(server, 'PATCH', `/api/hub/repos/${created.body.id}`, {});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('status is required');
+  });
+
+  it('PATCH /api/hub/repos/:id returns 400 for invalid status', async () => {
+    const repoPath = makeRepo('bad-status-repo');
+    const created = await request(server, 'POST', '/api/hub/repos', {
+      path: repoPath,
+    });
+    const res = await request(server, 'PATCH', `/api/hub/repos/${created.body.id}`, {
+      status: 'banana',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Invalid status');
+  });
+
+  it('PATCH /api/hub/repos/:id returns 400 when pid is invalid type', async () => {
+    const repoPath = makeRepo('bad-pid-repo');
+    const created = await request(server, 'POST', '/api/hub/repos', {
+      path: repoPath,
+    });
+    const res = await request(server, 'PATCH', `/api/hub/repos/${created.body.id}`, {
+      status: 'running',
+      pid: 'not-a-number',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('pid must be a number');
+  });
+
+  it('PATCH /api/hub/repos/:id preserves pid when not provided', async () => {
+    const repoPath = makeRepo('preserve-pid-repo');
+    const created = await request(server, 'POST', '/api/hub/repos', {
+      path: repoPath,
+    });
+    // Set running with pid
+    await request(server, 'PATCH', `/api/hub/repos/${created.body.id}`, {
+      status: 'running',
+      pid: 42,
+    });
+    // Update status without pid — should preserve
+    const res = await request(server, 'PATCH', `/api/hub/repos/${created.body.id}`, {
+      status: 'error',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('error');
+    expect(res.body.pid).toBe(42);
+  });
+
+  it('PATCH /api/hub/repos/:id clears pid on stopped', async () => {
+    const repoPath = makeRepo('stop-pid-repo');
+    const created = await request(server, 'POST', '/api/hub/repos', {
+      path: repoPath,
+    });
+    await request(server, 'PATCH', `/api/hub/repos/${created.body.id}`, {
+      status: 'running',
+      pid: 42,
+    });
+    const res = await request(server, 'PATCH', `/api/hub/repos/${created.body.id}`, {
+      status: 'stopped',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('stopped');
+    expect(res.body.pid).toBeNull();
   });
 
   // ── DELETE /api/hub/repos/:id ──
