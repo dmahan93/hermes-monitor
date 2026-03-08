@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import './DiffViewer.css';
 
+/** Stable ref with null current — avoids creating a new object each render
+ *  when passing an inactive ref to useFocusTrap (inline mode). */
+const NULL_REF: React.RefObject<HTMLElement | null> = { current: null };
+
 interface DiffViewerProps {
   diff: string;
   sha?: string;
@@ -111,8 +115,9 @@ function DiffTable({ diff, loading }: { diff: string; loading?: boolean }) {
 
 export function DiffViewer({ diff, sha, file, loading, onClose }: DiffViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null);
-  // Only trap focus when in overlay mode (onClose is provided)
-  useFocusTrap(onClose ? viewerRef : { current: null });
+  // Only trap focus when in overlay mode (onClose is provided).
+  // Uses a module-level NULL_REF to avoid object allocation churn every render.
+  useFocusTrap(onClose ? viewerRef : NULL_REF);
 
   // Close on Escape key (overlay mode only)
   useEffect(() => {

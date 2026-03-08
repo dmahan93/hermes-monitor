@@ -1,7 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
-import { useRef } from 'react';
+import { render, fireEvent, act } from '@testing-library/react';
+import { useRef, useState } from 'react';
 import { useFocusTrap } from '../../src/hooks/useFocusTrap';
+
+/** Stable null ref for inactive traps — avoids object allocation churn. */
+const NULL_REF: React.RefObject<HTMLElement | null> = { current: null };
 
 /**
  * Helper component that renders a focus-trappable container with the given
@@ -16,7 +19,7 @@ function TrapHarness({
   active?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useFocusTrap(active ? ref : { current: null });
+  useFocusTrap(active ? ref : NULL_REF);
   return <div ref={ref}>{children}</div>;
 }
 
@@ -47,6 +50,30 @@ describe('useFocusTrap', () => {
     // useFocusTrap uses requestAnimationFrame, so we need to flush it
     await vi.waitFor(() => {
       expect(document.activeElement).toBe(getByTestId('btn-a'));
+    });
+  });
+
+  it('preserves autoFocus — does not override focus already inside the container', async () => {
+    // Simulate a component where autoFocus puts focus on the second input.
+    // The focus trap should NOT yank it to the first focusable element.
+    function AutoFocusHarness() {
+      const ref = useRef<HTMLDivElement>(null);
+      useFocusTrap(ref);
+      return (
+        <div ref={ref}>
+          <button data-testid="btn-close">×</button>
+          <input data-testid="input-title" autoFocus />
+          <button data-testid="btn-submit">Submit</button>
+        </div>
+      );
+    }
+
+    const { getByTestId } = render(<AutoFocusHarness />);
+
+    // autoFocus should have put focus on the input
+    // The focus trap should detect focus is already inside and skip focusFirst
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(getByTestId('input-title'));
     });
   });
 
@@ -241,5 +268,135 @@ describe('useFocusTrap', () => {
     });
     document.dispatchEvent(event);
     expect(document.activeElement).toBe(getByTestId('btn-a'));
+  });
+
+  it('includes dynamically added focusable elements in the trap cycle', async () => {
+    // Component that can dynamically add a new button
+    function DynamicHarness() {
+      const ref = useRef<HTMLDivElement>(null);
+      const [showExtra, setShowExtra] = useState(false);
+      useFocusTrap(ref);
+      return (
+        <div ref={ref}>
+          <button data-testid="btn-a">A</button>
+          {showExtra && <button data-testid="btn-dynamic">Dynamic</button>}
+          <button data-testid="btn-add" onClick={() => setShowExtra(true)}>Add</button>
+        </div>
+      );
+    }
+
+    const { getByTestId } = render(<DynamicHarness />);
+
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(getByTestId('btn-a'));
+    });
+
+    // Initially the last focusable element is btn-add
+    getByTestId('btn-add').focus();
+    let event = pressTab();
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(getByTestId('btn-a'));
+
+    // Now click "Add" to show the dynamic button
+    fireEvent.click(getByTestId('btn-add'));
+
+    // The dynamic button should now be in the DOM
+    const dynamicBtn = getByTestId('btn-dynamic');
+    expect(dynamicBtn).toBeTruthy();
+
+    // Focus btn-add (which is now the last focusable element)
+    getByTestId('btn-add').focus();
+
+    // Tab should wrap to btn-a (btn-add is still last in DOM order)
+    event = pressTab();
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(getByTestId('btn-a'));
+
+    // Now verify the dynamic button is in the cycle:
+    // Focus btn-a and Shift+Tab should go to btn-add (last)
+    getByTestId('btn-a').focus();
+    event = pressTab(true);
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(getByTestId('btn-add'));
+  });
+
+  it('only the topmost trap handles Tab when multiple traps are stacked', async () => {
+    // Render two stacked traps (simulating nested modals)
+    const { getByTestId, unmount } = render(
+      <>
+        <TrapHarness>
+          <button data-testid="outer-a">Outer A</button>
+          <button data-testid="outer-b">Outer B</button>
+        </TrapHarness>
+        <TrapHarness>
+          <button data-testid="inner-a">Inner A</button>
+          <button data-testid="inner-b">Inner B</button>
+        </TrapHarness>
+      </>,
+    );
+
+    // Wait for traps to activate — both will try to auto-focus their first element,
+    // but the second one (inner) mounts last and takes focus
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(getByTestId('inner-a'));
+    });
+
+    // Focus the last element in the inner trap
+    getByTestId('inner-b').focus();
+    expect(document.activeElement).toBe(getByTestId('inner-b'));
+
+    // Tab should wrap within the INNER trap (it's topmost on the stack)
+    const event = pressTab();
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(getByTestId('inner-a'));
+
+    // The outer trap should NOT have intercepted the Tab
+    // (focus stayed in inner, not jumped to outer-a)
+    expect(document.activeElement).not.toBe(getByTestId('outer-a'));
+
+    unmount();
+  });
+
+  it('when the topmost trap unmounts, the next trap becomes active', async () => {
+    // We need to test that after the inner modal closes, the outer trap works
+    function StackedTraps() {
+      const [showInner, setShowInner] = useState(true);
+      return (
+        <>
+          <TrapHarness>
+            <button data-testid="outer-a">Outer A</button>
+            <button data-testid="outer-b">Outer B</button>
+          </TrapHarness>
+          {showInner && (
+            <TrapHarness>
+              <button data-testid="inner-a">Inner A</button>
+              <button data-testid="inner-close" onClick={() => setShowInner(false)}>Close</button>
+            </TrapHarness>
+          )}
+        </>
+      );
+    }
+
+    const { getByTestId, queryByTestId } = render(<StackedTraps />);
+
+    // Inner trap should have focus
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(getByTestId('inner-a'));
+    });
+
+    // Close the inner trap
+    fireEvent.click(getByTestId('inner-close'));
+
+    // Inner trap should be gone
+    expect(queryByTestId('inner-a')).toBeNull();
+
+    // Now the outer trap should be the active one.
+    // Focus an outer element and verify wrapping works.
+    getByTestId('outer-b').focus();
+    expect(document.activeElement).toBe(getByTestId('outer-b'));
+
+    const event = pressTab();
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(getByTestId('outer-a'));
   });
 });
