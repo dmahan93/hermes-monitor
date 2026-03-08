@@ -723,9 +723,15 @@ export class PRManager {
 
       (async () => {
         try {
-          await pushMerge(pr.targetBranch, repoPath);
+          const pushResult = await pushMerge(pr.targetBranch, repoPath);
+          if (!pushResult.success) {
+            console.warn(`[github] Push merge failed, skipping GitHub cleanup: ${pushResult.error}`);
+            return;
+          }
           if (githubPrUrl) {
             await closeGitHubPR(githubPrUrl, repoPath);
+            // Don't gate deleteRemoteBranch on close success —
+            // branch should be cleaned up even if closing the PR fails
           }
           await deleteRemoteBranch(sourceBranch, repoPath);
         } catch (err) {

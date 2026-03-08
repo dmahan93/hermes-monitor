@@ -312,6 +312,44 @@ describe('GitHub Integration — Merge path ordering', () => {
     expect(deleteIdx).toBeGreaterThan(closeIdx);
   });
 
+  it('cleanup stops if pushMerge fails — closeGitHubPR and deleteRemoteBranch are not called', async () => {
+    // This mirrors the pr-manager.ts merge handler logic:
+    // if pushResult.success is false, skip GitHub cleanup entirely.
+    const callOrder: string[] = [];
+
+    (execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (cmd: string, args: string[], _opts: any, cb: Function) => {
+        if (cmd === 'git' && args[0] === 'push' && !args.includes('--delete')) {
+          callOrder.push('pushMerge');
+          // Simulate push failure
+          cb(Object.assign(new Error('push failed'), { stderr: 'fatal: auth error' }));
+        } else if (cmd === 'gh' && args[0] === 'auth') {
+          callOrder.push('ghAuth');
+          cb(null, { stdout: 'Logged in', stderr: '' });
+        } else if (cmd === 'gh' && args[1] === 'close') {
+          callOrder.push('closeGitHubPR');
+          cb(null, { stdout: '', stderr: '' });
+        } else if (cmd === 'git' && args.includes('--delete')) {
+          callOrder.push('deleteRemoteBranch');
+          cb(null, { stdout: '', stderr: '' });
+        }
+      }
+    );
+
+    // Simulate the merge cleanup pattern from pr-manager.ts (with result checking)
+    const pushResult = await pushMerge('master', '/tmp/repo');
+    expect(pushResult.success).toBe(false);
+
+    // When pushMerge fails, pr-manager skips closeGitHubPR and deleteRemoteBranch
+    if (pushResult.success) {
+      await closeGitHubPR('https://github.com/user/repo/pull/42', '/tmp/repo');
+      await deleteRemoteBranch('issue/my-branch', '/tmp/repo');
+    }
+
+    // Only pushMerge was called — the rest were skipped
+    expect(callOrder).toEqual(['pushMerge']);
+  });
+
   it('deleteRemoteBranch still runs if closeGitHubPR is skipped (no GitHub PR URL)', async () => {
     const callOrder: string[] = [];
 
