@@ -7,9 +7,9 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
   const [layout, setLayout] = useState<GridItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchTerminals = useCallback(async () => {
+  const fetchTerminals = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch(`${API_BASE}/terminals`);
+      const res = await fetch(`${API_BASE}/terminals`, { signal });
       if (!res.ok) throw new Error(`Failed to fetch terminals (${res.status})`);
       const data: TerminalInfo[] = await res.json();
       setTerminals(data);
@@ -28,6 +28,7 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
         return [...prev.filter((l) => data.some((t) => t.id === l.i)), ...newItems];
       });
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       console.error('Failed to fetch terminals:', err);
     } finally {
       setLoading(false);
@@ -35,7 +36,9 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
   }, []);
 
   useEffect(() => {
-    fetchTerminals();
+    const controller = new AbortController();
+    fetchTerminals(controller.signal);
+    return () => controller.abort();
   }, [fetchTerminals]);
 
   const addTerminal = useCallback(async (title?: string, command?: string) => {

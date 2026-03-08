@@ -39,7 +39,7 @@ describe('useIssues', () => {
 
     expect(result.current.issues).toHaveLength(1);
     expect(result.current.issues[0].id).toBe('issue-1');
-    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/issues`);
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/issues`, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it('createIssue calls POST with correct URL', async () => {

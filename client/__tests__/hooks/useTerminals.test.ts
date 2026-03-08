@@ -32,7 +32,7 @@ describe('useTerminals', () => {
 
     expect(result.current.terminals).toHaveLength(1);
     expect(result.current.terminals[0].id).toBe('abc-123');
-    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/terminals`);
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/terminals`, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it('addTerminal calls POST and updates state', async () => {
