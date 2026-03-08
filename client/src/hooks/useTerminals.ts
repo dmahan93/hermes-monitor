@@ -47,8 +47,12 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
       });
       if (!res.ok) throw new Error(`Failed to create terminal (${res.status})`);
       const term: TerminalInfo = await res.json();
-      setTerminals((prev) => [...prev, term]);
+      setTerminals((prev) => {
+        if (prev.some((t) => t.id === term.id)) return prev;
+        return [...prev, term];
+      });
       setLayout((prev) => {
+        if (prev.some((l) => l.i === term.id)) return prev;
         const col = prev.length % 2;
         const row = Math.floor(prev.length / 2);
         return [
