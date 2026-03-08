@@ -112,7 +112,12 @@
 
 @keyframes awaiting-border-glow {
   0%, 100% { border-color: var(--warn); box-shadow: 0 0 4px var(--warn); }
-  50% { border-color: color-mix(in srgb, var(--warn) 38%, transparent); box-shadow: 0 0 2px color-mix(in srgb, var(--warn) 25%, transparent); }
+  50% {
+    border-color: rgba(221, 170, 34, 0.38); /* fallback */
+    border-color: color-mix(in srgb, var(--warn) 38%, transparent);
+    box-shadow: 0 0 2px rgba(221, 170, 34, 0.25); /* fallback */
+    box-shadow: 0 0 2px color-mix(in srgb, var(--warn) 25%, transparent);
+  }
 }
 
 .terminal-pane.terminal-pane-awaiting,
@@ -130,6 +135,7 @@
   font-family: 'VT323', monospace;
   font-size: 0.833rem;
   color: var(--warn);
+  background: rgba(221, 170, 34, 0.10); /* fallback */
   background: color-mix(in srgb, var(--warn) 10%, transparent);
   padding: 0 0.333rem;
   border: 1px solid var(--warn);

@@ -29,6 +29,9 @@
   /* bevel colors for that webcore nod */
   --bevel-light: #444466;
   --bevel-dark: #111122;
+
+  /* mono font stack */
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 }
 
 * {
