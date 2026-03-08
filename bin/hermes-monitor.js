@@ -7,6 +7,7 @@ const { existsSync } = require('fs');
 const { resolve, join } = require('path');
 const http = require('http');
 const { parseArgs, ParseError, HELP_TEXT } = require('./lib/parse-args');
+const { showVersion, performUpdate, checkForUpdatesInBackground } = require('./lib/updater');
 
 // Resolve hermes-monitor root directory (one level up from bin/)
 const ROOT = resolve(__dirname, '..');
@@ -28,6 +29,19 @@ try {
 if (opts.help) {
   console.log(HELP_TEXT.trimEnd());
   process.exit(0);
+}
+
+// ────────────────────────────────────────────────────────────
+// Subcommands (version, update) — run and exit
+// ────────────────────────────────────────────────────────────
+if (opts.command === 'version') {
+  showVersion();
+  process.exit(0);
+}
+
+if (opts.command === 'update') {
+  performUpdate();
+  process.exit(); // uses process.exitCode if set (e.g., build failure)
 }
 
 // ────────────────────────────────────────────────────────────
@@ -109,6 +123,10 @@ console.log(`  repo:    ${opts.repo}`);
 console.log(`  client:  http://localhost:${CLIENT_PORT}`);
 console.log(`  server:  http://localhost:${SERVER_PORT}`);
 console.log(`  mode:    ${mode}`);
+
+// Non-blocking update check (prints inline if updates available)
+checkForUpdatesInBackground();
+
 console.log('');
 
 // ────────────────────────────────────────────────────────────

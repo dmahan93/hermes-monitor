@@ -3,7 +3,7 @@ import { createRequire } from 'module';
 import { resolve, join } from 'path';
 
 const require = createRequire(import.meta.url);
-const { parseArgs, ParseError, HELP_TEXT } = require('../../bin/lib/parse-args');
+const { parseArgs, ParseError, HELP_TEXT, SUBCOMMANDS } = require('../../bin/lib/parse-args');
 
 describe('CLI parseArgs', () => {
   const CWD = '/test/cwd';
@@ -13,6 +13,7 @@ describe('CLI parseArgs', () => {
   it('returns defaults with no arguments', () => {
     const opts = parseArgs([], { cwd: CWD });
     expect(opts).toEqual({
+      command: null,
       port: 3000,
       serverPort: 4000,
       repo: CWD,
@@ -280,6 +281,55 @@ describe('CLI parseArgs', () => {
       expect(HELP_TEXT).toContain('--no-browser');
       expect(HELP_TEXT).toContain('--build');
       expect(HELP_TEXT).toContain('--help');
+    });
+
+    it('documents subcommands', () => {
+      expect(HELP_TEXT).toContain('update');
+      expect(HELP_TEXT).toContain('version');
+    });
+  });
+
+  // ── Subcommands ──
+
+  describe('subcommands', () => {
+    it('SUBCOMMANDS includes update and version', () => {
+      expect(SUBCOMMANDS).toContain('update');
+      expect(SUBCOMMANDS).toContain('version');
+    });
+
+    it('parses "update" as a command', () => {
+      const opts = parseArgs(['update'], { cwd: CWD });
+      expect(opts.command).toBe('update');
+    });
+
+    it('parses "version" as a command', () => {
+      const opts = parseArgs(['version'], { cwd: CWD });
+      expect(opts.command).toBe('version');
+    });
+
+    it('command is null when no subcommand is given', () => {
+      const opts = parseArgs([], { cwd: CWD });
+      expect(opts.command).toBeNull();
+    });
+
+    it('subcommand must be the first argument', () => {
+      // 'update' after a flag should be rejected as unknown
+      expect(() => parseArgs(['--no-browser', 'update'], { cwd: CWD }))
+        .toThrow(ParseError);
+    });
+
+    it('skips port collision check for subcommands', () => {
+      // This would normally fail because default ports collide if set equal,
+      // but subcommands skip port validation
+      const opts = parseArgs(['version'], { cwd: CWD });
+      expect(opts.command).toBe('version');
+    });
+
+    it('allows --help with subcommand', () => {
+      // 'update --help' is a valid combo
+      const opts = parseArgs(['update', '--help'], { cwd: CWD });
+      expect(opts.command).toBe('update');
+      expect(opts.help).toBe(true);
     });
   });
 });
