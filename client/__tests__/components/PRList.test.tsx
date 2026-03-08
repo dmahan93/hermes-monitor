@@ -103,6 +103,8 @@ describe('PRList component', () => {
     onConfirmMerge: vi.fn(),
     onFixConflicts: vi.fn(),
     onRelaunchReview: vi.fn(),
+    onClosePR: vi.fn<[string], Promise<{ error?: string }>>().mockResolvedValue({}),
+    onCloseAllStale: vi.fn().mockResolvedValue({ closed: [], errors: [] }),
     onMoveToInProgress: vi.fn<[string], Promise<void>>().mockResolvedValue(undefined),
   });
 
@@ -221,6 +223,103 @@ describe('PRList component', () => {
 
     await waitFor(() => {
       expect(props.onMoveToInProgress).toHaveBeenCalledWith('issue-1');
+    });
+  });
+
+  it('shows close button on open PR cards', () => {
+    const props = defaultProps();
+    props.prs = [makePR({ status: 'open', title: 'Open PR' })];
+    render(<PRList {...props} />);
+    const closeBtn = screen.getByLabelText(/Close PR: Open PR/);
+    expect(closeBtn).toBeInTheDocument();
+  });
+
+  it('does not show close button on merged PR cards', () => {
+    const props = defaultProps();
+    props.prs = [makePR({ status: 'merged', title: 'Merged PR' })];
+    render(<PRList {...props} />);
+    // Switch to closed tab to see merged PRs
+    fireEvent.click(screen.getByText(/CLOSED/));
+    expect(screen.queryByLabelText(/Close PR/)).not.toBeInTheDocument();
+  });
+
+  it('does not show close button on closed PR cards', () => {
+    const props = defaultProps();
+    props.prs = [makePR({ status: 'closed', title: 'Closed PR' })];
+    render(<PRList {...props} />);
+    fireEvent.click(screen.getByText(/CLOSED/));
+    expect(screen.queryByLabelText(/Close PR/)).not.toBeInTheDocument();
+  });
+
+  it('calls onClosePR with confirmation when close button is clicked', async () => {
+    window.confirm = vi.fn(() => true);
+    const props = defaultProps();
+    props.prs = [makePR({ id: 'pr-close-1', status: 'open', title: 'PR to close' })];
+    render(<PRList {...props} />);
+    const closeBtn = screen.getByLabelText(/Close PR: PR to close/);
+    fireEvent.click(closeBtn);
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Close this PR?'));
+    await waitFor(() => {
+      expect(props.onClosePR).toHaveBeenCalledWith('pr-close-1');
+    });
+  });
+
+  it('does not call onClosePR when confirmation is cancelled', () => {
+    window.confirm = vi.fn(() => false);
+    const props = defaultProps();
+    props.prs = [makePR({ id: 'pr-close-2', status: 'open', title: 'PR no close' })];
+    render(<PRList {...props} />);
+    const closeBtn = screen.getByLabelText(/Close PR: PR no close/);
+    fireEvent.click(closeBtn);
+    expect(props.onClosePR).not.toHaveBeenCalled();
+  });
+
+  it('close button does not navigate to PR detail', async () => {
+    window.confirm = vi.fn(() => true);
+    const props = defaultProps();
+    props.prs = [makePR({ status: 'open', title: 'Click Test PR' })];
+    render(<PRList {...props} />);
+    const closeBtn = screen.getByLabelText(/Close PR: Click Test PR/);
+    fireEvent.click(closeBtn);
+    // Should still be on list view (no back button)
+    expect(screen.queryByText('[← BACK]')).not.toBeInTheDocument();
+    expect(screen.getByText('Click Test PR')).toBeInTheDocument();
+  });
+
+  it('shows Close All Stale button when stale PRs exist', () => {
+    const props = defaultProps();
+    props.prs = [makePR({ issueId: 'done-issue', status: 'open', title: 'Stale PR' })];
+    props.issues = [makeIssue('done-issue', 'done')];
+    render(<PRList {...props} />);
+    expect(screen.getByText(/CLOSE 1 STALE/)).toBeInTheDocument();
+  });
+
+  it('does not show Close All Stale button when no stale PRs', () => {
+    const props = defaultProps();
+    props.prs = [makePR({ issueId: 'active-issue', status: 'open', title: 'Active PR' })];
+    props.issues = [makeIssue('active-issue', 'review')];
+    render(<PRList {...props} />);
+    expect(screen.queryByText(/CLOSE.*STALE/)).not.toBeInTheDocument();
+  });
+
+  it('counts orphaned PRs (no linked issue) as stale', () => {
+    const props = defaultProps();
+    props.prs = [makePR({ issueId: 'deleted-issue', status: 'approved', title: 'Orphan PR' })];
+    props.issues = [];
+    render(<PRList {...props} />);
+    expect(screen.getByText(/CLOSE 1 STALE/)).toBeInTheDocument();
+  });
+
+  it('calls onCloseAllStale with confirmation when stale button is clicked', async () => {
+    window.confirm = vi.fn(() => true);
+    const props = defaultProps();
+    props.prs = [makePR({ issueId: 'done-issue', status: 'open', title: 'Stale PR' })];
+    props.issues = [makeIssue('done-issue', 'done')];
+    render(<PRList {...props} />);
+    fireEvent.click(screen.getByText(/CLOSE 1 STALE/));
+    expect(window.confirm).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(props.onCloseAllStale).toHaveBeenCalled();
     });
   });
 });

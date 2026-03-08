@@ -28,6 +28,7 @@ const makePR = (id: string, title: string, opts?: Partial<PullRequest>): PullReq
   issueId: `issue-${id}`,
   title,
   description: '',
+  submitterNotes: '',
   sourceBranch: `feature-${id}`,
   targetBranch: 'main',
   repoPath: '/tmp/repo',

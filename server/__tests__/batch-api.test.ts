@@ -601,3 +601,104 @@ describe('Batch API — POST /batch/merge-approved', () => {
     expect(res.body.errors[0].error).toBe('unexpected git error');
   });
 });
+
+describe('Batch API — POST /batch/close-stale-prs', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let issueManager: IssueManager;
+  let server: Server;
+
+  beforeEach(async () => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+
+    const app = express();
+    app.use('/batch', createBatchApiRouter(prManager, issueManager, terminalManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    prManager.clearAllPendingTimers();
+    terminalManager.killAll();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('closes PRs whose linked issue is done', async () => {
+    const issue = insertTestIssue(issueManager, { id: 'done-issue', status: 'done' });
+    insertTestPR(prManager, { id: 'stale-pr-1', issueId: issue.id, status: 'open' });
+
+    const res = await request(server, 'POST', '/batch/close-stale-prs');
+    expect(res.status).toBe(200);
+    expect(res.body.closed).toHaveLength(1);
+    expect(res.body.closed[0].id).toBe('stale-pr-1');
+    expect(res.body.errors).toHaveLength(0);
+
+    const pr = prManager.get('stale-pr-1');
+    expect(pr!.status).toBe('closed');
+  });
+
+  it('closes PRs whose linked issue does not exist (orphaned)', async () => {
+    insertTestPR(prManager, { id: 'orphan-pr', issueId: 'deleted-issue', status: 'approved' });
+
+    const res = await request(server, 'POST', '/batch/close-stale-prs');
+    expect(res.status).toBe(200);
+    expect(res.body.closed).toHaveLength(1);
+    expect(res.body.closed[0].id).toBe('orphan-pr');
+  });
+
+  it('does not close PRs whose linked issue is still active', async () => {
+    const issue = insertTestIssue(issueManager, { id: 'active-issue', status: 'review' });
+    insertTestPR(prManager, { id: 'active-pr', issueId: issue.id, status: 'open' });
+
+    const res = await request(server, 'POST', '/batch/close-stale-prs');
+    expect(res.status).toBe(200);
+    expect(res.body.closed).toHaveLength(0);
+
+    const pr = prManager.get('active-pr');
+    expect(pr!.status).toBe('open');
+  });
+
+  it('does not close already merged PRs', async () => {
+    const issue = insertTestIssue(issueManager, { id: 'done-issue-2', status: 'done' });
+    insertTestPR(prManager, { id: 'merged-pr', issueId: issue.id, status: 'merged' });
+
+    const res = await request(server, 'POST', '/batch/close-stale-prs');
+    expect(res.status).toBe(200);
+    expect(res.body.closed).toHaveLength(0);
+  });
+
+  it('does not close already closed PRs', async () => {
+    const issue = insertTestIssue(issueManager, { id: 'done-issue-3', status: 'done' });
+    insertTestPR(prManager, { id: 'closed-pr', issueId: issue.id, status: 'closed' });
+
+    const res = await request(server, 'POST', '/batch/close-stale-prs');
+    expect(res.status).toBe(200);
+    expect(res.body.closed).toHaveLength(0);
+  });
+
+  it('returns empty when no stale PRs exist', async () => {
+    const res = await request(server, 'POST', '/batch/close-stale-prs');
+    expect(res.status).toBe(200);
+    expect(res.body.closed).toHaveLength(0);
+    expect(res.body.errors).toHaveLength(0);
+  });
+
+  it('handles mix of stale and active PRs', async () => {
+    const doneIssue = insertTestIssue(issueManager, { id: 'done-mix', status: 'done' });
+    const activeIssue = insertTestIssue(issueManager, { id: 'active-mix', status: 'in_progress' });
+    insertTestPR(prManager, { id: 'stale-mix', issueId: doneIssue.id, status: 'open' });
+    insertTestPR(prManager, { id: 'active-mix-pr', issueId: activeIssue.id, status: 'open' });
+
+    const res = await request(server, 'POST', '/batch/close-stale-prs');
+    expect(res.status).toBe(200);
+    expect(res.body.closed).toHaveLength(1);
+    expect(res.body.closed[0].id).toBe('stale-mix');
+
+    // Active PR should still be open
+    expect(prManager.get('active-mix-pr')!.status).toBe('open');
+  });
+});

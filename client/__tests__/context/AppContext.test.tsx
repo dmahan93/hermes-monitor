@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import type { Issue } from '../../src/types';
+import type { Issue, PullRequest } from '../../src/types';
 
 // ── Shared mock state (mutated between tests) ──
 
@@ -76,13 +76,14 @@ function createMockIssuesReturn(issues: Issue[] = []) {
   };
 }
 
-function createMockPRsReturn() {
+function createMockPRsReturn(prs: PullRequest[] = []) {
   return {
-    prs: [],
+    prs,
     loading: false,
     addComment: vi.fn(),
     setVerdict: vi.fn(),
     mergePR: vi.fn().mockResolvedValue({}),
+    confirmMerge: vi.fn().mockResolvedValue({}),
     fixConflicts: vi.fn(),
     relaunchReview: vi.fn(),
     refetch: vi.fn(),
@@ -127,6 +128,28 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     branch: 'feature/test',
     parentId: null,
     reviewerModel: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    ...overrides,
+  };
+}
+
+function makePR(overrides: Partial<PullRequest> = {}): PullRequest {
+  return {
+    id: 'pr-1',
+    issueId: 'issue-1',
+    title: 'Test PR',
+    description: 'A test PR',
+    submitterNotes: '',
+    sourceBranch: 'feature/test',
+    targetBranch: 'main',
+    repoPath: '/tmp/repo',
+    status: 'reviewing',
+    diff: '',
+    changedFiles: [],
+    verdict: 'pending',
+    reviewerTerminalId: 'review-term-1',
+    comments: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...overrides,
@@ -379,6 +402,211 @@ describe('AppContext', () => {
 
       expect(result.current.termViewAgentIssue).not.toBeNull();
       expect(result.current.termViewAgentIssue!.id).toBe('issue-2');
+    });
+  });
+
+  // ── 4b. Reviewer terminal selection ──
+
+  describe('reviewer terminal selection', () => {
+    it('selects a reviewer terminal and builds a synthetic issue with reviewerTerminalId', () => {
+      const pr = makePR({ id: 'pr-1', reviewerTerminalId: 'review-term-1' });
+      mockPRsReturn = createMockPRsReturn([pr]);
+
+      const { result } = renderHook(() => useApp(), { wrapper });
+
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'reviewer', prId: 'pr-1' });
+      });
+
+      expect(result.current.termViewAgentIssue).not.toBeNull();
+      expect(result.current.termViewAgentIssue!.terminalId).toBe('review-term-1');
+      expect(result.current.termViewAgentIssue!.title).toBe('Review: Test PR');
+    });
+
+    it('synthetic reviewer issue uses the PR reviewerTerminalId, not the worker terminalId', () => {
+      const issue = makeIssue({ id: 'issue-1', terminalId: 'worker-term-1' });
+      const pr = makePR({ id: 'pr-1', issueId: 'issue-1', reviewerTerminalId: 'review-term-1' });
+      mockIssuesReturn = createMockIssuesReturn([issue]);
+      mockPRsReturn = createMockPRsReturn([pr]);
+
+      const { result } = renderHook(() => useApp(), { wrapper });
+
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'reviewer', prId: 'pr-1' });
+      });
+
+      // Must be the reviewer terminal, NOT the worker terminal
+      expect(result.current.termViewAgentIssue!.terminalId).toBe('review-term-1');
+      expect(result.current.termViewAgentIssue!.terminalId).not.toBe('worker-term-1');
+    });
+
+    it('deselects when selecting the same reviewer again (toggle)', () => {
+      const pr = makePR({ id: 'pr-1', reviewerTerminalId: 'review-term-1' });
+      mockPRsReturn = createMockPRsReturn([pr]);
+
+      const { result } = renderHook(() => useApp(), { wrapper });
+
+      // Select
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'reviewer', prId: 'pr-1' });
+      });
+      expect(result.current.termViewSelection).not.toBeNull();
+
+      // Select same again → toggle off
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'reviewer', prId: 'pr-1' });
+      });
+      expect(result.current.termViewSelection).toBeNull();
+      expect(result.current.termViewAgentIssue).toBeNull();
+    });
+
+    it('switches from an agent to a reviewer terminal', () => {
+      const issue = makeIssue({ id: 'issue-1', terminalId: 'agent-term-1' });
+      const pr = makePR({ id: 'pr-1', reviewerTerminalId: 'review-term-1' });
+      mockIssuesReturn = createMockIssuesReturn([issue]);
+      mockPRsReturn = createMockPRsReturn([pr]);
+
+      const { result } = renderHook(() => useApp(), { wrapper });
+
+      // Select agent first
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'agent', issueId: 'issue-1' });
+      });
+      expect(result.current.termViewAgentIssue!.terminalId).toBe('agent-term-1');
+
+      // Switch to reviewer
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'reviewer', prId: 'pr-1' });
+      });
+      expect(result.current.termViewAgentIssue!.terminalId).toBe('review-term-1');
+    });
+
+    it('switches from a reviewer to an agent terminal', () => {
+      const issue = makeIssue({ id: 'issue-1', terminalId: 'agent-term-1' });
+      const pr = makePR({ id: 'pr-1', reviewerTerminalId: 'review-term-1' });
+      mockIssuesReturn = createMockIssuesReturn([issue]);
+      mockPRsReturn = createMockPRsReturn([pr]);
+
+      const { result } = renderHook(() => useApp(), { wrapper });
+
+      // Select reviewer first
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'reviewer', prId: 'pr-1' });
+      });
+      expect(result.current.termViewAgentIssue!.terminalId).toBe('review-term-1');
+
+      // Switch to agent
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'agent', issueId: 'issue-1' });
+      });
+      expect(result.current.termViewAgentIssue!.terminalId).toBe('agent-term-1');
+    });
+
+    it('switches between different reviewers', () => {
+      const pr1 = makePR({ id: 'pr-1', title: 'PR One', reviewerTerminalId: 'review-term-1' });
+      const pr2 = makePR({ id: 'pr-2', title: 'PR Two', reviewerTerminalId: 'review-term-2' });
+      mockPRsReturn = createMockPRsReturn([pr1, pr2]);
+
+      const { result } = renderHook(() => useApp(), { wrapper });
+
+      // Select reviewer 1
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'reviewer', prId: 'pr-1' });
+      });
+      expect(result.current.termViewAgentIssue!.terminalId).toBe('review-term-1');
+
+      // Select reviewer 2
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'reviewer', prId: 'pr-2' });
+      });
+      expect(result.current.termViewAgentIssue!.terminalId).toBe('review-term-2');
+      expect(result.current.termViewAgentIssue!.title).toBe('Review: PR Two');
+    });
+
+    it('clears selection when PR loses reviewerTerminalId', async () => {
+      const pr = makePR({ id: 'pr-1', reviewerTerminalId: 'review-term-1' });
+      mockPRsReturn = createMockPRsReturn([pr]);
+
+      const { result, rerender } = renderHook(() => useApp(), { wrapper });
+
+      // Select reviewer
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'reviewer', prId: 'pr-1' });
+      });
+      expect(result.current.termViewAgentIssue).not.toBeNull();
+
+      // PR loses its reviewerTerminalId (reviewer finished)
+      const updatedPR = makePR({ id: 'pr-1', reviewerTerminalId: null });
+      mockPRsReturn = createMockPRsReturn([updatedPR]);
+      rerender();
+
+      // Selection should auto-clear since synthetic issue would have no terminal
+      await waitFor(() => {
+        expect(result.current.termViewAgentIssue).toBeNull();
+      });
+    });
+
+    it('clears selection when PR disappears from the list', async () => {
+      const pr = makePR({ id: 'pr-1', reviewerTerminalId: 'review-term-1' });
+      mockPRsReturn = createMockPRsReturn([pr]);
+
+      const { result, rerender } = renderHook(() => useApp(), { wrapper });
+
+      // Select reviewer
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'reviewer', prId: 'pr-1' });
+      });
+      expect(result.current.termViewAgentIssue).not.toBeNull();
+
+      // PR disappears (e.g., merged)
+      mockPRsReturn = createMockPRsReturn([]);
+      rerender();
+
+      await waitFor(() => {
+        expect(result.current.termViewSelection).toBeNull();
+        expect(result.current.termViewAgentIssue).toBeNull();
+      });
+    });
+
+    it('synthetic issue has correct status mapping from PR status', () => {
+      const reviewingPR = makePR({ id: 'pr-1', status: 'reviewing', reviewerTerminalId: 'review-term-1' });
+      mockPRsReturn = createMockPRsReturn([reviewingPR]);
+
+      const { result } = renderHook(() => useApp(), { wrapper });
+
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'reviewer', prId: 'pr-1' });
+      });
+
+      // 'reviewing' PR status → 'review' issue status
+      expect(result.current.termViewAgentIssue!.status).toBe('review');
+    });
+
+    it('synthetic issue maps PR open status to in_progress', () => {
+      const openPR = makePR({ id: 'pr-1', status: 'open', reviewerTerminalId: 'review-term-1' });
+      mockPRsReturn = createMockPRsReturn([openPR]);
+
+      const { result } = renderHook(() => useApp(), { wrapper });
+
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'reviewer', prId: 'pr-1' });
+      });
+
+      // 'open' PR status → 'in_progress' issue status (default case)
+      expect(result.current.termViewAgentIssue!.status).toBe('in_progress');
+    });
+
+    it('synthetic issue includes PR sourceBranch as branch', () => {
+      const pr = makePR({ id: 'pr-1', sourceBranch: 'feature/cool', reviewerTerminalId: 'review-term-1' });
+      mockPRsReturn = createMockPRsReturn([pr]);
+
+      const { result } = renderHook(() => useApp(), { wrapper });
+
+      act(() => {
+        result.current.handleTermViewSelect({ kind: 'reviewer', prId: 'pr-1' });
+      });
+
+      expect(result.current.termViewAgentIssue!.branch).toBe('feature/cool');
     });
   });
 

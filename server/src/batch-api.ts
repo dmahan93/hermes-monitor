@@ -165,6 +165,40 @@ export function createBatchApiRouter(
   });
 
   /**
+   * POST /batch/close-stale-prs
+   * Closes all PRs that are open/approved but whose linked issue is already done.
+   * These are orphaned PRs from manual merges or deleted issues.
+   */
+  router.post('/close-stale-prs', (_req, res) => {
+    const closed: Array<{ id: string; title: string }> = [];
+    const errors: Array<{ id: string; title: string; error: string }> = [];
+
+    const openPrs = prManager.list().filter(
+      (pr) => pr.status !== 'merged' && pr.status !== 'closed'
+    );
+
+    for (const pr of openPrs) {
+      const issue = issueManager.get(pr.issueId);
+      // Close if issue is done or doesn't exist anymore (orphaned)
+      const isStale = !issue || issue.status === 'done';
+      if (!isStale) continue;
+
+      try {
+        const result = prManager.close(pr.id);
+        if (result) {
+          closed.push({ id: pr.id, title: pr.title });
+        } else {
+          errors.push({ id: pr.id, title: pr.title, error: 'Failed to close' });
+        }
+      } catch (err: any) {
+        errors.push({ id: pr.id, title: pr.title, error: err.message || 'Unknown error' });
+      }
+    }
+
+    res.json({ closed, errors });
+  });
+
+  /**
    * GET /batch/status
    * Returns a comprehensive manager dashboard in one call.
    */

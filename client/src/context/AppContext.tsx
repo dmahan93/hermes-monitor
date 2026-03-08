@@ -59,6 +59,8 @@ export interface AppContextValue {
   confirmMerge: (prId: string) => Promise<{ error?: string }>;
   fixConflicts: (prId: string) => Promise<void>;
   relaunchReview: (prId: string) => Promise<void>;
+  closePR: (prId: string) => Promise<{ error?: string }>;
+  closeAllStalePRs: () => Promise<{ closed: Array<{ id: string; title: string }>; errors: Array<{ id: string; title: string; error: string }> }>;
   mergeMode: MergeMode;
 
   // Agents
@@ -71,6 +73,7 @@ export interface AppContextValue {
     commits: GitCommit[];
     graph: GraphNode[];
     loading: boolean;
+    refreshing: boolean;
     error: string | null;
     selectedSha: string | null;
     files: GitFileChange[];
@@ -82,6 +85,7 @@ export interface AppContextValue {
     diffSha: string | null;
     viewDiff: (sha: string, filePath: string) => Promise<void>;
     closeDiff: () => void;
+    refresh: () => void;
   };
 
   // View routing
@@ -182,16 +186,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { errors, addError, removeError } = useErrorToast();
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals(subscribe, addError);
   const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning, createSubtask } = useIssues(subscribe, addError);
-  const { prs = [], addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe, addError);
+  const { prs = [], addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, closePR, closeAllStalePRs, refetch: refetchPRs } = usePRs(subscribe, addError);
   const { agents, loading: agentsLoading, error: agentsError } = useAgents();
-  const gitGraph = useGitGraph();
-  const [mergeMode, setMergeMode] = useState<MergeMode>('local');
-
-  // ── Local state ──
   const [gitPanelOpen, setGitPanelOpen] = useState(() => {
     const stored = localStorage.getItem('hermes:gitPanelOpen');
     return stored !== null ? stored === 'true' : true;
   });
+  const gitGraph = useGitGraph({ subscribe, active: gitPanelOpen });
+  const [mergeMode, setMergeMode] = useState<MergeMode>('local');
   const [view, setView] = useState<ViewMode>('kanban');
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [termViewSelection, setTermViewSelection] = useState<AgentListSelection | null>(null);
@@ -507,6 +509,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     confirmMerge,
     fixConflicts,
     relaunchReview,
+    closePR,
+    closeAllStalePRs,
     mergeMode,
 
     // Agents
@@ -586,7 +590,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     connected, reconnectCount, send, subscribe,
     terminals, layout, loading, updateLayout,
     issues, updateIssue, createSubtask,
-    prs, addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, mergeMode,
+    prs, addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, closePR, closeAllStalePRs, mergeMode,
     agents, agentsLoading, agentsError,
     gitGraph,
     view,

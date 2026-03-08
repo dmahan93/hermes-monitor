@@ -3,6 +3,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useGitGraph } from '../../src/hooks/useGitGraph';
 import { API_BASE } from '../../src/config';
 import type { GitCommit, GraphNode, GitFileChange } from '../../src/hooks/useGitGraph';
+import type { ServerMessage } from '../../src/types';
 
 const mockCommits: GitCommit[] = [
   {
@@ -46,9 +47,11 @@ const originalFetch = globalThis.fetch;
 describe('useGitGraph', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     globalThis.fetch = originalFetch;
   });
 
@@ -332,5 +335,551 @@ describe('useGitGraph', () => {
 
     expect(result.current.selectedSha).toBeNull();
     expect(result.current.files).toHaveLength(0);
+  });
+
+  // ── New tests for polling, WS events, refresh ──
+
+  it('exposes refreshing state that defaults to false', async () => {
+    mockFetchSuccess();
+
+    const { result } = renderHook(() => useGitGraph());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.refreshing).toBe(false);
+  });
+
+  it('refresh() sets refreshing (not loading) during background fetch', async () => {
+    mockFetchSuccess();
+
+    const { result } = renderHook(() => useGitGraph());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    // Replace fetch with a slow mock to observe the refreshing state
+    let resolveRefresh!: (v: any) => void;
+    globalThis.fetch = vi.fn().mockReturnValue(
+      new Promise((res) => { resolveRefresh = res; }),
+    ) as any;
+
+    // Start a background refresh
+    act(() => {
+      result.current.refresh();
+    });
+
+    // Should be refreshing, NOT loading
+    expect(result.current.refreshing).toBe(true);
+    expect(result.current.loading).toBe(false);
+
+    // Resolve the fetch
+    await act(async () => {
+      resolveRefresh({
+        ok: true,
+        json: () => Promise.resolve({ commits: mockCommits, graph: mockGraph }),
+      });
+    });
+
+    expect(result.current.refreshing).toBe(false);
+  });
+
+  it('polls every 30s when active', async () => {
+    mockFetchSuccess();
+
+    const { result } = renderHook(() =>
+      useGitGraph({ active: true }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    // Initial fetch
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Advance 30 seconds — should trigger a poll
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+
+    // Wait for the polling fetch to complete
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    // Another 30s
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  it('does not poll when active is false', async () => {
+    mockFetchSuccess();
+
+    const { result } = renderHook(() =>
+      useGitGraph({ active: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Advance well past the poll interval
+    await act(async () => {
+      vi.advanceTimersByTime(120_000);
+    });
+
+    // No additional fetches
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops polling on unmount', async () => {
+    mockFetchSuccess();
+
+    const { result, unmount } = renderHook(() =>
+      useGitGraph({ active: true }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    unmount();
+
+    // Advance past poll interval
+    await act(async () => {
+      vi.advanceTimersByTime(60_000);
+    });
+
+    // No extra fetch after unmount
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('refetches on pr:updated with status merged via WS', async () => {
+    mockFetchSuccess();
+
+    const handlers: Array<(msg: ServerMessage) => void> = [];
+    const mockSubscribe = vi.fn((handler) => {
+      handlers.push(handler);
+      return () => {
+        const idx = handlers.indexOf(handler);
+        if (idx >= 0) handlers.splice(idx, 1);
+      };
+    });
+
+    const { result } = renderHook(() =>
+      useGitGraph({ subscribe: mockSubscribe, active: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Simulate pr:updated with status 'merged'
+    act(() => {
+      for (const h of handlers) {
+        h({
+          type: 'pr:updated',
+          pr: {
+            id: 'pr-1',
+            issueId: 'issue-1',
+            title: 'Test PR',
+            sourceBranch: 'feature',
+            targetBranch: 'main',
+            status: 'merged',
+            diff: '',
+            comments: [],
+            createdAt: '',
+            updatedAt: '',
+          },
+        } as ServerMessage);
+      }
+    });
+
+    // The refresh fires after a 500ms timeout
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('does not refetch on pr:updated with non-merged status', async () => {
+    mockFetchSuccess();
+
+    const handlers: Array<(msg: ServerMessage) => void> = [];
+    const mockSubscribe = vi.fn((handler) => {
+      handlers.push(handler);
+      return () => {
+        const idx = handlers.indexOf(handler);
+        if (idx >= 0) handlers.splice(idx, 1);
+      };
+    });
+
+    const { result } = renderHook(() =>
+      useGitGraph({ subscribe: mockSubscribe, active: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Simulate pr:updated with status 'reviewing'
+    act(() => {
+      for (const h of handlers) {
+        h({
+          type: 'pr:updated',
+          pr: {
+            id: 'pr-1',
+            issueId: 'issue-1',
+            title: 'Test PR',
+            sourceBranch: 'feature',
+            targetBranch: 'main',
+            status: 'reviewing',
+            diff: '',
+            comments: [],
+            createdAt: '',
+            updatedAt: '',
+          },
+        } as ServerMessage);
+      }
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    // Should NOT have refetched
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('refetches on issue:updated with done status via WS', async () => {
+    mockFetchSuccess();
+
+    const handlers: Array<(msg: ServerMessage) => void> = [];
+    const mockSubscribe = vi.fn((handler) => {
+      handlers.push(handler);
+      return () => {
+        const idx = handlers.indexOf(handler);
+        if (idx >= 0) handlers.splice(idx, 1);
+      };
+    });
+
+    const { result } = renderHook(() =>
+      useGitGraph({ subscribe: mockSubscribe, active: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Simulate issue:updated with status 'done'
+    act(() => {
+      for (const h of handlers) {
+        h({
+          type: 'issue:updated',
+          issue: {
+            id: 'issue-1',
+            title: 'Test Issue',
+            description: '',
+            status: 'done',
+            agent: 'test',
+            command: '',
+            terminalId: null,
+            branch: 'test-branch',
+            parentId: null,
+            createdAt: '',
+            updatedAt: '',
+          },
+        } as ServerMessage);
+      }
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('does not refetch on issue:updated with review status', async () => {
+    mockFetchSuccess();
+
+    const handlers: Array<(msg: ServerMessage) => void> = [];
+    const mockSubscribe = vi.fn((handler) => {
+      handlers.push(handler);
+      return () => {
+        const idx = handlers.indexOf(handler);
+        if (idx >= 0) handlers.splice(idx, 1);
+      };
+    });
+
+    const { result } = renderHook(() =>
+      useGitGraph({ subscribe: mockSubscribe, active: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Simulate issue:updated with status 'review' — not a git-changing event
+    act(() => {
+      for (const h of handlers) {
+        h({
+          type: 'issue:updated',
+          issue: {
+            id: 'issue-1',
+            title: 'Test Issue',
+            description: '',
+            status: 'review',
+            agent: 'test',
+            command: '',
+            terminalId: null,
+            branch: 'test-branch',
+            parentId: null,
+            createdAt: '',
+            updatedAt: '',
+          },
+        } as ServerMessage);
+      }
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('unsubscribes WS handler on unmount', async () => {
+    mockFetchSuccess();
+
+    const unsubFn = vi.fn();
+    const mockSubscribe = vi.fn().mockReturnValue(unsubFn);
+
+    const { unmount } = renderHook(() =>
+      useGitGraph({ subscribe: mockSubscribe }),
+    );
+
+    await waitFor(() => {
+      expect(mockSubscribe).toHaveBeenCalled();
+    });
+
+    unmount();
+
+    expect(unsubFn).toHaveBeenCalled();
+  });
+
+  it('does not refetch on issue:updated with in_progress status', async () => {
+    mockFetchSuccess();
+
+    const handlers: Array<(msg: ServerMessage) => void> = [];
+    const mockSubscribe = vi.fn((handler) => {
+      handlers.push(handler);
+      return () => {
+        const idx = handlers.indexOf(handler);
+        if (idx >= 0) handlers.splice(idx, 1);
+      };
+    });
+
+    const { result } = renderHook(() =>
+      useGitGraph({ subscribe: mockSubscribe, active: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Simulate issue:updated with status 'in_progress' — no git ops happen
+    act(() => {
+      for (const h of handlers) {
+        h({
+          type: 'issue:updated',
+          issue: {
+            id: 'issue-1',
+            title: 'Test Issue',
+            description: '',
+            status: 'in_progress',
+            agent: 'test',
+            command: '',
+            terminalId: null,
+            branch: 'test-branch',
+            parentId: null,
+            createdAt: '',
+            updatedAt: '',
+          },
+        } as ServerMessage);
+      }
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    // Should NOT have refetched
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('debounces rapid WS events into a single fetch', async () => {
+    mockFetchSuccess();
+
+    const handlers: Array<(msg: ServerMessage) => void> = [];
+    const mockSubscribe = vi.fn((handler) => {
+      handlers.push(handler);
+      return () => {
+        const idx = handlers.indexOf(handler);
+        if (idx >= 0) handlers.splice(idx, 1);
+      };
+    });
+
+    const { result } = renderHook(() =>
+      useGitGraph({ subscribe: mockSubscribe, active: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    const prMsg = {
+      type: 'pr:updated',
+      pr: {
+        id: 'pr-1',
+        issueId: 'issue-1',
+        title: 'Test PR',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        status: 'merged',
+        diff: '',
+        comments: [],
+        createdAt: '',
+        updatedAt: '',
+      },
+    } as ServerMessage;
+
+    // Fire 5 rapid WS events — should coalesce into one fetch
+    act(() => {
+      for (const h of handlers) {
+        h(prMsg);
+        h(prMsg);
+        h(prMsg);
+        h(prMsg);
+        h(prMsg);
+      }
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      // Only the initial fetch + 1 debounced fetch = 2 total
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('cleans up WS debounce timer on unmount', async () => {
+    mockFetchSuccess();
+
+    const handlers: Array<(msg: ServerMessage) => void> = [];
+    const mockSubscribe = vi.fn((handler) => {
+      handlers.push(handler);
+      return () => {
+        const idx = handlers.indexOf(handler);
+        if (idx >= 0) handlers.splice(idx, 1);
+      };
+    });
+
+    const { result, unmount } = renderHook(() =>
+      useGitGraph({ subscribe: mockSubscribe, active: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Fire a WS event to start a debounce timer
+    act(() => {
+      for (const h of handlers) {
+        h({
+          type: 'pr:updated',
+          pr: {
+            id: 'pr-1',
+            issueId: 'issue-1',
+            title: 'Test PR',
+            sourceBranch: 'feature',
+            targetBranch: 'main',
+            status: 'merged',
+            diff: '',
+            comments: [],
+            createdAt: '',
+            updatedAt: '',
+          },
+        } as ServerMessage);
+      }
+    });
+
+    // Unmount before the 500ms timer fires
+    unmount();
+
+    // Advance past the timer
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    // No extra fetch should have fired
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('background refresh error does not set error state', async () => {
+    mockFetchSuccess();
+
+    const { result } = renderHook(() => useGitGraph());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    // Make the next fetch fail
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+    }) as any;
+
+    await act(async () => {
+      result.current.refresh();
+    });
+
+    // Error should NOT be set for background refresh
+    expect(result.current.error).toBeNull();
+    expect(result.current.refreshing).toBe(false);
   });
 });

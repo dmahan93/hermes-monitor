@@ -125,6 +125,8 @@
 .pr-fix-btn:hover { background: #ddaa2220; }
 .pr-confirm-merge-btn { color: var(--accent); }
 .pr-confirm-merge-btn:hover { background: var(--accent-dim, #58a6ff20); }
+.pr-close-btn { color: var(--text-muted); font-size: 0.833rem; opacity: 0.7; }
+.pr-close-btn:hover { background: #dd444420; color: var(--error); opacity: 1; }
 
 .pr-github-created {
   font-size: 0.833rem;
