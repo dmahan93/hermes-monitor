@@ -188,6 +188,21 @@ export class WorktreeManager {
   }
 
   /**
+   * Get the diff for specific files between the issue branch and target branch.
+   * Useful for analyzing whether changes in specific files are visual or structural.
+   */
+  getDiffForFiles(issueId: string, files: string[]): string | undefined {
+    const info = this.worktrees.get(issueId);
+    if (!info || files.length === 0) return undefined;
+
+    try {
+      return git(['diff', `${config.targetBranch}...${info.branch}`, '--', ...files], config.repoPath);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Get list of changed files.
    */
   getChangedFiles(issueId: string): string[] {
