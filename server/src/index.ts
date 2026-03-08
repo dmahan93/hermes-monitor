@@ -59,23 +59,28 @@ function getActiveIssueIds(): Set<string> {
   return new Set(issueManager.list().map((i) => i.id));
 }
 
-function runWorktreePrune(): { removedWorktrees: number; prunedBranches: number } {
-  if (!isGitRepo(config.repoPath)) return { removedWorktrees: 0, prunedBranches: 0 };
+function runWorktreePrune(): { removedWorktrees: number; prunedBranches: number; skippedUnmergedBranches: number } {
+  if (!isGitRepo(config.repoPath)) return { removedWorktrees: 0, prunedBranches: 0, skippedUnmergedBranches: 0 };
   const activeIds = getActiveIssueIds();
   const result = worktreeManager.pruneStaleWorktrees(activeIds);
   return {
     removedWorktrees: result.removedWorktrees.length,
     prunedBranches: result.prunedBranches.length,
+    skippedUnmergedBranches: result.skippedUnmergedBranches.length,
   };
 }
 
 if (isGitRepo(config.repoPath)) {
   try {
     const pruned = runWorktreePrune();
-    if (pruned.removedWorktrees > 0 || pruned.prunedBranches > 0) {
-      console.log(
-        `Pruned ${pruned.removedWorktrees} stale worktree(s), ${pruned.prunedBranches} orphaned branch(es)`
-      );
+    if (pruned.removedWorktrees > 0 || pruned.prunedBranches > 0 || pruned.skippedUnmergedBranches > 0) {
+      const parts = [
+        `Pruned ${pruned.removedWorktrees} stale worktree(s), ${pruned.prunedBranches} orphaned branch(es)`,
+      ];
+      if (pruned.skippedUnmergedBranches > 0) {
+        parts.push(`(${pruned.skippedUnmergedBranches} unmerged branch(es) preserved — see warnings above)`);
+      }
+      console.log(parts.join(' '));
     }
   } catch (err) {
     console.error('Startup worktree prune failed:', err);
@@ -87,10 +92,14 @@ const PRUNE_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const pruneInterval = setInterval(() => {
   try {
     const pruned = runWorktreePrune();
-    if (pruned.removedWorktrees > 0 || pruned.prunedBranches > 0) {
-      console.log(
-        `[auto-prune] Cleaned ${pruned.removedWorktrees} worktree(s), ${pruned.prunedBranches} branch(es)`
-      );
+    if (pruned.removedWorktrees > 0 || pruned.prunedBranches > 0 || pruned.skippedUnmergedBranches > 0) {
+      const parts = [
+        `[auto-prune] Cleaned ${pruned.removedWorktrees} worktree(s), ${pruned.prunedBranches} branch(es)`,
+      ];
+      if (pruned.skippedUnmergedBranches > 0) {
+        parts.push(`(${pruned.skippedUnmergedBranches} unmerged preserved)`);
+      }
+      console.log(parts.join(' '));
     }
   } catch (err) {
     console.error('[auto-prune] Periodic worktree prune failed:', err);
@@ -126,7 +135,8 @@ app.post('/api/worktrees/prune', (_req, res) => {
   res.json({
     removedWorktrees: result.removedWorktrees,
     prunedBranches: result.prunedBranches,
-    summary: `Removed ${result.removedWorktrees.length} worktree(s), pruned ${result.prunedBranches.length} branch(es)`,
+    skippedUnmergedBranches: result.skippedUnmergedBranches,
+    summary: `Removed ${result.removedWorktrees.length} worktree(s), pruned ${result.prunedBranches.length} branch(es), ${result.skippedUnmergedBranches.length} unmerged preserved`,
   });
 });
 

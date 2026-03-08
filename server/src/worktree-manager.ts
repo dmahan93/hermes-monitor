@@ -6,6 +6,8 @@ import { config } from './config.js';
 export interface PruneResult {
   removedWorktrees: string[];
   prunedBranches: string[];
+  /** Branches that have unmerged commits and were NOT deleted (safe failure mode) */
+  skippedUnmergedBranches: string[];
 }
 
 export interface WorktreeInfo {
@@ -31,7 +33,6 @@ function git(args: string[], cwd?: string): string {
 
 export class WorktreeManager {
   private worktrees = new Map<string, WorktreeInfo>();
-  private isPruning = false;
 
   /**
    * Create a branch + worktree for an issue.
@@ -213,112 +214,125 @@ export class WorktreeManager {
    * - Branches from conflict-fixer agents with inconsistent naming
    * - Orphaned git worktree entries
    *
+   * Branch deletion uses safe mode only (`git branch -d`). Branches with
+   * unmerged commits are preserved and reported in `skippedUnmergedBranches`
+   * so operators can handle them manually. This prevents silent data loss
+   * from automated runs (startup + 4-hour interval).
+   *
    * @param activeIssueIds Set of issue IDs that are still active (not done/deleted)
    */
   pruneStaleWorktrees(activeIssueIds: Set<string>): PruneResult {
-    if (this.isPruning) {
-      // Another prune is already running — skip to avoid concurrent git operations
-      return { removedWorktrees: [], prunedBranches: [] };
-    }
-    this.isPruning = true;
-
     const result: PruneResult = {
       removedWorktrees: [],
       prunedBranches: [],
+      skippedUnmergedBranches: [],
     };
 
-    try {
-      // 1. Remove stale worktree directories
-      if (existsSync(config.worktreeBase)) {
-        let entries: string[];
+    // 1. Remove stale worktree directories
+    if (existsSync(config.worktreeBase)) {
+      let entries: string[];
+      try {
+        entries = readdirSync(config.worktreeBase);
+      } catch (err) {
+        console.warn(`[prune] Failed to read worktree base ${config.worktreeBase}:`, err);
+        entries = [];
+      }
+
+      for (const entry of entries) {
+        const worktreePath = join(config.worktreeBase, entry);
+
+        // Only prune directories — skip stray files (README, .gitkeep, etc.)
         try {
-          entries = readdirSync(config.worktreeBase);
+          if (!lstatSync(worktreePath).isDirectory()) continue;
         } catch {
-          entries = [];
+          continue;
         }
 
-        for (const entry of entries) {
-          const worktreePath = join(config.worktreeBase, entry);
+        // Skip if this worktree belongs to an active issue
+        if (activeIssueIds.has(entry)) continue;
 
-          // Only prune directories — skip stray files (README, .gitkeep, etc.)
+        // Try git worktree remove first (cleanest), fall back to rm
+        let removed = false;
+        try {
+          git(['worktree', 'remove', worktreePath, '--force'], config.repoPath);
+          removed = true;
+        } catch {
           try {
-            if (!lstatSync(worktreePath).isDirectory()) continue;
-          } catch {
-            continue;
+            rmSync(worktreePath, { recursive: true, force: true });
+            removed = !existsSync(worktreePath);
+          } catch (err) {
+            console.warn(`[prune] Failed to remove worktree directory ${worktreePath}:`, err);
           }
+        }
 
-          // Skip if this worktree belongs to an active issue
-          if (activeIssueIds.has(entry)) continue;
-
-          // Try git worktree remove first (cleanest), fall back to rm
-          try {
-            git(['worktree', 'remove', worktreePath, '--force'], config.repoPath);
-          } catch {
-            try {
-              rmSync(worktreePath, { recursive: true, force: true });
-            } catch {}
-          }
-
-          // Also remove from in-memory map if present
+        if (removed) {
           this.worktrees.delete(entry);
           result.removedWorktrees.push(entry);
         }
       }
+    }
 
-      // 2. Prune git's internal worktree list (cleans up dangling entries)
-      try {
-        git(['worktree', 'prune'], config.repoPath);
-      } catch {}
+    // 2. Prune git's internal worktree list (cleans up dangling entries)
+    try {
+      git(['worktree', 'prune'], config.repoPath);
+    } catch (err) {
+      console.warn('[prune] git worktree prune failed:', err);
+    }
 
-      // 3. Prune stale issue/* branches
-      // Build a set of short IDs (first 8 chars) from active issues
-      const activeShortIds = new Set<string>();
-      activeIssueIds.forEach((id) => {
-        activeShortIds.add(id.slice(0, 8));
-      });
+    // 3. Prune stale issue/* branches
+    // Build a set of short IDs (first 8 chars) from active issues.
+    // 8-char hex prefix matching (32 bits) has a birthday-paradox 50% collision
+    // probability at ~77k issues. A collision only causes a stale branch to be
+    // preserved (safe failure mode), so this is acceptable at typical scale.
+    const activeShortIds = new Set<string>();
+    activeIssueIds.forEach((id) => {
+      activeShortIds.add(id.slice(0, 8));
+    });
 
-      // List all local branches matching issue/*
-      let branches: string[];
-      try {
-        const output = git(
-          ['for-each-ref', '--format=%(refname:short)', 'refs/heads/issue/'],
-          config.repoPath
-        );
-        branches = output ? output.split('\n').filter(Boolean) : [];
-      } catch {
-        branches = [];
+    // List all local branches matching issue/*
+    let branches: string[];
+    try {
+      const output = git(
+        ['for-each-ref', '--format=%(refname:short)', 'refs/heads/issue/'],
+        config.repoPath
+      );
+      branches = output ? output.split('\n').filter(Boolean) : [];
+    } catch (err) {
+      console.warn('[prune] Failed to list issue branches:', err);
+      branches = [];
+    }
+
+    for (const branch of branches) {
+      // Extract the short ID from the branch name: issue/<shortId>-<slug>
+      const match = branch.match(/^issue\/([a-f0-9]{8})-/);
+      if (!match) {
+        // Branch matches issue/* but doesn't follow the expected naming pattern.
+        // This could be a manually-created branch or one with non-hex characters.
+        // Skip it — it will never be auto-cleaned, which is the safe default.
+        console.debug?.(`[prune] Skipping branch with unexpected pattern: ${branch}`);
+        continue;
       }
 
-      for (const branch of branches) {
-        // Extract the short ID from the branch name: issue/<shortId>-<slug>
-        // NOTE: 8-char hex prefix matching (32 bits) has per-pair collision odds of
-        // ~1 in 4 billion, but birthday paradox gives 50% collision at ~77k issues.
-        // A collision only causes a stale branch to be preserved (safe failure mode),
-        // so this is acceptable. The alternative (persisting full branch-to-issue
-        // mappings) adds significant complexity for minimal practical benefit.
-        const match = branch.match(/^issue\/([a-f0-9]{8})-/);
-        if (!match) continue;
+      const shortId = match[1];
+      if (activeShortIds.has(shortId)) continue;
 
-        const shortId = match[1];
-        if (activeShortIds.has(shortId)) continue;
-
-        // No active issue matches this branch — try safe delete first,
-        // fall back to force delete with a warning and commit hash for recovery
+      // No active issue matches this branch — use safe delete only.
+      // If the branch has unmerged commits, -d will fail and we preserve it
+      // rather than force-deleting and risking data loss.
+      try {
+        git(['branch', '-d', branch], config.repoPath);
+        result.prunedBranches.push(branch);
+      } catch {
+        // Branch has unmerged commits — preserve it and report
         try {
-          git(['branch', '-d', branch], config.repoPath);
-          result.prunedBranches.push(branch);
+          const sha = git(['rev-parse', '--short', branch], config.repoPath);
+          console.warn(`[prune] Skipping unmerged branch: ${branch} (HEAD: ${sha}) — delete manually with: git branch -D ${branch}`);
+          result.skippedUnmergedBranches.push(branch);
         } catch {
-          try {
-            // Log the HEAD commit hash so work can be recovered via git reflog
-            const sha = git(['rev-parse', branch], config.repoPath);
-            console.warn(`[prune] Force-deleting unmerged branch: ${branch} (HEAD was ${sha})`);
-            git(['branch', '-D', branch], config.repoPath);
-            result.prunedBranches.push(branch);
-          } catch {}
+          // Can't even rev-parse — branch might be in a weird state, skip silently
+          result.skippedUnmergedBranches.push(branch);
         }
       }
-    } finally {
-      this.isPruning = false;
     }
 
     return result;
