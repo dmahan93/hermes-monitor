@@ -95,6 +95,7 @@ const env = {
   ...process.env,
   HERMES_REPO_PATH: opts.repo,
   PORT: String(SERVER_PORT),
+  VITE_SERVER_PORT: String(SERVER_PORT),
 };
 
 // ────────────────────────────────────────────────────────────
@@ -140,7 +141,13 @@ const clientProc = spawn(viteBin, clientArgs, {
 children.push(clientProc);
 
 // ────────────────────────────────────────────────────────────
-// Auto-open browser when server is ready
+// Graceful shutdown — kill server + client on SIGINT/SIGTERM
+// ────────────────────────────────────────────────────────────
+let shuttingDown = false;
+let worstExitCode = 0;
+
+// ────────────────────────────────────────────────────────────
+// Auto-open browser when both server and client are ready
 // ────────────────────────────────────────────────────────────
 if (opts.browser) {
   const url = `http://localhost:${CLIENT_PORT}`;
@@ -148,28 +155,33 @@ if (opts.browser) {
   const POLL_INTERVAL = 500; // check every 500ms
   const startTime = Date.now();
 
-  function pollServer() {
+  function checkPort(port) {
+    return new Promise((resolve) => {
+      const req = http.get(`http://localhost:${port}/api/health`, (res) => {
+        res.resume();
+        resolve(res.statusCode >= 200 && res.statusCode < 500);
+      });
+      req.on('error', () => resolve(false));
+      req.setTimeout(2000, () => { req.destroy(); resolve(false); });
+    });
+  }
+
+  async function pollReady() {
     if (shuttingDown) return;
     if (Date.now() - startTime > MAX_WAIT) return; // give up silently
 
-    const req = http.get(`http://localhost:${SERVER_PORT}/api/health`, (res) => {
-      res.resume(); // drain response
-      if (res.statusCode >= 200 && res.statusCode < 500) {
-        openBrowser(url);
-      } else {
-        const t = setTimeout(pollServer, POLL_INTERVAL);
-        t.unref();
-      }
-    });
-    req.on('error', () => {
-      const t = setTimeout(pollServer, POLL_INTERVAL);
+    // Check both server and client ports are responding
+    const [serverReady, clientReady] = await Promise.all([
+      checkPort(SERVER_PORT),
+      checkPort(CLIENT_PORT),
+    ]);
+
+    if (serverReady && clientReady) {
+      openBrowser(url);
+    } else {
+      const t = setTimeout(pollReady, POLL_INTERVAL);
       t.unref();
-    });
-    req.setTimeout(2000, () => {
-      req.destroy();
-      const t = setTimeout(pollServer, POLL_INTERVAL);
-      t.unref();
-    });
+    }
   }
 
   function openBrowser(targetUrl) {
@@ -188,16 +200,10 @@ if (opts.browser) {
     }
   }
 
-  // Start polling after a brief initial delay for the server to begin starting
-  const initialTimer = setTimeout(pollServer, 1000);
+  // Start polling after a brief initial delay for processes to begin starting
+  const initialTimer = setTimeout(pollReady, 1000);
   initialTimer.unref();
 }
-
-// ────────────────────────────────────────────────────────────
-// Graceful shutdown — kill server + client on SIGINT/SIGTERM
-// ────────────────────────────────────────────────────────────
-let shuttingDown = false;
-let worstExitCode = 0;
 
 function shutdown() {
   if (shuttingDown) return;
@@ -238,8 +244,10 @@ for (const child of children) {
       worstExitCode = code;
     }
 
-    // If a child exits unexpectedly (not during shutdown), tear down everything
-    if (!shuttingDown && code !== 0) {
+    // If a child exits unexpectedly (not during shutdown), tear down everything.
+    // This handles both crashes (code !== 0) and clean exits (code === 0)
+    // to prevent orphaned processes.
+    if (!shuttingDown) {
       shutdown();
       return;
     }

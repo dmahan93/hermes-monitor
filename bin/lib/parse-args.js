@@ -34,7 +34,7 @@ function parseArgs(argv, defaults = {}) {
   };
 
   function requireArg(flag, i) {
-    if (i >= argv.length || argv[i].startsWith('--') || argv[i].startsWith('-') && argv[i].length > 1) {
+    if (i >= argv.length || argv[i].startsWith('--') || (argv[i].startsWith('-') && argv[i].length > 1)) {
       throw new ParseError(`${flag} requires a value`);
     }
     return argv[i];

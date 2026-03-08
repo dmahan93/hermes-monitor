@@ -58,6 +58,9 @@ if (issueCount > 0 || prCount > 0) {
 mkdirSync(config.screenshotBase, { recursive: true });
 app.use('/screenshots', serveStatic(config.screenshotBase));
 
+// Health check — used by the CLI to detect when the server is ready
+app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+
 // REST API
 app.use('/api', createApiRouter(terminalManager));
 app.use('/api', createIssueApiRouter(issueManager));
