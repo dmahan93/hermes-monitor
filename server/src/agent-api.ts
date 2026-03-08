@@ -11,9 +11,10 @@ import { v4 as uuidv4 } from 'uuid';
 import type { IssueManager } from './issue-manager.js';
 import type { PRManager } from './pr-manager.js';
 import type { TerminalManager } from './terminal-manager.js';
-import type { WorktreeManager } from './worktree-manager.js';
+import type { WorktreeManager, HealthCheckResult } from './worktree-manager.js';
 import { config } from './config.js';
 import { ALLOWED_EXTENSIONS, getUploadedScreenshots, UI_EXTENSIONS } from './screenshot-utils.js';
+import { getDiagnostics } from './diagnostics.js';
 import { analyzeUiDiff } from './ui-change-analyzer.js';
 
 /** File extensions that indicate UI changes requiring screenshots (derived from screenshot-utils) */
@@ -52,6 +53,7 @@ interface RecentMerge {
 
 interface AgentInfoResponse {
   id: string;
+  reworkFeedback: string | null;
   title: string;
   description: string;
   branch: string | undefined;
@@ -63,10 +65,22 @@ interface AgentInfoResponse {
   changedFiles: string[];
   previousReviews: ReviewInfo[];
   recentMerges: RecentMerge[];
+  previousReviews: Array<{
+    author: string;
+    verdict: string | null;
+    body: string;
+    createdAt: number;
+  }>;
+  previousAttempts: Array<{
+    exitCode: number;
+    logFile: string;
+    timestamp: number;
+  }>;
   reviewUrl: string;
   screenshotUploadUrl: string;
   screenshotUploadInstructions: string;
   guidelines: AgentGuidelines;
+  workspaceHealth: HealthCheckResult | null;
 }
 
 /**
@@ -182,6 +196,21 @@ export function createAgentApiRouter(
         mergedAt: pr.updatedAt,
       }));
 
+    // Build rework feedback: only surface when the PR verdict is changes_requested,
+    // and only use comments from the reviewer (not human comments).
+    let reworkFeedback: string | null = null;
+    if (existingPr && existingPr.verdict === 'changes_requested') {
+      const reviewerComments = existingPr.comments
+        .filter((c) => c.author === 'hermes-reviewer')
+        .sort((a, b) => b.createdAt - a.createdAt);
+      if (reviewerComments.length > 0) {
+        reworkFeedback = `REWORK REQUIRED: The reviewer requested changes.\n\n${reviewerComments[0].body}`;
+      }
+    }
+
+    // Get diagnostic entries from previous terminal exits
+    const previousAttempts = getDiagnostics(issue.id, config.diagnosticsBase);
+
     const baseUrl = `http://localhost:${PORT}`;
 
     const screenshotUploadUrl = `${baseUrl}/agent/${issue.id}/screenshots`;
@@ -198,6 +227,7 @@ export function createAgentApiRouter(
 
     const response: AgentInfoResponse = {
       id: issue.id,
+      reworkFeedback,
       title: issue.title,
       description: issue.description,
       branch: issue.branch ?? undefined,
@@ -209,6 +239,7 @@ export function createAgentApiRouter(
       changedFiles,
       previousReviews,
       recentMerges,
+      previousAttempts,
       reviewUrl: `${baseUrl}/agent/${issue.id}/review`,
       screenshotUploadUrl,
       screenshotUploadInstructions,
@@ -218,6 +249,7 @@ export function createAgentApiRouter(
           : 'If your changes modify UI components (.tsx, .css, .html files), upload before/after screenshots using the screenshotUploadUrl and include the returned markdown in your PR description.',
         requireScreenshotsForUiChanges: config.requireScreenshotsForUiChanges,
       },
+      workspaceHealth: worktreeManager.getHealthCheck(issue.id) ?? null,
     };
     res.json(response);
   });
@@ -297,6 +329,60 @@ export function createAgentApiRouter(
     }));
 
     res.json({ screenshots });
+  });
+
+  // Agent reports progress during execution (transient — not persisted)
+  router.post('/:id/progress', (req, res) => {
+    const issue = issueManager.get(req.params.id);
+    if (!issue) {
+      res.status(404).json({ error: 'Issue not found' });
+      return;
+    }
+
+    if (issue.status !== 'in_progress') {
+      res.status(400).json({ error: `Issue is ${issue.status}, not in_progress` });
+      return;
+    }
+
+    const { message, percent } = req.body || {};
+
+    // Require at least one field — reject empty body {}
+    if (message === undefined && percent === undefined) {
+      res.status(400).json({ error: 'At least one of message or percent is required' });
+      return;
+    }
+
+    // Validate types
+    if (message !== undefined && typeof message !== 'string') {
+      res.status(400).json({ error: 'message must be a string' });
+      return;
+    }
+    if (percent !== undefined && (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0 || percent > 100)) {
+      res.status(400).json({ error: 'percent must be a number between 0 and 100' });
+      return;
+    }
+
+    // Truncate long messages to prevent broadcast bloat
+    const truncatedMessage = (message !== undefined && message.length > 200)
+      ? message.slice(0, 200)
+      : message;
+
+    const updated = issueManager.updateProgress(
+      issue.id,
+      truncatedMessage !== undefined ? truncatedMessage : undefined,
+      percent !== undefined ? percent : undefined,
+    );
+
+    if (!updated) {
+      res.status(500).json({ error: 'Failed to update progress' });
+      return;
+    }
+
+    res.json({
+      ok: true,
+      message: updated.progressMessage,
+      percent: updated.progressPercent,
+    });
   });
 
   // Agent calls this when done — kills terminal, moves issue to review

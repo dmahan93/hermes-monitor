@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { WorktreeManager } from '../src/worktree-manager.js';
+import type { HealthCheckResult } from '../src/worktree-manager.js';
 import { config, updateConfig } from '../src/config.js';
-import { existsSync, lstatSync, readlinkSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, lstatSync, readlinkSync, mkdirSync, rmSync, writeFileSync, symlinkSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { join, resolve } from 'path';
 import { tmpdir } from 'os';
@@ -164,5 +165,190 @@ describe('WorktreeManager', () => {
     expect(existsSync(nodeModulesPath)).toBe(true);
     const targetAfter = readlinkSync(nodeModulesPath);
     expect(targetAfter).toBe(expectedTarget);
+  });
+});
+
+describe('WorktreeManager.healthCheck', () => {
+  let manager: WorktreeManager;
+  let testWorktreeBase: string;
+  let testRepoPath: string;
+  let originalWorktreeBase: string;
+  let originalRepoPath: string;
+  let originalTargetBranch: string;
+
+  beforeEach(() => {
+    testWorktreeBase = join(
+      tmpdir(),
+      `hermes-wt-hc-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    );
+    mkdirSync(testWorktreeBase, { recursive: true });
+    testRepoPath = createScratchRepo();
+
+    originalWorktreeBase = config.worktreeBase;
+    originalRepoPath = config.repoPath;
+    originalTargetBranch = config.targetBranch;
+    updateConfig({
+      worktreeBase: testWorktreeBase,
+      repoPath: testRepoPath,
+      targetBranch: 'master',
+    });
+
+    manager = new WorktreeManager();
+  });
+
+  afterEach(() => {
+    updateConfig({
+      worktreeBase: originalWorktreeBase,
+      repoPath: originalRepoPath,
+      targetBranch: originalTargetBranch,
+    });
+
+    try { git(['worktree', 'prune'], testRepoPath); } catch {}
+    try { rmSync(testWorktreeBase, { recursive: true, force: true }); } catch {}
+    try { rmSync(testRepoPath, { recursive: true, force: true }); } catch {}
+  });
+
+  it('returns healthy for a clean worktree', () => {
+    const id = 'hc-clean-' + Date.now();
+    manager.create(id, 'Clean worktree');
+    const result = manager.healthCheck(id);
+    expect(result.healthy).toBe(true);
+    expect(result.issues).toHaveLength(0);
+    expect(result.fixes).toHaveLength(0);
+  });
+
+  it('returns unhealthy when no worktree is registered', () => {
+    const result = manager.healthCheck('nonexistent');
+    expect(result.healthy).toBe(false);
+    expect(result.issues).toContain('No worktree registered for this issue');
+  });
+
+  it('stores and retrieves health check results', () => {
+    const id = 'hc-store-' + Date.now();
+    manager.create(id, 'Store test');
+    const result = manager.healthCheck(id);
+
+    const retrieved = manager.getHealthCheck(id);
+    expect(retrieved).toBeDefined();
+    expect(retrieved).toEqual(result);
+  });
+
+  it('getHealthCheck returns undefined when no check has been run', () => {
+    expect(manager.getHealthCheck('never-checked')).toBeUndefined();
+  });
+
+  it('fixes wrong branch by checking out the correct one', () => {
+    const id = 'hc-branch-' + Date.now();
+    const info = manager.create(id, 'Branch test');
+
+    // Create a throwaway branch and switch to it (can't checkout master — it's
+    // already used by the main repo worktree)
+    git(['checkout', '-b', 'wrong-branch'], info.path);
+
+    const result = manager.healthCheck(id);
+    expect(result.healthy).toBe(true);
+    expect(result.issues.some((i) => i.includes('Wrong branch'))).toBe(true);
+    expect(result.fixes.some((f) => f.includes('Checked out correct branch'))).toBe(true);
+
+    // Verify the branch was actually switched back
+    const currentBranch = git(['branch', '--show-current'], info.path);
+    expect(currentBranch).toBe(info.branch);
+  });
+
+  it('fixes missing node_modules by re-symlinking', () => {
+    const id = 'hc-nm-' + Date.now();
+    const info = manager.create(id, 'Node modules test');
+    const nodeModulesPath = join(info.path, 'node_modules');
+
+    // Remove node_modules symlink
+    rmSync(nodeModulesPath);
+    expect(existsSync(nodeModulesPath)).toBe(false);
+
+    const result = manager.healthCheck(id);
+    expect(result.healthy).toBe(true);
+    expect(result.issues.some((i) => i.includes('node_modules missing'))).toBe(true);
+    expect(result.fixes.some((f) => f.includes('Re-symlinked node_modules'))).toBe(true);
+
+    // Verify node_modules was re-created
+    expect(existsSync(nodeModulesPath)).toBe(true);
+    const stat = lstatSync(nodeModulesPath);
+    expect(stat.isSymbolicLink()).toBe(true);
+  });
+
+  it('fixes broken node_modules symlink', () => {
+    const id = 'hc-broken-nm-' + Date.now();
+    const info = manager.create(id, 'Broken symlink test');
+    const nodeModulesPath = join(info.path, 'node_modules');
+
+    // Replace symlink with one pointing to nonexistent path
+    rmSync(nodeModulesPath);
+    symlinkSync('/tmp/nonexistent-path-' + Date.now(), nodeModulesPath, 'dir');
+
+    const result = manager.healthCheck(id);
+    expect(result.healthy).toBe(true);
+    expect(result.issues.some((i) => i.includes('node_modules'))).toBe(true);
+    expect(result.fixes.some((f) => f.includes('Re-symlinked node_modules'))).toBe(true);
+
+    // Verify it now points to the correct location
+    expect(existsSync(nodeModulesPath)).toBe(true);
+    const target = readlinkSync(nodeModulesPath);
+    expect(target).toBe(resolve(join(testRepoPath, 'node_modules')));
+  });
+
+  it('recreates worktree when directory is missing', () => {
+    const id = 'hc-missing-dir-' + Date.now();
+    const info = manager.create(id, 'Missing dir test');
+
+    // Remove the worktree directory manually
+    git(['worktree', 'remove', info.path, '--force'], testRepoPath);
+
+    const result = manager.healthCheck(id);
+    expect(result.healthy).toBe(true);
+    expect(result.issues.some((i) => i.includes('does not exist'))).toBe(true);
+    expect(result.fixes.some((f) => f.includes('Recreated worktree'))).toBe(true);
+
+    // Verify the directory was recreated
+    expect(existsSync(info.path)).toBe(true);
+  });
+
+  it('detects and aborts in-progress merge', () => {
+    const id = 'hc-merge-' + Date.now();
+    const info = manager.create(id, 'Merge test');
+
+    // Create a conflicting commit on the issue branch
+    writeFileSync(join(info.path, 'conflict.txt'), 'branch content\n');
+    git(['add', 'conflict.txt'], info.path);
+    git(['commit', '-m', 'add conflict file on branch'], info.path);
+
+    // Create a conflicting commit on master
+    writeFileSync(join(testRepoPath, 'conflict.txt'), 'master content\n');
+    git(['add', 'conflict.txt'], testRepoPath);
+    git(['commit', '-m', 'add conflict file on master'], testRepoPath);
+
+    // Start a merge that will conflict
+    try {
+      git(['merge', 'master'], info.path);
+    } catch {
+      // Merge conflict expected
+    }
+
+    const result = manager.healthCheck(id);
+    expect(result.issues.some((i) => i.includes('Merge conflicts') || i.includes('merge'))).toBe(true);
+    expect(result.fixes.some((f) => f.includes('Aborted') || f.includes('Recreated'))).toBe(true);
+  });
+
+  it('healthy worktree with real node_modules directory (not symlink)', () => {
+    const id = 'hc-real-nm-' + Date.now();
+    const info = manager.create(id, 'Real node modules');
+    const nodeModulesPath = join(info.path, 'node_modules');
+
+    // Replace symlink with a real directory
+    rmSync(nodeModulesPath);
+    mkdirSync(nodeModulesPath, { recursive: true });
+
+    const result = manager.healthCheck(id);
+    expect(result.healthy).toBe(true);
+    // Real directory is acceptable — no issues
+    expect(result.issues).toHaveLength(0);
   });
 });

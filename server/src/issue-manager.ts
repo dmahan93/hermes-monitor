@@ -4,6 +4,8 @@ import type { WorktreeManager } from './worktree-manager.js';
 import type { PRManager } from './pr-manager.js';
 import type { Store } from './store.js';
 import { getPreset } from './agents.js';
+import { saveDiagnostics } from './diagnostics.js';
+import { config } from './config.js';
 
 // Re-export shared types so existing server imports continue to work.
 export type { Issue, IssueStatus } from '@hermes-monitor/shared/types';
@@ -14,7 +16,7 @@ const MAX_RESUME_ATTEMPTS = 3;       // max retries before giving up
 const RESUME_DELAY_MS = 5000;        // wait 5s before resuming (avoid tight loops)
 const RESUME_WINDOW_MS = 5 * 60000;  // reset attempt counter after 5 minutes of quiet
 
-export type IssueEvent = 'issue:created' | 'issue:updated' | 'issue:deleted';
+export type IssueEvent = 'issue:created' | 'issue:updated' | 'issue:deleted' | 'issue:progress';
 
 
 export interface CreateIssueOptions {
@@ -164,6 +166,9 @@ export class IssueManager {
       terminalId: null,
       branch: options.branch || null,
       parentId: options.parentId || null,
+      progressMessage: null,
+      progressPercent: null,
+      progressUpdatedAt: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -210,6 +215,35 @@ export class IssueManager {
     return issue;
   }
 
+  /**
+   * Update transient progress fields on an in-progress issue.
+   * These fields are NOT persisted to SQLite — they're only relevant while the agent is running.
+   */
+  updateProgress(id: string, message?: string | null, percent?: number | null): Issue | undefined {
+    const issue = this.issues.get(id);
+    if (!issue) return undefined;
+    if (issue.status !== 'in_progress') return undefined;
+
+    if (message !== undefined) {
+      // Truncate for defense-in-depth (route also truncates, but internal callers may not)
+      const truncated = message && message.length > 200 ? message.slice(0, 200) : message;
+      issue.progressMessage = truncated || null;
+    }
+    if (percent !== undefined) issue.progressPercent = (percent !== null && Number.isFinite(percent) && percent >= 0 && percent <= 100) ? percent : null;
+    issue.progressUpdatedAt = Date.now();
+
+    // Emit progress event (lightweight — no persist needed)
+    this.emit('issue:progress', issue);
+    return issue;
+  }
+
+  /** Clear transient progress fields from an issue */
+  private clearProgress(issue: Issue): void {
+    issue.progressMessage = null;
+    issue.progressPercent = null;
+    issue.progressUpdatedAt = null;
+  }
+
   changeStatus(id: string, newStatus: IssueStatus): Issue | undefined {
     const issue = this.issues.get(id);
     if (!issue) return undefined;
@@ -241,6 +275,11 @@ export class IssueManager {
     // Reset resume attempts on any status transition — a fresh start gets fresh retries
     this.resetResumeAttempts(issue.id);
 
+    // Clear transient progress when leaving in_progress
+    if (from === 'in_progress') {
+      this.clearProgress(issue);
+    }
+
     // Kill planning terminal when leaving backlog.
     // This must happen before the in_progress spawn logic below so the planning
     // terminal is cleaned up before an agent terminal is created.
@@ -270,11 +309,25 @@ export class IssueManager {
         } catch (err) {
           console.error('Failed to create worktree:', err);
         }
+
+        // Run health check before spawning agent
+        try {
+          const health = this.worktreeManager.healthCheck(issue.id);
+          if (health.fixes.length > 0) {
+            console.log(`[health-check] Fixed: ${health.fixes.join(', ')}`);
+          }
+          if (!health.healthy) {
+            console.warn(`[health-check] Unhealthy workspace for "${issue.title}": ${health.issues.join(', ')}`);
+          }
+        } catch (err) {
+          console.error('[health-check] Failed to run health check:', err);
+        }
       }
 
       const command = issue.command
         ? this.interpolateCommand(issue.command, issue)
         : undefined;
+
       const terminal = this.terminalManager.create({
         title: issue.title,
         command,
@@ -429,6 +482,24 @@ export class IssueManager {
     // Only auto-resume in_progress issues
     if (issue.status !== 'in_progress') return;
 
+    // Capture scrollback before any cleanup — needed for both diagnostics and logging
+    const scrollback = this.terminalManager.getScrollback(terminalId);
+
+    // Save diagnostic log for post-mortem analysis (always, regardless of resume)
+    try {
+      const logPath = saveDiagnostics({
+        issueId: issue.id,
+        issueTitle: issue.title,
+        branch: issue.branch,
+        exitCode,
+        scrollback: scrollback || '',
+        diagnosticsBase: config.diagnosticsBase,
+      });
+      console.log(`[diagnostics] Saved exit log: ${logPath}`);
+    } catch (err) {
+      console.error('[diagnostics] Failed to save exit log:', err);
+    }
+
     // Check resume attempts (with sliding window)
     const attempts = this.getOrCreateResumeAttempts(issue.id);
     if (Date.now() - attempts.lastAttempt > this.resumeWindowMs) {
@@ -443,7 +514,6 @@ export class IssueManager {
     }
 
     // Log last few lines of terminal output for debugging
-    const scrollback = this.terminalManager.getScrollback(terminalId);
     if (scrollback) {
       const lastLines = scrollback.split('\n').filter(Boolean).slice(-10).join('\n');
       if (lastLines) {

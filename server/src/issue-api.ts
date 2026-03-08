@@ -8,6 +8,8 @@ import { Router, json } from 'express';
 import { execSync } from 'child_process';
 import type { IssueManager, IssueStatus } from './issue-manager.js';
 import { AGENT_PRESETS, type AgentPreset } from './agents.js';
+import { getDiagnostics, readDiagnosticFile } from './diagnostics.js';
+import { config } from './config.js';
 
 const VALID_STATUSES: IssueStatus[] = ['backlog', 'todo', 'in_progress', 'review', 'done'];
 
@@ -161,6 +163,26 @@ export function createIssueApiRouter(manager: IssueManager): Router {
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
+  });
+
+  // List diagnostic files for an issue
+  router.get('/issues/:id/diagnostics', (req, res) => {
+    const issue = manager.get(req.params.id);
+    if (!issue) {
+      res.status(404).json({ error: 'Issue not found' });
+      return;
+    }
+
+    const entries = getDiagnostics(issue.id, config.diagnosticsBase);
+    res.json({
+      issueId: issue.id,
+      diagnostics: entries.map((e) => ({
+        exitCode: e.exitCode,
+        logFile: e.logFile,
+        timestamp: e.timestamp,
+        content: readDiagnosticFile(e.logFile),
+      })),
+    });
   });
 
   // Delete issue
