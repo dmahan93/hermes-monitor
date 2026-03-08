@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE } from '../config';
 import './ConfigView.css';
 
@@ -21,11 +21,20 @@ export function ConfigView() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
+  // Track the last server-confirmed value of githubRemote so onBlur can detect real changes.
+  // Without this, onChange updates local state first, making onBlur's comparison always equal.
+  const savedRemoteRef = useRef<string>('origin');
+
+  // Track whether the remote input is currently being edited (dirty).
+  // When dirty, server responses from checkbox saves should NOT overwrite the local remote value.
+  const remoteIsDirtyRef = useRef(false);
+
   const fetchConfig = useCallback(() => {
     fetch(`${API_BASE}/config`)
       .then((res) => res.json())
       .then((data) => {
         setConfig(data);
+        savedRemoteRef.current = data.githubRemote ?? 'origin';
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -46,7 +55,19 @@ export function ConfigView() {
       });
       if (res.ok) {
         const data = await res.json();
-        setConfig(data);
+        // If the remote input is dirty (user is typing), preserve their in-progress edit
+        // instead of clobbering it with the server's old value.
+        setConfig((prev) => {
+          if (remoteIsDirtyRef.current && prev) {
+            return { ...data, githubRemote: prev.githubRemote };
+          }
+          return data;
+        });
+        // Update the saved ref for fields that were just persisted
+        if (updates.githubRemote !== undefined) {
+          savedRemoteRef.current = data.githubRemote;
+          remoteIsDirtyRef.current = false;
+        }
         setSaveStatus('saved');
         setTimeout(() => setSaveStatus('idle'), 2000);
       } else {
@@ -108,11 +129,18 @@ export function ConfigView() {
               className="config-input"
               value={config?.githubRemote ?? 'origin'}
               disabled={saving}
-              onChange={(e) => setConfig((c) => c ? { ...c, githubRemote: e.target.value } : c)}
+              onChange={(e) => {
+                remoteIsDirtyRef.current = true;
+                setConfig((c) => c ? { ...c, githubRemote: e.target.value } : c);
+              }}
               onBlur={(e) => {
                 const val = e.target.value.trim();
-                if (val && val !== config?.githubRemote) {
+                // Compare against the last server-confirmed value, not local state
+                // (onChange already updated local state, so config?.githubRemote === val)
+                if (val && val !== savedRemoteRef.current) {
                   updateConfig({ githubRemote: val });
+                } else {
+                  remoteIsDirtyRef.current = false;
                 }
               }}
               onKeyDown={(e) => {

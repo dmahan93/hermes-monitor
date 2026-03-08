@@ -54,7 +54,15 @@ export function updateConfig(updates: Partial<AppConfig>): void {
   if (updates.targetBranch !== undefined) config.targetBranch = updates.targetBranch;
   if (updates.requireScreenshotsForUiChanges !== undefined) config.requireScreenshotsForUiChanges = updates.requireScreenshotsForUiChanges;
   if (updates.githubEnabled !== undefined) config.githubEnabled = updates.githubEnabled;
-  if (updates.githubRemote !== undefined) config.githubRemote = updates.githubRemote;
+  if (updates.githubRemote !== undefined) {
+    const remote = updates.githubRemote.trim();
+    // Validate: must be non-empty, alphanumeric with hyphens/underscores/dots, no whitespace or special chars.
+    // This prevents confusing `git push "" branch` errors and rejects obviously invalid remote names.
+    if (remote && /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(remote)) {
+      config.githubRemote = remote;
+    }
+    // Silently ignore invalid values — the config stays at its previous valid value.
+  }
 }
 
 // Cache isGitRepo result per path — the repo status doesn't change during

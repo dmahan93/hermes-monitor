@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { execFile } from 'child_process';
-import { config } from '../src/config.js';
+import { config, updateConfig } from '../src/config.js';
 
 // Mock child_process before importing github module
 vi.mock('child_process', async () => {
@@ -239,14 +239,14 @@ describe('GitHub Integration — deleteRemoteBranch', () => {
   });
 });
 
-describe('GitHub Integration — closeGitHubPR (updated)', () => {
+describe('GitHub Integration — closeGitHubPR (signature verification)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('does not accept a comment parameter (removed per review)', async () => {
-    // closeGitHubPR signature is now (prUrl, repoPath) — no comment param
-    // Verify the function works with just 2 args
+  it('uses only two parameters (prUrl, repoPath) and sends a fixed close comment', async () => {
+    // closeGitHubPR(prUrl, repoPath) — no user-provided comment parameter.
+    // The function passes a hardcoded '--comment' flag to `gh pr close`.
     (execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
       (_cmd: string, args: string[], _opts: any, cb: Function) => {
         if (args[0] === 'auth') {
@@ -261,11 +261,13 @@ describe('GitHub Integration — closeGitHubPR (updated)', () => {
 
     const result = await closeGitHubPR('https://github.com/user/repo/pull/42', '/tmp/repo');
     expect(result.success).toBe(true);
-    // Should only call gh auth status + gh pr close (2 calls), no gh pr comment
+    // Should only call gh auth status + gh pr close (2 gh calls), no separate gh pr comment
     const calls = (execFile as unknown as ReturnType<typeof vi.fn>).mock.calls;
     const ghCalls = calls.filter((c: any) => c[0] === 'gh');
     expect(ghCalls).toHaveLength(2); // auth + close
     expect(ghCalls[1][1]).toEqual(expect.arrayContaining(['pr', 'close']));
+    // Verify the hardcoded comment is included in the close args
+    expect(ghCalls[1][1]).toEqual(expect.arrayContaining(['--comment', 'Merged locally via hermes-monitor.']));
   });
 });
 
@@ -358,5 +360,53 @@ describe('GitHub Integration — Config', () => {
       expect.anything(),
       expect.any(Function),
     );
+  });
+});
+
+describe('GitHub Integration — Config validation', () => {
+  const savedRemote = config.githubRemote;
+
+  afterEach(() => {
+    config.githubRemote = savedRemote;
+  });
+
+  it('accepts valid remote names', () => {
+    updateConfig({ githubRemote: 'upstream' });
+    expect(config.githubRemote).toBe('upstream');
+
+    updateConfig({ githubRemote: 'my-remote' });
+    expect(config.githubRemote).toBe('my-remote');
+
+    updateConfig({ githubRemote: 'my_remote.v2' });
+    expect(config.githubRemote).toBe('my_remote.v2');
+  });
+
+  it('rejects empty string', () => {
+    config.githubRemote = 'origin';
+    updateConfig({ githubRemote: '' });
+    expect(config.githubRemote).toBe('origin');
+  });
+
+  it('rejects whitespace-only string', () => {
+    config.githubRemote = 'origin';
+    updateConfig({ githubRemote: '   ' });
+    expect(config.githubRemote).toBe('origin');
+  });
+
+  it('rejects strings with special characters', () => {
+    config.githubRemote = 'origin';
+    updateConfig({ githubRemote: 'remote; rm -rf /' });
+    expect(config.githubRemote).toBe('origin');
+  });
+
+  it('rejects strings with newlines', () => {
+    config.githubRemote = 'origin';
+    updateConfig({ githubRemote: 'origin\nmalicious' });
+    expect(config.githubRemote).toBe('origin');
+  });
+
+  it('trims whitespace from valid remote names', () => {
+    updateConfig({ githubRemote: '  upstream  ' });
+    expect(config.githubRemote).toBe('upstream');
   });
 });
