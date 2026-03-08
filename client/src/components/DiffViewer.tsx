@@ -144,10 +144,10 @@ export function DiffViewer({ diff, sha, file, loading, onClose }: DiffViewerProp
 
   return (
     <div className="diff-overlay" onClick={onClose}>
-      <div className="diff-viewer" ref={viewerRef} onClick={(e) => e.stopPropagation()}>
+      <div className="diff-viewer" ref={viewerRef} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="diff-viewer-title">
         <div className="diff-header">
           <div className="diff-header-info">
-            <span className="diff-header-path">
+            <span id="diff-viewer-title" className="diff-header-path">
               {dirPath && <span className="diff-header-dir">{dirPath}</span>}
               {fileName}
             </span>

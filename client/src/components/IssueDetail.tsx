@@ -99,7 +99,7 @@ export function IssueDetail({
 
   return (
     <div className="issue-detail-overlay" onClick={onClose}>
-      <div className="issue-detail" ref={detailRef} onClick={(e) => e.stopPropagation()}>
+      <div className="issue-detail" ref={detailRef} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="issue-detail-heading">
         <div className="issue-detail-header">
           <span className={`issue-detail-status ${status.className}`}>{status.label}</span>
           <button className="issue-detail-close" onClick={onClose}>×</button>
@@ -109,6 +109,7 @@ export function IssueDetail({
           {editing ? (
             <>
               <input
+                id="issue-detail-heading"
                 className="issue-detail-title-input"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -128,7 +129,7 @@ export function IssueDetail({
             </>
           ) : (
             <>
-              <h2 className="issue-detail-title">{issue.title}</h2>
+              <h2 id="issue-detail-heading" className="issue-detail-title">{issue.title}</h2>
               {issue.description ? (
                 <p className="issue-detail-desc">{issue.description}</p>
               ) : (
