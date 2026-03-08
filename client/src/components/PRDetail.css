@@ -123,6 +123,15 @@
 .pr-merge-btn:hover { background: #4488dd20; }
 .pr-fix-btn { color: var(--warn); }
 .pr-fix-btn:hover { background: #ddaa2220; }
+.pr-confirm-merge-btn { color: var(--accent); }
+.pr-confirm-merge-btn:hover { background: var(--accent-dim, #58a6ff20); }
+
+.pr-github-created {
+  font-size: 0.833rem;
+  color: var(--accent);
+  font-family: 'VT323', monospace;
+  padding: 2px 8px;
+}
 
 .pr-merge-checking {
   font-size: 10px;

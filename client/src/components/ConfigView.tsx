@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { MergeMode } from '../types';
 import { API_BASE } from '../config';
 import './ConfigView.css';
 
@@ -13,6 +14,7 @@ interface AppConfig {
   requireScreenshotsForUiChanges: boolean;
   githubEnabled: boolean;
   githubRemote: string;
+  mergeMode: MergeMode;
 }
 
 export function ConfigView() {
@@ -69,6 +71,9 @@ export function ConfigView() {
           remoteIsDirtyRef.current = false;
         }
         setSaveStatus('saved');
+        // Notify AppContext (and any other listeners) about config changes
+        // so they can update their local state without a page reload.
+        window.dispatchEvent(new CustomEvent('hermes:config-updated', { detail: data }));
         setTimeout(() => setSaveStatus('idle'), 2000);
       } else {
         setSaveStatus('error');
@@ -150,6 +155,22 @@ export function ConfigView() {
               }}
             />
             <span className="config-hint">Git remote name (e.g., origin, upstream)</span>
+          </div>
+          <div className="config-field">
+            <label className="config-label">Merge Mode</label>
+            <select
+              className="config-input"
+              value={config?.mergeMode ?? 'local'}
+              disabled={saving}
+              onChange={(e) => updateConfig({ mergeMode: e.target.value as MergeMode })}
+            >
+              <option value="local">Local — merge locally, optionally push</option>
+              <option value="github">GitHub — push branch + create GH PR, skip local merge</option>
+              <option value="both">Both — merge locally AND create GH PR</option>
+            </select>
+            <span className="config-hint">
+              How the Merge button works: local merge, GitHub PR, or both
+            </span>
           </div>
         </div>
 

@@ -22,7 +22,7 @@ function AppContent() {
     connected, reconnectCount, send, subscribe,
     terminals, loading, updateLayout,
     issues, updateIssue, createSubtask,
-    prs, addComment, setVerdict, mergePR, fixConflicts, relaunchReview,
+    prs, addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, mergeMode,
     agents, agentsLoading, agentsError,
     gitGraph,
     view, setView,
@@ -196,9 +196,11 @@ function AppContent() {
             <PRList
               prs={prs}
               issues={issues}
+              mergeMode={mergeMode}
               onComment={addComment}
               onVerdict={setVerdict}
               onMerge={mergePR}
+              onConfirmMerge={confirmMerge}
               onFixConflicts={fixConflicts}
               onRelaunchReview={relaunchReview}
               onMoveToInProgress={async (issueId) => { await handleStatusChange(issueId, 'in_progress'); }}

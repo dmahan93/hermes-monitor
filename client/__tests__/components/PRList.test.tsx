@@ -100,6 +100,7 @@ describe('PRList component', () => {
     onComment: vi.fn(),
     onVerdict: vi.fn(),
     onMerge: vi.fn(),
+    onConfirmMerge: vi.fn(),
     onFixConflicts: vi.fn(),
     onRelaunchReview: vi.fn(),
     onMoveToInProgress: vi.fn<[string], Promise<void>>().mockResolvedValue(undefined),

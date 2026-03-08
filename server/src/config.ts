@@ -1,6 +1,9 @@
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { execSync } from 'child_process';
+import type { MergeMode } from '@hermes-monitor/shared/types';
+
+export type { MergeMode } from '@hermes-monitor/shared/types';
 
 export interface AppConfig {
   repoPath: string;
@@ -12,6 +15,7 @@ export interface AppConfig {
   requireScreenshotsForUiChanges: boolean;
   githubEnabled: boolean;
   githubRemote: string;
+  mergeMode: MergeMode;
 }
 
 // Detect the default branch name for a repo
@@ -40,6 +44,9 @@ export const config: AppConfig = {
   requireScreenshotsForUiChanges: process.env.HERMES_REQUIRE_SCREENSHOTS !== 'false',
   githubEnabled: process.env.HERMES_GITHUB_ENABLED === 'true',
   githubRemote: process.env.HERMES_GITHUB_REMOTE || 'origin',
+  mergeMode: (['local', 'github', 'both'].includes(process.env.HERMES_MERGE_MODE || '')
+    ? process.env.HERMES_MERGE_MODE as MergeMode
+    : 'local'),
 };
 
 export function updateConfig(updates: Partial<AppConfig>): void {
@@ -62,6 +69,11 @@ export function updateConfig(updates: Partial<AppConfig>): void {
       config.githubRemote = remote;
     }
     // Silently ignore invalid values — the config stays at its previous valid value.
+  }
+  if (updates.mergeMode !== undefined) {
+    if (['local', 'github', 'both'].includes(updates.mergeMode)) {
+      config.mergeMode = updates.mergeMode;
+    }
   }
 }
 

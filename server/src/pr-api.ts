@@ -21,8 +21,8 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
   });
 
   router.patch('/config', (req, res) => {
-    const { repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote } = req.body || {};
-    updateConfig({ repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote });
+    const { repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote, mergeMode } = req.body || {};
+    updateConfig({ repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote, mergeMode });
     res.json(config);
   });
 
@@ -142,16 +142,78 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
     res.json(result.pr);
   });
 
-  // Merge PR — also moves the issue to DONE
-  router.post('/prs/:id/merge', (req, res) => {
+  // Merge PR — behavior depends on config.mergeMode
+  router.post('/prs/:id/merge', async (req, res) => {
     const prBefore = prManager.get(req.params.id);
     if (!prBefore) {
       res.status(404).json({ error: 'PR not found' });
       return;
     }
+
+    const mode = config.mergeMode;
+
+    if (mode === 'github') {
+      // GitHub-only mode: push branch + create GH PR, do NOT merge locally
+      const ghResult = await prManager.createGitHubPRForMerge(req.params.id);
+      if (ghResult.error || !ghResult.pr) {
+        res.status(500).json({ error: ghResult.error || 'Failed to create GitHub PR' });
+        return;
+      }
+      // Issue stays in review — NOT moved to done
+      res.json({ status: 'github_pr_created', prUrl: ghResult.prUrl, pr: ghResult.pr });
+      return;
+    }
+
+    if (mode === 'both') {
+      // Both mode: merge locally AND create GH PR
+      // IMPORTANT: Create the GH PR FIRST — merge() deletes the local branch,
+      // which would cause the subsequent push to fail.
+      const ghResult = await prManager.createGitHubPRForMerge(req.params.id);
+      if (ghResult.error) {
+        console.error('[pr-api] Failed to create GitHub PR in both mode:', ghResult.error);
+        // Continue with local merge even if GH PR fails — it's a best-effort side effect
+      }
+      // Pass skipGitHubClose: true so merge() doesn't close the just-created GH PR.
+      // merge() normally calls closeGitHubPR as part of its cleanup, but in 'both' mode
+      // we want the GH PR to stay open — GitHub will auto-detect the merge when we push
+      // the target branch with the merge commit.
+      const result = prManager.merge(req.params.id, { skipGitHubClose: true });
+      if (result.error || !result.pr) {
+        res.status(500).json({ error: result.error || 'Merge failed' });
+        return;
+      }
+      // Move the linked issue to DONE
+      if (issueManager) {
+        issueManager.changeStatus(result.pr.issueId, 'done');
+      }
+      res.json({ status: 'merged', prUrl: ghResult?.prUrl, pr: result.pr });
+      return;
+    }
+
+    // Default: local mode — current behavior
     const result = prManager.merge(req.params.id);
     if (result.error || !result.pr) {
       res.status(500).json({ error: result.error || 'Merge failed' });
+      return;
+    }
+    // Move the linked issue to DONE
+    if (issueManager) {
+      issueManager.changeStatus(result.pr.issueId, 'done');
+    }
+    res.json(result.pr);
+  });
+
+  // Confirm merge — used when mergeMode is 'github' to mark a PR as merged
+  // after it was merged on GitHub
+  router.post('/prs/:id/confirm-merge', (req, res) => {
+    const pr = prManager.get(req.params.id);
+    if (!pr) {
+      res.status(404).json({ error: 'PR not found' });
+      return;
+    }
+    const result = prManager.confirmMerge(req.params.id);
+    if (result.error || !result.pr) {
+      res.status(400).json({ error: result.error || 'Confirm merge failed' });
       return;
     }
     // Move the linked issue to DONE

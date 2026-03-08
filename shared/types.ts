@@ -48,6 +48,10 @@ export interface AgentPreset {
   installed?: boolean;      // populated at runtime
 }
 
+// ── Config ──
+
+export type MergeMode = 'local' | 'github' | 'both';
+
 // ── Pull Requests ──
 
 export type PRStatus = 'open' | 'reviewing' | 'approved' | 'changes_requested' | 'merged' | 'closed';

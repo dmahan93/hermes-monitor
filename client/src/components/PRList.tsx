@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { PRDetail } from './PRDetail';
-import type { PullRequest, Issue } from '../types';
+import type { PullRequest, Issue, MergeMode } from '../types';
 import './PRList.css';
 
 type PRView = 'open' | 'closed' | 'all';
@@ -8,9 +8,11 @@ type PRView = 'open' | 'closed' | 'all';
 interface PRListProps {
   prs: PullRequest[];
   issues: Issue[];
+  mergeMode?: MergeMode;
   onComment: (prId: string, body: string) => void;
   onVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => void;
-  onMerge: (prId: string) => Promise<{ error?: string }>;
+  onMerge: (prId: string) => Promise<{ error?: string; status?: string; prUrl?: string }>;
+  onConfirmMerge: (prId: string) => Promise<{ error?: string }>;
   onFixConflicts: (prId: string) => void;
   onRelaunchReview: (prId: string) => void;
   onMoveToInProgress: (issueId: string) => Promise<void>;
@@ -48,7 +50,7 @@ export function filterPRs(prs: PullRequest[], view: PRView): PullRequest[] {
   }
 }
 
-export function PRList({ prs = [], issues, onComment, onVerdict, onMerge, onFixConflicts, onRelaunchReview, onMoveToInProgress }: PRListProps) {
+export function PRList({ prs = [], issues, mergeMode = 'local', onComment, onVerdict, onMerge, onConfirmMerge, onFixConflicts, onRelaunchReview, onMoveToInProgress }: PRListProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<PRView>('open');
 
@@ -68,10 +70,12 @@ export function PRList({ prs = [], issues, onComment, onVerdict, onMerge, onFixC
       <PRDetail
         pr={selectedPR}
         issueStatus={selectedIssue?.status}
+        mergeMode={mergeMode}
         onBack={() => setSelectedId(null)}
         onComment={onComment}
         onVerdict={onVerdict}
         onMerge={onMerge}
+        onConfirmMerge={onConfirmMerge}
         onFixConflicts={onFixConflicts}
         onRelaunchReview={onRelaunchReview}
         onMoveToInProgress={onMoveToInProgress}

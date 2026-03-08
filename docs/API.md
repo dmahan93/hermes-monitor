@@ -321,7 +321,31 @@ Spawn an agent to resolve merge conflicts.
 
 ### POST /api/prs/:id/merge
 
-Merge the PR branch. Also moves the linked issue to `done`.
+Merge the PR branch. Behavior depends on `mergeMode` config:
+
+| Mode | Behavior |
+|------|----------|
+| `local` (default) | Merge locally, move issue to `done`. If `githubEnabled`, push merge + close GH PR. |
+| `github` | Push branch + create GitHub PR. Issue stays in `review`. Returns `{ status: 'github_pr_created', prUrl: '...' }`. |
+| `both` | Create GitHub PR first, then merge locally. Issue moves to `done`. GH PR creation is best-effort — local merge proceeds even if it fails. |
+
+### POST /api/prs/:id/confirm-merge
+
+Confirm that a PR was merged on GitHub. Used when `mergeMode` is `github` to mark the PR as merged after the actual merge happened on GitHub.
+
+- Marks PR status as `merged`
+- Moves the linked issue to `done`
+- Cleans up the local branch and worktree
+- Deletes the remote branch (if `githubEnabled`)
+
+**Response:** The updated `PullRequest` object.
+
+**Errors:**
+
+| Status | Condition |
+|--------|-----------|
+| 404 | PR not found |
+| 400 | PR is already merged or closed |
 
 ### GET /api/prs/:id/screenshots
 
@@ -343,8 +367,16 @@ Update configuration.
 
 **Request body:**
 ```json
-{ "repoPath": "/path/to/repo", "worktreeBase": "/tmp/hermes-worktrees", "reviewBase": "/tmp/hermes-reviews", "screenshotBase": "/tmp/hermes-screenshots", "targetBranch": "main", "requireScreenshotsForUiChanges": true }
+{ "repoPath": "/path/to/repo", "worktreeBase": "/tmp/hermes-worktrees", "reviewBase": "/tmp/hermes-reviews", "screenshotBase": "/tmp/hermes-screenshots", "targetBranch": "main", "requireScreenshotsForUiChanges": true, "mergeMode": "local" }
 ```
+
+**`mergeMode`** options:
+
+| Value | Description | Env var |
+|-------|-------------|---------|
+| `local` (default) | Merge locally, optionally push to GitHub | `HERMES_MERGE_MODE=local` |
+| `github` | Push branch + create GitHub PR, skip local merge | `HERMES_MERGE_MODE=github` |
+| `both` | Merge locally AND create GitHub PR | `HERMES_MERGE_MODE=both` |
 
 ---
 
