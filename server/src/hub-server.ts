@@ -26,6 +26,14 @@ const HUB_PORT = parseInt(process.env.HUB_PORT || '3000', 10);
 const HERMES_DIR = join(homedir(), '.hermes');
 const PID_FILE = join(HERMES_DIR, 'hub.pid');
 
+/**
+ * Client port offset — the Vite dev server (or vite preview) runs on
+ * SERVER_PORT + CLIENT_PORT_OFFSET. This convention is shared with
+ * bin/hermes-monitor.js (handleDefault) where the client is spawned.
+ * In dev mode the dashboard is only accessible via the Vite port.
+ */
+const CLIENT_PORT_OFFSET = 1000;
+
 const registry = new Registry();
 const app = express();
 const server = createServer(app);
@@ -53,8 +61,9 @@ app.get('/api/repos', (_req, res) => {
     name: r.name,
     path: r.path,
     port: r.port,
+    clientPort: r.port + CLIENT_PORT_OFFSET,
     status: r.status,
-    url: `http://localhost:${r.port}`,
+    url: `http://localhost:${r.port + CLIENT_PORT_OFFSET}`,
   }));
   res.json(repos);
 });
@@ -67,8 +76,9 @@ app.get('/', (_req, res) => {
     : repos.map((r) => {
         const statusClass = r.status === 'running' ? 'running' : 'stopped';
         const statusDot = r.status === 'running' ? '●' : '○';
+        const clientPort = r.port + CLIENT_PORT_OFFSET;
         const link = r.status === 'running'
-          ? `<a href="http://localhost:${r.port}" class="repo-link">Open Dashboard →</a>`
+          ? `<a href="http://localhost:${clientPort}" class="repo-link">Open Dashboard →</a>`
           : '<span class="repo-offline">Not running</span>';
         return `
           <div class="repo-card ${statusClass}">
@@ -78,7 +88,7 @@ app.get('/', (_req, res) => {
             </div>
             <div class="repo-path">${escapeHtml(r.path)}</div>
             <div class="repo-footer">
-              <span class="repo-port">:${r.port}</span>
+              <span class="repo-port">:${clientPort}</span>
               ${link}
             </div>
           </div>

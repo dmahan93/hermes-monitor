@@ -524,4 +524,160 @@ describe('hub.js', () => {
       expect(isHubRunning()).toBe(false);
     });
   });
+
+  // ── Repo PID file management ──
+
+  describe('writeRepoPid / removeRepoPid / killReposByPidFiles', () => {
+    const { writeRepoPid, removeRepoPid, killReposByPidFiles, REPO_PIDS_DIR } = require('../../bin/lib/hub');
+    const { rmSync } = require('fs');
+
+    afterEach(() => {
+      // Clean up test PID files
+      try { rmSync(REPO_PIDS_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
+    });
+
+    it('writes and reads a repo PID file', () => {
+      writeRepoPid('test-repo-1', 12345);
+      const pidFile = join(REPO_PIDS_DIR, 'test-repo-1.pid');
+      expect(existsSync(pidFile)).toBe(true);
+      const content = readFileSync(pidFile, 'utf8').trim();
+      expect(content).toBe('12345');
+    });
+
+    it('removes a repo PID file', () => {
+      writeRepoPid('test-repo-2', 99999);
+      const pidFile = join(REPO_PIDS_DIR, 'test-repo-2.pid');
+      expect(existsSync(pidFile)).toBe(true);
+      removeRepoPid('test-repo-2');
+      expect(existsSync(pidFile)).toBe(false);
+    });
+
+    it('removeRepoPid does not throw for non-existent file', () => {
+      expect(() => removeRepoPid('nonexistent-id')).not.toThrow();
+    });
+
+    it('killReposByPidFiles returns 0 when no PID directory exists', () => {
+      try { rmSync(REPO_PIDS_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
+      const killed = killReposByPidFiles();
+      expect(killed).toBe(0);
+    });
+
+    it('killReposByPidFiles skips stale PIDs and cleans up files', () => {
+      // Write PID files with dead PIDs
+      writeRepoPid('dead-repo-1', 999999999);
+      writeRepoPid('dead-repo-2', 999999998);
+      // These PIDs don't exist, so kill will fail — but files should be cleaned
+      const killed = killReposByPidFiles();
+      expect(killed).toBe(0); // both PIDs are dead, so none actually killed
+      // Files should be cleaned up
+      expect(existsSync(join(REPO_PIDS_DIR, 'dead-repo-1.pid'))).toBe(false);
+      expect(existsSync(join(REPO_PIDS_DIR, 'dead-repo-2.pid'))).toBe(false);
+    });
+
+    it('killReposByPidFiles counts alive processes', () => {
+      // Spawn a long-running subprocess so we have a real alive PID to test with
+      const { spawnSync, spawn: spawnProc } = require('child_process');
+      const child = spawnProc('sleep', ['60'], { stdio: 'ignore' });
+      writeRepoPid('alive-repo', child.pid);
+      const killed = killReposByPidFiles();
+      // The child process is alive, so SIGTERM should succeed
+      expect(killed).toBe(1);
+      // Clean up — child should already be dead from SIGTERM
+      try { child.kill('SIGKILL'); } catch { /* already dead */ }
+    });
+  });
+
+  // ── stopAllRepos with wait ──
+
+  describe('stopAllRepos (with wait behavior)', () => {
+    const { stopAllRepos } = require('../../bin/lib/hub');
+    let server: http.Server;
+    let serverPort: number;
+
+    afterEach(async () => {
+      if (server) {
+        await new Promise<void>((resolve) => {
+          server.close(() => resolve());
+        });
+      }
+    });
+
+    it('returns 0 when no repos are running', async () => {
+      await new Promise<void>((resolve) => {
+        server = http.createServer((_req, res) => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify([]));
+        });
+        server.listen(0, () => {
+          serverPort = (server.address() as any).port;
+          resolve();
+        });
+      });
+
+      const stopped = await stopAllRepos(serverPort);
+      expect(stopped).toBe(0);
+    });
+
+    it('returns count of PIDs sent SIGTERM', async () => {
+      await new Promise<void>((resolve) => {
+        server = http.createServer((_req, res) => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          // Use dead PIDs so SIGTERM won't actually succeed, but the code
+          // catches the error and doesn't count them
+          res.end(JSON.stringify([
+            { id: 'r1', name: 'repo-1', port: 4001, pid: 999999999, status: 'running' },
+            { id: 'r2', name: 'repo-2', port: 4002, pid: null, status: 'stopped' },
+          ]));
+        });
+        server.listen(0, () => {
+          serverPort = (server.address() as any).port;
+          resolve();
+        });
+      });
+
+      const stopped = await stopAllRepos(serverPort);
+      // pid 999999999 is dead, so SIGTERM fails → not counted
+      expect(stopped).toBe(0);
+    });
+  });
+
+  // ── encodeURIComponent in unregisterRepo ──
+
+  describe('unregisterRepo encodes ID', () => {
+    const { unregisterRepo } = require('../../bin/lib/hub');
+    let server: http.Server;
+    let serverPort: number;
+    let lastUrl: string;
+
+    beforeEach(async () => {
+      await new Promise<void>((resolve) => {
+        server = http.createServer((req, res) => {
+          lastUrl = req.url || '';
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        });
+        server.listen(0, () => {
+          serverPort = (server.address() as any).port;
+          resolve();
+        });
+      });
+    });
+
+    afterEach(async () => {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
+    });
+
+    it('URL-encodes the repo ID to prevent path traversal', async () => {
+      await unregisterRepo('../../some/path', serverPort);
+      // The ID should be encoded, not raw in the URL
+      expect(lastUrl).toBe('/api/hub/repos/..%2F..%2Fsome%2Fpath');
+    });
+
+    it('passes through normal UUIDs unchanged', async () => {
+      await unregisterRepo('abc-123-def', serverPort);
+      expect(lastUrl).toBe('/api/hub/repos/abc-123-def');
+    });
+  });
 });

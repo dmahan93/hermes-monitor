@@ -50,6 +50,9 @@ Hub (:3000)                    Per-Repo Instances
 │   hub.lock       │          │ Port convention:             │
 │   hermes-hub.db  │          │   server = auto-assigned     │
 │   hub.log        │          │   client = server + 1000     │
+│   repo-pids/     │          │                              │
+│     <id>.pid     │          │ PID files stored as fallback │
+│                  │          │ for stop when hub unreachable│
 └──────────────────┘          └──────────────────────────────┘
 ```
 

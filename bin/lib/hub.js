@@ -20,6 +20,7 @@ const os = require('os');
 const HERMES_DIR = join(os.homedir(), '.hermes');
 const PID_FILE = join(HERMES_DIR, 'hub.pid');
 const LOCK_FILE = join(HERMES_DIR, 'hub.lock');
+const REPO_PIDS_DIR = join(HERMES_DIR, 'repo-pids');
 const HUB_PORT = 3000;
 const HUB_BASE = `http://localhost:${HUB_PORT}`;
 
@@ -116,7 +117,17 @@ function startHub({ foreground = false, port = HUB_PORT } = {}) {
         }
       } catch { /* can't read lock, remove it */ }
       try { unlinkSync(LOCK_FILE); } catch { /* ignore */ }
-      writeFileSync(LOCK_FILE, String(process.pid), { flag: 'wx' });
+      // Retry lock acquisition — another process may grab it between
+      // our unlink and this write (TOCTOU). If so, fall through to wait.
+      try {
+        writeFileSync(LOCK_FILE, String(process.pid), { flag: 'wx' });
+      } catch (retryErr) {
+        if (retryErr.code === 'EEXIST') {
+          console.error('Another hermes-monitor instance is starting the hub. Waiting...');
+          return null;
+        }
+        throw retryErr;
+      }
     } else {
       throw err;
     }
@@ -204,25 +215,45 @@ function stopHub() {
 
 /**
  * Stop all running repo instances by querying the registry and killing their PIDs.
+ * Waits up to 3 seconds for each process to exit, then sends SIGKILL.
  * @param {number} [port]
  * @returns {Promise<number>} number of repos stopped
  */
 async function stopAllRepos(port = HUB_PORT) {
   const repos = await listRepos(port);
-  let stopped = 0;
+  const pidsToWait = [];
 
   for (const repo of repos) {
     if (repo.pid && (repo.status === 'running' || repo.status === 'starting')) {
       try {
         process.kill(repo.pid, 'SIGTERM');
-        stopped++;
+        pidsToWait.push(repo.pid);
       } catch {
         // Process already gone
       }
     }
   }
 
-  return stopped;
+  // Wait for processes to exit (up to 3 seconds)
+  if (pidsToWait.length > 0) {
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+      const alive = pidsToWait.filter((pid) => {
+        try { process.kill(pid, 0); return true; } catch { return false; }
+      });
+      if (alive.length === 0) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    // Force kill any stragglers
+    for (const pid of pidsToWait) {
+      try {
+        process.kill(pid, 0); // check alive
+        process.kill(pid, 'SIGKILL');
+      } catch { /* already dead */ }
+    }
+  }
+
+  return pidsToWait.length;
 }
 
 // ────────────────────────────────────────────────────────────
@@ -304,7 +335,7 @@ async function registerRepo(repoPath, port = HUB_PORT) {
  * @returns {Promise<boolean>}
  */
 async function unregisterRepo(id, port = HUB_PORT) {
-  const { status, data } = await hubRequest('DELETE', `/api/hub/repos/${id}`, null, port);
+  const { status, data } = await hubRequest('DELETE', `/api/hub/repos/${encodeURIComponent(id)}`, null, port);
   if (status === 200) return true;
   if (status === 404) {
     console.error(`Repo not found: ${id}`);
@@ -328,7 +359,7 @@ async function unregisterRepo(id, port = HUB_PORT) {
 async function updateRepoStatus(id, status, pid, port = HUB_PORT) {
   const body = { status };
   if (pid !== undefined) body.pid = pid;
-  const { status: httpStatus, data } = await hubRequest('PATCH', `/api/hub/repos/${id}`, body, port);
+  const { status: httpStatus, data } = await hubRequest('PATCH', `/api/hub/repos/${encodeURIComponent(id)}`, body, port);
   if (httpStatus === 200) return data;
   return null;
 }
@@ -342,6 +373,57 @@ async function listRepos(port = HUB_PORT) {
   const { status, data } = await hubRequest('GET', '/api/hub/repos', null, port);
   if (status === 200) return Array.isArray(data) ? data : [];
   throw new Error(`Failed to list repos: HTTP ${status}`);
+}
+
+// ────────────────────────────────────────────────────────────
+// Repo PID file management (fallback for when hub API is unreachable)
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Write a PID file for a repo instance.
+ * Used as a fallback mechanism to kill repo processes when the hub
+ * API is unreachable (e.g. during `hermes-monitor stop` when the hub crashed).
+ * @param {string} id - repo UUID
+ * @param {number} pid - process ID
+ */
+function writeRepoPid(id, pid) {
+  mkdirSync(REPO_PIDS_DIR, { recursive: true });
+  writeFileSync(join(REPO_PIDS_DIR, `${id}.pid`), String(pid));
+}
+
+/**
+ * Remove the PID file for a repo instance.
+ * @param {string} id - repo UUID
+ */
+function removeRepoPid(id) {
+  try { unlinkSync(join(REPO_PIDS_DIR, `${id}.pid`)); } catch { /* ignore */ }
+}
+
+/**
+ * Kill all repo processes using the PID files fallback.
+ * Used when the hub API is unreachable (can't query the registry).
+ * @returns {number} number of processes killed
+ */
+function killReposByPidFiles() {
+  const { readdirSync } = require('fs');
+  let killed = 0;
+  try {
+    const files = readdirSync(REPO_PIDS_DIR);
+    for (const file of files) {
+      if (!file.endsWith('.pid')) continue;
+      try {
+        const pid = parseInt(readFileSync(join(REPO_PIDS_DIR, file), 'utf8').trim(), 10);
+        if (!isNaN(pid)) {
+          try {
+            process.kill(pid, 'SIGTERM');
+            killed++;
+          } catch { /* process already gone */ }
+        }
+        unlinkSync(join(REPO_PIDS_DIR, file));
+      } catch { /* ignore individual file errors */ }
+    }
+  } catch { /* REPO_PIDS_DIR may not exist */ }
+  return killed;
 }
 
 // ────────────────────────────────────────────────────────────
@@ -371,6 +453,7 @@ module.exports = {
   HERMES_DIR,
   PID_FILE,
   LOCK_FILE,
+  REPO_PIDS_DIR,
   HUB_PORT,
   HUB_BASE,
   getHubPid,
@@ -385,5 +468,8 @@ module.exports = {
   unregisterRepo,
   updateRepoStatus,
   listRepos,
+  writeRepoPid,
+  removeRepoPid,
+  killReposByPidFiles,
   openBrowser,
 };

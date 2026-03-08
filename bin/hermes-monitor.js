@@ -19,6 +19,9 @@ const {
   unregisterRepo,
   updateRepoStatus,
   listRepos,
+  writeRepoPid,
+  removeRepoPid,
+  killReposByPidFiles,
   openBrowser,
   HUB_PORT,
 } = require('./lib/hub');
@@ -108,7 +111,12 @@ async function handleStop() {
       console.log(`  Stopped ${stopped} repo instance(s)`);
     }
   } catch {
-    // Hub may not be reachable, but we can still kill the PID
+    // Hub API unreachable — fall back to PID files on disk
+    console.log('  Hub API unreachable, using PID file fallback...');
+    const killed = killReposByPidFiles();
+    if (killed > 0) {
+      console.log(`  Killed ${killed} repo process(es) via PID files`);
+    }
   }
 
   console.log('Stopping hub...');
@@ -141,8 +149,18 @@ async function handleHub() {
     const child = startHub({ foreground: true, port: HUB_PORT });
     if (child) {
       child.on('exit', (code) => process.exit(code || 0));
+      return; // Don't exit — foreground process keeps running
     }
-    return; // Don't exit — foreground process keeps running
+    // startHub returned null — another instance holds the startup lock.
+    // Wait for the hub to come up, then report and exit.
+    const ready = await waitForHub(HUB_PORT);
+    if (ready) {
+      console.log(`Hub is now running on :${HUB_PORT} (started by another instance).`);
+      process.exit(0);
+    } else {
+      console.error('Error: Hub failed to start. Check ~/.hermes/hub.log for details.');
+      process.exit(1);
+    }
   }
 
   console.log(`Starting hub on :${HUB_PORT}...`);
@@ -187,8 +205,8 @@ async function handleList() {
                    repo.status === 'starting' ? '\x1b[33m◐ starting\x1b[0m' :
                    repo.status === 'error' ? '\x1b[31m✗ error\x1b[0m' :
                    '\x1b[90m○ stopped\x1b[0m';
-    const portStr = repo.status === 'running' ? `  :${repo.port}` : '';
-    console.log(`  ${status}  ${repo.name}${portStr}`);
+    const clientPort = repo.status === 'running' ? `  :${repo.port + 1000}` : '';
+    console.log(`  ${status}  ${repo.name}${clientPort}`);
     console.log(`           ${repo.path}`);
     console.log(`           id: ${repo.id}`);
     console.log('');
@@ -301,9 +319,10 @@ async function handleDefault() {
       });
 
       if (serverUp) {
-        console.log(`Repo ${entry.name} is already running on :${entry.port}`);
+        const runningClientPort = entry.port + 1000;
+        console.log(`Repo ${entry.name} is already running on :${runningClientPort}`);
         if (opts.browser) {
-          openBrowser(`http://localhost:${entry.port}`);
+          openBrowser(`http://localhost:${runningClientPort}`);
         }
         process.exit(0);
       }
@@ -460,6 +479,8 @@ async function handleDefault() {
           try {
             await updateRepoStatus(entry.id, 'running', process.pid);
           } catch { /* non-fatal */ }
+          // Write PID file as fallback for `hermes-monitor stop` when hub is unreachable
+          writeRepoPid(entry.id, process.pid);
         }
         if (opts.browser) {
           openBrowser(url);
@@ -480,10 +501,14 @@ async function handleDefault() {
     shuttingDown = true;
     console.log('\nShutting down hermes-monitor...');
 
-    // Update hub status
+    // Update hub status — use 'error' if a child exited with non-zero code
+    const exitStatus = worstExitCode !== 0 ? 'error' : 'stopped';
     try {
-      await updateRepoStatus(entry.id, 'stopped', null);
+      await updateRepoStatus(entry.id, exitStatus, null);
     } catch { /* non-fatal */ }
+
+    // Clean up repo PID file
+    removeRepoPid(entry.id);
 
     for (const child of children) {
       if (!child.killed) {
