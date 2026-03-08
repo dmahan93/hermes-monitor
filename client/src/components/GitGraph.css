@@ -189,11 +189,14 @@
   overflow: visible;
 }
 
-/* First row: clip the top edge so nothing renders above the topmost commit
-   circle, even if a line coordinate is accidentally negative.  The bottom
-   extends slightly (LINE_EXT ≈ 0.13rem) to keep the overlap with row 2. */
+/* First row: clip just above the commit circle so nothing renders above it.
+   Defence-in-depth: the primary fix is in GraphSvg (straight lines use y1=cy
+   and curved-line straight segments are omitted for the first row), but this
+   clip-path provides a hard visual guarantee.  36% ≈ viewBox y 10.08 which
+   is just above the circle top edge (cy - NODE_R - stroke/2 = 10.5).
+   Bottom extends -0.5rem to preserve the LINE_EXT inter-row overlap. */
 .git-graph-svg-first {
-  clip-path: inset(0 0 -0.5rem 0);
+  clip-path: inset(36% 0 -0.5rem 0);
 }
 
 .git-graph-info {

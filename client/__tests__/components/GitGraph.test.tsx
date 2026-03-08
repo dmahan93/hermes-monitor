@@ -498,6 +498,71 @@ describe('GitGraph', () => {
     expect(gElements[0].querySelectorAll('line').length).toBe(0);
   });
 
+  it('multi-branch graph: first row has no lines above circle, later rows have full lines', () => {
+    // Simulate a real multi-branch graph where:
+    // - Row 0 (HEAD): commit on lane 0 with straight line (first parent) + branch-right (second parent on lane 1)
+    // - Row 1: commit on lane 0 with straight line + pass-through on lane 1
+    // - Row 2: commit on lane 1 (branch head) with straight line + pass-through on lane 0
+    const commits = [
+      makeCommit('aaa1234567890', 'HEAD merge', ['HEAD -> main']),
+      makeCommit('bbb1234567890', 'Parent commit', []),
+      makeCommit('ccc1234567890', 'Branch head', ['feature-branch']),
+    ];
+    const graph = [
+      makeNode('aaa1234567890', 0, [
+        { fromCol: 0, toCol: 0, type: 'straight' },
+        { fromCol: 0, toCol: 1, type: 'branch-right' },
+      ]),
+      makeNode('bbb1234567890', 0, [
+        { fromCol: 0, toCol: 0, type: 'straight' },
+        { fromCol: 1, toCol: 1, type: 'straight' },
+      ]),
+      makeNode('ccc1234567890', 1, [
+        { fromCol: 1, toCol: 1, type: 'straight' },
+        { fromCol: 0, toCol: 0, type: 'straight' },
+      ]),
+    ];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} />,
+    );
+
+    const rows = container.querySelectorAll('.git-graph-row');
+    expect(rows.length).toBe(3);
+
+    // Row 0 (first row, isFirstRow=true):
+    const row0Svg = rows[0].querySelector('svg')!;
+    expect(row0Svg.classList.contains('git-graph-svg-first')).toBe(true);
+    // Straight line should start at cy=14 (not -1.5)
+    const row0StraightLine = row0Svg.querySelector('line:not(g line)')!;
+    expect(row0StraightLine.getAttribute('y1')).toBe('14');
+    // Branch-right group should NOT have a straight segment above the circle
+    const row0Group = row0Svg.querySelector('g')!;
+    expect(row0Group.querySelectorAll('line').length).toBe(0);
+    expect(row0Group.querySelectorAll('path').length).toBe(1);
+
+    // Row 1 (NOT first row): straight lines should start at -LINE_EXT
+    const row1Svg = rows[1].querySelector('svg')!;
+    expect(row1Svg.classList.contains('git-graph-svg-first')).toBe(false);
+    const row1Lines = row1Svg.querySelectorAll('line');
+    // Two straight lines (lane 0 and lane 1 pass-through)
+    expect(row1Lines.length).toBe(2);
+    expect(row1Lines[0].getAttribute('y1')).toBe('-1.5');
+    expect(row1Lines[1].getAttribute('y1')).toBe('-1.5');
+
+    // Row 2 (NOT first row): also has full lines
+    const row2Svg = rows[2].querySelector('svg')!;
+    expect(row2Svg.classList.contains('git-graph-svg-first')).toBe(false);
+    const row2Lines = row2Svg.querySelectorAll('line');
+    expect(row2Lines.length).toBe(2);
+    expect(row2Lines[0].getAttribute('y1')).toBe('-1.5');
+    expect(row2Lines[1].getAttribute('y1')).toBe('-1.5');
+
+    // Verify both branch labels are visible
+    expect(screen.getByText('HEAD -> main')).toBeInTheDocument();
+    expect(screen.getByText('feature-branch')).toBeInTheDocument();
+  });
+
   it('renders unknown file status with fallback', () => {
     const commits = [makeCommit('abc1234567890', 'Unknown status')];
     const graph = [makeNode('abc1234567890')];
