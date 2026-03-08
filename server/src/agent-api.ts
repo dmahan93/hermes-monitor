@@ -36,6 +36,7 @@ interface AgentGuidelines {
 
 interface AgentInfoResponse {
   id: string;
+  reworkFeedback: string | null;
   title: string;
   description: string;
   branch: string | undefined;
@@ -89,6 +90,18 @@ export function createAgentApiRouter(
         }))
       : [];
 
+    // Build rework feedback: only surface when the PR verdict is changes_requested,
+    // and only use comments from the reviewer (not human comments).
+    let reworkFeedback: string | null = null;
+    if (existingPr && existingPr.verdict === 'changes_requested') {
+      const reviewerComments = existingPr.comments
+        .filter((c) => c.author === 'hermes-reviewer')
+        .sort((a, b) => b.createdAt - a.createdAt);
+      if (reviewerComments.length > 0) {
+        reworkFeedback = `REWORK REQUIRED: The reviewer requested changes.\n\n${reviewerComments[0].body}`;
+      }
+    }
+
     const baseUrl = `http://localhost:${PORT}`;
 
     const screenshotUploadUrl = `${baseUrl}/agent/${issue.id}/screenshots`;
@@ -105,6 +118,7 @@ export function createAgentApiRouter(
 
     const response: AgentInfoResponse = {
       id: issue.id,
+      reworkFeedback,
       title: issue.title,
       description: issue.description,
       branch: issue.branch ?? undefined,

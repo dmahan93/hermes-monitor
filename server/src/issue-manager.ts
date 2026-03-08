@@ -270,9 +270,10 @@ export class IssueManager {
         }
       }
 
-      const command = issue.command
+      let command = issue.command
         ? this.interpolateCommand(issue.command, issue)
         : undefined;
+
       const terminal = this.terminalManager.create({
         title: issue.title,
         command,

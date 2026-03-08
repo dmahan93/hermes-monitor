@@ -598,4 +598,5 @@ describe('IssueManager', () => {
     expect(mockPRManager.create).toHaveBeenCalledTimes(1); // still 1
     expect(mockPRManager.relaunchReview).toHaveBeenCalledWith('pr-123', undefined);
   });
+
 });
