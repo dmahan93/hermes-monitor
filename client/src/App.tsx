@@ -12,6 +12,7 @@ import { ConfigView } from './components/ConfigView';
 import { ResearchView } from './components/ResearchView';
 import { ViewSwitcher } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
+import { ErrorToast } from './components/ErrorToast';
 import { AppProvider, useApp } from './context/AppContext';
 import './App.css';
 
@@ -39,6 +40,7 @@ function AppContent() {
     handleTerminalClick, handleIssueClick, handleEditIssue, handlePlanClick,
     handlePromote, handleStartPlanning, handleStopPlanning,
     closeDetail,
+    errors, removeError,
   } = useApp();
 
   if (loading) {
@@ -248,6 +250,7 @@ function AppContent() {
           onParentClick={(issueId) => { setDetailIssueId(issueId); setDetailEditing(false); }}
         />
       )}
+      <ErrorToast errors={errors} onDismiss={removeError} />
     </div>
   );
 }

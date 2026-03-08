@@ -1,0 +1,71 @@
+/* ═══════════════════════════════════════════
+   ERROR TOAST — bottom-right stacked toasts
+   ═══════════════════════════════════════════ */
+
+.error-toast-container {
+  position: fixed;
+  bottom: 2.5rem;   /* above StatusBar */
+  right: 1rem;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.5rem;
+  max-width: 24rem;
+  pointer-events: none;
+}
+
+.error-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  background: var(--chrome-dark);
+  border: 1px solid var(--error);
+  border-left: 3px solid var(--error);
+  border-radius: 2px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  pointer-events: auto;
+  animation: error-toast-slide-in 0.2s ease-out;
+}
+
+.error-toast-message {
+  flex: 1;
+  word-break: break-word;
+}
+
+.error-toast-dismiss {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  transition: color 0.15s;
+}
+
+.error-toast-dismiss:hover {
+  color: var(--error);
+}
+
+@keyframes error-toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .error-toast {
+    animation: none;
+  }
+}

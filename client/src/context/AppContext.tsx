@@ -27,6 +27,7 @@ import { useIssues } from '../hooks/useIssues';
 import { usePRs } from '../hooks/usePRs';
 import { useAgents } from '../hooks/useAgents';
 import { useGitGraph, type GitCommit, type GraphNode, type GitFileChange } from '../hooks/useGitGraph';
+import { useErrorToast, type ErrorEntry } from '../hooks/useErrorToast';
 
 // ── Context value type ──
 
@@ -105,6 +106,11 @@ export interface AppContextValue {
   detailPR: PullRequest | undefined;
   closeDetail: () => void;
 
+  // Error toasts
+  errors: ErrorEntry[];
+  addError: (message: string) => string | null;
+  removeError: (id: string) => void;
+
   // Planning pane
   planningIssue: Issue | null;
   setPlanningIssueId: (id: string | null) => void;
@@ -168,7 +174,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // ── Hook calls ──
   const { connected, reconnectCount, send, subscribe } = useWebSocket(getWsUrl());
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals(subscribe);
-  const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning, createSubtask } = useIssues(subscribe);
+  const { errors, addError, removeError } = useErrorToast();
+  const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning, createSubtask } = useIssues(subscribe, addError);
   const { prs = [], addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe);
   const agents = useAgents();
   const gitGraph = useGitGraph();
@@ -501,6 +508,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     detailSubtasks,
     detailPR,
     closeDetail,
+
+    // Error toasts
+    errors,
+    addError,
+    removeError,
 
     // Planning
     planningIssue,

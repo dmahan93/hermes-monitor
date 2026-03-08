@@ -208,4 +208,258 @@ describe('useIssues', () => {
     expect(consoleSpy).toHaveBeenCalledWith('Failed to update issue:', expect.any(Error));
     consoleSpy.mockRestore();
   });
+
+  // --- onError integration tests ---
+
+  it('calls onError when fetchIssues fails', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+    }) as any;
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    renderHook(() => useIssues(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(onError).toHaveBeenCalledWith('Failed to fetch issues');
+    });
+
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when createIssue fails', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, status: 500 }) as any; // createIssue fails
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { result } = renderHook(() => useIssues(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.createIssue('Test');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to create issue');
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when updateIssue fails', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockIssue]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, status: 500 }) as any; // updateIssue fails
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { result } = renderHook(() => useIssues(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.updateIssue('issue-1', { title: 'Updated' });
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to update issue');
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when deleteIssue fails', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockIssue]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, status: 500 }) // DELETE fails
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockIssue]) }) as any; // refetch
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { result } = renderHook(() => useIssues(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.issues).toHaveLength(1);
+    });
+
+    await act(async () => {
+      await result.current.deleteIssue('issue-1');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to delete issue');
+    consoleSpy.mockRestore();
+  });
+
+  it('does NOT call onError when changeStatus fails (uses return value instead)', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockIssue]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'Status change failed' }) }) // changeStatus fails
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockIssue]) }) as any; // refetch
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { result } = renderHook(() => useIssues(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    let errorMsg: string | null = null;
+    await act(async () => {
+      errorMsg = await result.current.changeStatus('issue-1', 'in_progress');
+    });
+
+    // changeStatus should return the error string (for inline display by callers)
+    expect(errorMsg).toBe('Status change failed');
+    // But should NOT have called onError (to avoid double-display)
+    expect(onError).not.toHaveBeenCalledWith(expect.stringContaining('Status'));
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when startPlanning fails (network error)', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockRejectedValueOnce(new Error('Network error')) as any; // startPlanning throws
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { result } = renderHook(() => useIssues(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.startPlanning('issue-1');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to start planning');
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when startPlanning returns HTTP error', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, status: 500 }) as any; // startPlanning HTTP error
+
+    const { result } = renderHook(() => useIssues(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    let returnValue: any;
+    await act(async () => {
+      returnValue = await result.current.startPlanning('issue-1');
+    });
+
+    expect(returnValue).toBeNull();
+    expect(onError).toHaveBeenCalledWith('Failed to start planning');
+  });
+
+  it('calls onError when stopPlanning fails (network error)', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockRejectedValueOnce(new Error('Network error')) as any; // stopPlanning throws
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { result } = renderHook(() => useIssues(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.stopPlanning('issue-1');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to stop planning');
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when stopPlanning returns HTTP error', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, status: 500 }) as any; // stopPlanning HTTP error
+
+    const { result } = renderHook(() => useIssues(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    let returnValue: any;
+    await act(async () => {
+      returnValue = await result.current.stopPlanning('issue-1');
+    });
+
+    expect(returnValue).toBeNull();
+    expect(onError).toHaveBeenCalledWith('Failed to stop planning');
+  });
+
+  it('calls onError when createSubtask fails (network error)', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockIssue]) }) // initial fetch
+      .mockRejectedValueOnce(new Error('Network error')) as any; // createSubtask throws
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { result } = renderHook(() => useIssues(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.createSubtask('issue-1', 'Subtask');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to create subtask');
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when createSubtask returns HTTP error', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockIssue]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, status: 500 }) as any; // createSubtask HTTP error
+
+    const { result } = renderHook(() => useIssues(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    let returnValue: any;
+    await act(async () => {
+      returnValue = await result.current.createSubtask('issue-1', 'Subtask');
+    });
+
+    expect(returnValue).toBeNull();
+    expect(onError).toHaveBeenCalledWith('Failed to create subtask');
+  });
 });

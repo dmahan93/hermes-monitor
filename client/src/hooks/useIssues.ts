@@ -1,10 +1,15 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Issue, IssueStatus, ServerMessage } from '../types';
 import { API_BASE } from '../config';
 
-export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => () => void) {
+export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => () => void, onError?: (message: string) => void) {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Store onError in a ref to avoid triggering re-renders and infinite fetch loops
+  // when callers pass an unstable callback reference.
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   const fetchIssues = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -15,6 +20,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return;
       console.error('Failed to fetch issues:', err);
+      onErrorRef.current?.('Failed to fetch issues');
     } finally {
       setLoading(false);
     }
@@ -66,6 +72,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
       return issue;
     } catch (err) {
       console.error('Failed to create issue:', err);
+      onErrorRef.current?.('Failed to create issue');
       return null;
     }
   }, []);
@@ -80,9 +87,12 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
       if (!res.ok) throw new Error(`Failed to update issue (${res.status})`);
     } catch (err) {
       console.error('Failed to update issue:', err);
+      onErrorRef.current?.('Failed to update issue');
     }
   }, []);
 
+  // changeStatus communicates errors via its return value (callers display inline errors),
+  // so we intentionally do NOT call onErrorRef here to avoid double-displaying errors.
   const changeStatus = useCallback(async (id: string, status: IssueStatus): Promise<string | null> => {
     // Optimistic update
     setIssues((prev) =>
@@ -120,6 +130,8 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
       }
     } catch (err) {
       console.error('Failed to delete issue:', err);
+      onErrorRef.current?.('Failed to delete issue');
+      // Revert on failure — refetch
       fetchIssues();
     }
   }, [fetchIssues]);
@@ -127,12 +139,16 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
   const startPlanning = useCallback(async (id: string) => {
     try {
       const res = await fetch(`${API_BASE}/issues/${id}/plan`, { method: 'POST' });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        onErrorRef.current?.('Failed to start planning');
+        return null;
+      }
       const issue = await res.json();
       setIssues((prev) => prev.map((i) => (i.id === issue.id ? issue : i)));
       return issue;
     } catch (err) {
       console.error('Failed to start planning:', err);
+      onErrorRef.current?.('Failed to start planning');
       return null;
     }
   }, []);
@@ -140,12 +156,16 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
   const stopPlanning = useCallback(async (id: string) => {
     try {
       const res = await fetch(`${API_BASE}/issues/${id}/plan`, { method: 'DELETE' });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        onErrorRef.current?.('Failed to stop planning');
+        return null;
+      }
       const issue = await res.json();
       setIssues((prev) => prev.map((i) => (i.id === issue.id ? issue : i)));
       return issue;
     } catch (err) {
       console.error('Failed to stop planning:', err);
+      onErrorRef.current?.('Failed to stop planning');
       return null;
     }
   }, []);
@@ -157,7 +177,10 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, description, agent, command, branch }),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        onErrorRef.current?.('Failed to create subtask');
+        return null;
+      }
       const issue = await res.json();
       // Optimistically add the subtask immediately (WS event will deduplicate)
       setIssues((prev) => {
@@ -167,6 +190,7 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
       return issue;
     } catch (err) {
       console.error('Failed to create subtask:', err);
+      onErrorRef.current?.('Failed to create subtask');
       return null;
     }
   }, []);
