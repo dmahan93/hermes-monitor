@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { API_BASE } from '../config';
 
 export interface GitCommit {
@@ -160,7 +160,7 @@ export function useGitGraph() {
     setDiffSha(null);
   }, []);
 
-  return {
+  return useMemo(() => ({
     commits,
     graph,
     loading,
@@ -176,5 +176,10 @@ export function useGitGraph() {
     viewDiff,
     closeDiff,
     refetch: fetchLog,
-  };
+  }), [
+    commits, graph, loading, error,
+    selectedSha, files, filesLoading, selectCommit,
+    diffFile, diffContent, diffLoading, diffSha,
+    viewDiff, closeDiff, fetchLog,
+  ]);
 }
