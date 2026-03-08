@@ -107,6 +107,7 @@ export function useGitGraph(options?: UseGitGraphOptions) {
 
   const fetchLog = useCallback(async (background = false) => {
     const signal = newAbort(logAbortRef);
+    let aborted = false;
     try {
       if (background) {
         setRefreshing(true);
@@ -120,15 +121,17 @@ export function useGitGraph(options?: UseGitGraphOptions) {
       setGraph(data.graph);
       setError(null);
     } catch (err: any) {
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError') { aborted = true; return; }
       if (!background) {
         setError(err.message);
       }
     } finally {
-      if (background) {
-        setRefreshing(false);
-      } else {
-        setLoading(false);
+      if (!aborted) {
+        if (background) {
+          setRefreshing(false);
+        } else {
+          setLoading(false);
+        }
       }
     }
   }, []);
@@ -149,24 +152,29 @@ export function useGitGraph(options?: UseGitGraphOptions) {
     return () => clearInterval(id);
   }, [active, fetchLog]);
 
-  // WS-triggered refresh: refetch on pr:updated (merged) and issue:updated
+  // Debounced timer for WS-triggered refreshes.  A single ref ensures rapid
+  // events (e.g. bulk merge) coalesce into one fetch instead of firing many
+  // abort-restart cycles, and the timer is always cleaned up on unmount.
+  const wsRefreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // WS-triggered refresh: refetch on pr:updated (merged) and issue:updated (done)
   useEffect(() => {
     if (!subscribe) return;
 
     const unsub = subscribe((msg) => {
       if (msg.type === 'pr:updated' && msg.pr.status === 'merged') {
-        // Short delay so the git operations have time to complete
-        setTimeout(() => fetchLog(true), 500);
-      } else if (msg.type === 'issue:updated') {
-        // Status transitions may involve branch/merge operations
-        const status = msg.issue.status;
-        if (status === 'done' || status === 'in_progress') {
-          setTimeout(() => fetchLog(true), 500);
-        }
+        clearTimeout(wsRefreshTimer.current);
+        wsRefreshTimer.current = setTimeout(() => fetchLog(true), 500);
+      } else if (msg.type === 'issue:updated' && msg.issue.status === 'done') {
+        clearTimeout(wsRefreshTimer.current);
+        wsRefreshTimer.current = setTimeout(() => fetchLog(true), 500);
       }
     });
 
-    return unsub;
+    return () => {
+      unsub();
+      clearTimeout(wsRefreshTimer.current);
+    };
   }, [subscribe, fetchLog]);
 
   // Manual refresh callback (background, no full loading state)

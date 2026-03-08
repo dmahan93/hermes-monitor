@@ -557,4 +557,22 @@ describe('GitGraph', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Refresh git graph' }));
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
+
+  it('error-state refresh button has spinning class when refreshing', () => {
+    const { container } = render(
+      <GitGraph {...defaultProps} error="Failed to load" refreshing={true} />,
+    );
+
+    const refreshBtn = container.querySelector('.git-graph-refresh-spinning');
+    expect(refreshBtn).toBeInTheDocument();
+  });
+
+  it('error-state refresh button is disabled when refreshing', () => {
+    render(
+      <GitGraph {...defaultProps} error="Failed to load" refreshing={true} />,
+    );
+
+    const refreshBtn = screen.getByRole('button', { name: 'Refresh git graph' });
+    expect(refreshBtn).toBeDisabled();
+  });
 });

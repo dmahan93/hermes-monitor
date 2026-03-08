@@ -210,8 +210,9 @@ export function GitGraph({
           <span>GIT</span>
           {onRefresh && (
             <button
-              className="git-graph-refresh"
+              className={`git-graph-refresh ${refreshing ? 'git-graph-refresh-spinning' : ''}`}
               onClick={onRefresh}
+              disabled={refreshing}
               title="Refresh git graph"
               aria-label="Refresh git graph"
             >

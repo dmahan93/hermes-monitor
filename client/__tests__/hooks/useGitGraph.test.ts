@@ -693,6 +693,172 @@ describe('useGitGraph', () => {
     expect(unsubFn).toHaveBeenCalled();
   });
 
+  it('does not refetch on issue:updated with in_progress status', async () => {
+    mockFetchSuccess();
+
+    const handlers: Array<(msg: ServerMessage) => void> = [];
+    const mockSubscribe = vi.fn((handler) => {
+      handlers.push(handler);
+      return () => {
+        const idx = handlers.indexOf(handler);
+        if (idx >= 0) handlers.splice(idx, 1);
+      };
+    });
+
+    const { result } = renderHook(() =>
+      useGitGraph({ subscribe: mockSubscribe, active: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Simulate issue:updated with status 'in_progress' — no git ops happen
+    act(() => {
+      for (const h of handlers) {
+        h({
+          type: 'issue:updated',
+          issue: {
+            id: 'issue-1',
+            title: 'Test Issue',
+            description: '',
+            status: 'in_progress',
+            agent: 'test',
+            command: '',
+            terminalId: null,
+            branch: 'test-branch',
+            parentId: null,
+            createdAt: '',
+            updatedAt: '',
+          },
+        } as ServerMessage);
+      }
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    // Should NOT have refetched
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('debounces rapid WS events into a single fetch', async () => {
+    mockFetchSuccess();
+
+    const handlers: Array<(msg: ServerMessage) => void> = [];
+    const mockSubscribe = vi.fn((handler) => {
+      handlers.push(handler);
+      return () => {
+        const idx = handlers.indexOf(handler);
+        if (idx >= 0) handlers.splice(idx, 1);
+      };
+    });
+
+    const { result } = renderHook(() =>
+      useGitGraph({ subscribe: mockSubscribe, active: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    const prMsg = {
+      type: 'pr:updated',
+      pr: {
+        id: 'pr-1',
+        issueId: 'issue-1',
+        title: 'Test PR',
+        sourceBranch: 'feature',
+        targetBranch: 'main',
+        status: 'merged',
+        diff: '',
+        comments: [],
+        createdAt: '',
+        updatedAt: '',
+      },
+    } as ServerMessage;
+
+    // Fire 5 rapid WS events — should coalesce into one fetch
+    act(() => {
+      for (const h of handlers) {
+        h(prMsg);
+        h(prMsg);
+        h(prMsg);
+        h(prMsg);
+        h(prMsg);
+      }
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      // Only the initial fetch + 1 debounced fetch = 2 total
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('cleans up WS debounce timer on unmount', async () => {
+    mockFetchSuccess();
+
+    const handlers: Array<(msg: ServerMessage) => void> = [];
+    const mockSubscribe = vi.fn((handler) => {
+      handlers.push(handler);
+      return () => {
+        const idx = handlers.indexOf(handler);
+        if (idx >= 0) handlers.splice(idx, 1);
+      };
+    });
+
+    const { result, unmount } = renderHook(() =>
+      useGitGraph({ subscribe: mockSubscribe, active: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Fire a WS event to start a debounce timer
+    act(() => {
+      for (const h of handlers) {
+        h({
+          type: 'pr:updated',
+          pr: {
+            id: 'pr-1',
+            issueId: 'issue-1',
+            title: 'Test PR',
+            sourceBranch: 'feature',
+            targetBranch: 'main',
+            status: 'merged',
+            diff: '',
+            comments: [],
+            createdAt: '',
+            updatedAt: '',
+          },
+        } as ServerMessage);
+      }
+    });
+
+    // Unmount before the 500ms timer fires
+    unmount();
+
+    // Advance past the timer
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    // No extra fetch should have fired
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('background refresh error does not set error state', async () => {
     mockFetchSuccess();
 
