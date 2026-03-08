@@ -155,9 +155,20 @@ if (opts.browser) {
   const POLL_INTERVAL = 500; // check every 500ms
   const startTime = Date.now();
 
-  function checkPort(port) {
+  function checkServerReady() {
     return new Promise((resolve) => {
-      const req = http.get(`http://localhost:${port}/api/health`, (res) => {
+      const req = http.get(`http://localhost:${SERVER_PORT}/api/health`, (res) => {
+        res.resume();
+        resolve(res.statusCode >= 200 && res.statusCode < 500);
+      });
+      req.on('error', () => resolve(false));
+      req.setTimeout(2000, () => { req.destroy(); resolve(false); });
+    });
+  }
+
+  function checkClientReady() {
+    return new Promise((resolve) => {
+      const req = http.get(`http://localhost:${CLIENT_PORT}/`, (res) => {
         res.resume();
         resolve(res.statusCode >= 200 && res.statusCode < 500);
       });
@@ -172,8 +183,8 @@ if (opts.browser) {
 
     // Check both server and client ports are responding
     const [serverReady, clientReady] = await Promise.all([
-      checkPort(SERVER_PORT),
-      checkPort(CLIENT_PORT),
+      checkServerReady(),
+      checkClientReady(),
     ]);
 
     if (serverReady && clientReady) {

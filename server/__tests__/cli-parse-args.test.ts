@@ -211,6 +211,38 @@ describe('CLI parseArgs', () => {
     });
   });
 
+  // ── Port collision validation ──
+
+  describe('port collision', () => {
+    it('rejects when --port equals --server-port', () => {
+      expect(() => parseArgs(['--port', '4000'], { cwd: CWD }))
+        .toThrow(ParseError);
+      expect(() => parseArgs(['--port', '4000'], { cwd: CWD }))
+        .toThrow('--port and --server-port must be different');
+    });
+
+    it('rejects when --server-port equals default --port', () => {
+      expect(() => parseArgs(['--server-port', '3000'], { cwd: CWD }))
+        .toThrow('--port and --server-port must be different');
+    });
+
+    it('rejects when both are explicitly set to same value', () => {
+      expect(() => parseArgs(['--port', '5000', '--server-port', '5000'], { cwd: CWD }))
+        .toThrow('--port and --server-port must be different');
+    });
+
+    it('allows different ports', () => {
+      const opts = parseArgs(['--port', '5000', '--server-port', '8000'], { cwd: CWD });
+      expect(opts.port).toBe(5000);
+      expect(opts.serverPort).toBe(8000);
+    });
+
+    it('skips collision check when --help is set', () => {
+      const opts = parseArgs(['--port', '4000', '--help'], { cwd: CWD });
+      expect(opts.help).toBe(true);
+    });
+  });
+
   // ── requireArg edge cases ──
 
   describe('requireArg edge cases', () => {

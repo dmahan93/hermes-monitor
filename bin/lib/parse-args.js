@@ -79,6 +79,11 @@ function parseArgs(argv, defaults = {}) {
     }
   }
 
+  // Validate port collision (skip when just showing help)
+  if (!opts.help && opts.port === opts.serverPort) {
+    throw new ParseError('--port and --server-port must be different');
+  }
+
   return opts;
 }
 
