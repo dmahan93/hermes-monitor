@@ -44,7 +44,7 @@ describe('usePRs', () => {
 
     expect(result.current.prs).toHaveLength(1);
     expect(result.current.prs[0].id).toBe('pr-1');
-    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/prs`);
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/prs`, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it('addComment calls POST with correct URL', async () => {

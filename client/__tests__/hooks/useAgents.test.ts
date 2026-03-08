@@ -32,7 +32,7 @@ describe('useAgents', () => {
 
     expect(result.current[0].id).toBe('agent-1');
     expect(result.current[0].name).toBe('Hermes');
-    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/agents`);
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/agents`, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   // --- Error-path tests ---

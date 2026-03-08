@@ -6,13 +6,14 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
   const [prs, setPRs] = useState<PullRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchPRs = useCallback(async () => {
+  const fetchPRs = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch(`${API_BASE}/prs`);
+      const res = await fetch(`${API_BASE}/prs`, { signal });
       if (!res.ok) throw new Error(`Failed to fetch PRs (${res.status})`);
       const data: PullRequest[] = await res.json();
       setPRs(data);
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       console.error('Failed to fetch PRs:', err);
     } finally {
       setLoading(false);
@@ -20,7 +21,9 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
   }, []);
 
   useEffect(() => {
-    fetchPRs();
+    const controller = new AbortController();
+    fetchPRs(controller.signal);
+    return () => controller.abort();
   }, [fetchPRs]);
 
   // Real-time updates
