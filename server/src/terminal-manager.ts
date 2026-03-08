@@ -5,6 +5,7 @@ import type { TerminalInfo, CreateTerminalOptions } from './types.js';
 export type DataCallback = (terminalId: string, data: string) => void;
 export type ExitCallback = (terminalId: string, exitCode: number) => void;
 export type RemoveCallback = (terminalId: string) => void;
+export type CreateCallback = (terminal: TerminalInfo) => void;
 export type AwaitingInputCallback = (terminalId: string, awaitingInput: boolean) => void;
 
 const SCROLLBACK_LIMIT = 50000; // chars to buffer per terminal
@@ -83,6 +84,7 @@ export class TerminalManager {
   private onDataCallbacks: DataCallback[] = [];
   private onExitCallbacks: ExitCallback[] = [];
   private onRemoveCallbacks: RemoveCallback[] = [];
+  private onCreateCallbacks: CreateCallback[] = [];
   private onAwaitingInputCallbacks: AwaitingInputCallback[] = [];
 
   onData(cb: DataCallback): void {
@@ -95,6 +97,10 @@ export class TerminalManager {
 
   onRemove(cb: RemoveCallback): void {
     this.onRemoveCallbacks.push(cb);
+  }
+
+  onCreate(cb: CreateCallback): void {
+    this.onCreateCallbacks.push(cb);
   }
 
   onAwaitingInput(cb: AwaitingInputCallback): void {
@@ -116,6 +122,12 @@ export class TerminalManager {
   private emitRemove(terminalId: string): void {
     for (const cb of this.onRemoveCallbacks) {
       cb(terminalId);
+    }
+  }
+
+  private emitCreate(terminal: TerminalInfo): void {
+    for (const cb of this.onCreateCallbacks) {
+      cb(terminal);
     }
   }
 
@@ -186,6 +198,7 @@ export class TerminalManager {
       inputCheckTimer: null,
     };
     this.terminals.set(id, managed);
+    this.emitCreate(info);
 
     proc.onData((data: string) => {
       // Buffer scrollback for late-joining clients

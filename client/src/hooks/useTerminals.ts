@@ -74,11 +74,23 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
     }
   }, []);
 
-  // Real-time terminal removal via WebSocket
+  // Real-time terminal creation and removal via WebSocket
   useEffect(() => {
     if (!subscribe) return;
     const unsub = subscribe((msg) => {
-      if (msg.type === 'terminal:removed') {
+      if (msg.type === 'terminal:created') {
+        const terminal = msg.terminal;
+        setTerminals((prev) => {
+          if (prev.some((t) => t.id === terminal.id)) return prev;
+          return [...prev, terminal];
+        });
+        setLayout((prev) => {
+          if (prev.some((l) => l.i === terminal.id)) return prev;
+          const col = prev.length % 2;
+          const row = Math.floor(prev.length / 2);
+          return [...prev, { i: terminal.id, x: col * 6, y: row * 4, w: 6, h: 4 }];
+        });
+      } else if (msg.type === 'terminal:removed') {
         const removedId = msg.terminalId;
         setTerminals((prev) => prev.filter((t) => t.id !== removedId));
         setLayout((prev) => prev.filter((l) => l.i !== removedId));
