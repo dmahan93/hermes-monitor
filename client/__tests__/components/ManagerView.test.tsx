@@ -429,6 +429,16 @@ describe('ManagerView', () => {
       render(<ManagerView {...props} />);
       expect(screen.getByText(/RELAUNCH DEAD REVIEWERS \(1\)/)).toBeInTheDocument();
     });
+
+    it('Relaunch Dead Reviewers does not count open PRs without reviewerTerminalId', () => {
+      const props = defaultProps();
+      props.prs = [
+        makePR({ id: 'pr-1', status: 'open', reviewerTerminalId: null }),
+        makePR({ id: 'pr-2', status: 'open', reviewerTerminalId: null }),
+      ];
+      render(<ManagerView {...props} />);
+      expect(screen.getByText(/RELAUNCH DEAD REVIEWERS \(0\)/)).toBeInTheDocument();
+    });
   });
 
   // ── Terminal Preview ──
@@ -469,6 +479,85 @@ describe('ManagerView', () => {
       });
 
       expect(screen.getByText('Hello world')).toBeInTheDocument();
+    });
+  });
+
+  // ── Reconnect Behavior ──
+
+  describe('Reconnect', () => {
+    it('re-replays all terminals after WebSocket reconnect', () => {
+      const sendFn = vi.fn();
+      const props = defaultProps();
+      props.issues = [makeIssue({ status: 'in_progress', terminalId: 'term-1' })];
+      props.send = sendFn;
+
+      const { rerender } = render(<ManagerView {...props} />);
+      expect(sendFn).toHaveBeenCalledWith({ type: 'replay', terminalId: 'term-1' });
+      expect(sendFn).toHaveBeenCalledTimes(1);
+
+      // Simulate reconnect by bumping reconnectCount
+      sendFn.mockClear();
+      rerender(<ManagerView {...props} reconnectCount={1} />);
+      expect(sendFn).toHaveBeenCalledWith({ type: 'replay', terminalId: 'term-1' });
+    });
+  });
+
+  // ── Exception Handling ──
+
+  describe('Exception Handling', () => {
+    it('catches rejected promise in handleKill and shows error', async () => {
+      const props = defaultProps();
+      props.issues = [makeIssue({ id: 'issue-1', status: 'in_progress', terminalId: 'term-1' })];
+      props.onStatusChange.mockRejectedValue(new Error('Network failure'));
+      render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText('KILL'));
+      await waitFor(() => {
+        expect(screen.getByText(/Network failure/)).toBeInTheDocument();
+      });
+    });
+
+    it('catches rejected promise in handleMerge and shows error', async () => {
+      const props = defaultProps();
+      props.prs = [makePR({ id: 'pr-1', verdict: 'approved', status: 'reviewing' })];
+      props.onMerge.mockRejectedValue(new Error('Merge conflict'));
+      render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText('MERGE'));
+      await waitFor(() => {
+        expect(screen.getByText(/Merge conflict/)).toBeInTheDocument();
+      });
+    });
+
+    it('catches rejected promise in handleRestart and shows error', async () => {
+      const props = defaultProps();
+      props.issues = [makeIssue({ id: 'issue-1', status: 'in_progress', terminalId: null })];
+      props.onStatusChange.mockRejectedValue(new Error('Spawn error'));
+      render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText('RESTART'));
+      await waitFor(() => {
+        expect(screen.getByText(/Spawn error/)).toBeInTheDocument();
+      });
+    });
+
+    it('catches rejected promise in batch merge all approved', async () => {
+      const props = defaultProps();
+      props.prs = [makePR({ id: 'pr-1', verdict: 'approved', status: 'reviewing' })];
+      props.onMerge.mockRejectedValue(new Error('Batch merge failed'));
+      render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText(/MERGE ALL APPROVED/));
+      await waitFor(() => {
+        expect(screen.getByText(/Batch merge failed/)).toBeInTheDocument();
+      });
+    });
+
+    it('catches rejected promise in handleRelaunchDeadReviewers', async () => {
+      const props = defaultProps();
+      props.prs = [makePR({ id: 'pr-1', status: 'reviewing', reviewerTerminalId: null })];
+      props.onRelaunchReview.mockRejectedValue(new Error('Relaunch failed'));
+      render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText(/RELAUNCH DEAD REVIEWERS/));
+      await waitFor(() => {
+        expect(screen.getByText(/Relaunch failed/)).toBeInTheDocument();
+      });
     });
   });
 

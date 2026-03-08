@@ -75,6 +75,7 @@ export function ManagerView({
   const [now, setNow] = useState(Date.now());
   const [terminalPreviews, setTerminalPreviews] = useState<Map<string, string[]>>(new Map());
   const [merging, setMerging] = useState<Set<string>>(new Set());
+  const [batchLoading, setBatchLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const replayedRef = useRef<Set<string>>(new Set());
 
@@ -116,6 +117,11 @@ export function ManagerView({
     });
     return unsub;
   }, [subscribe, terminalIds.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear replayed set on reconnect so all terminals get re-replayed
+  useEffect(() => {
+    replayedRef.current.clear();
+  }, [reconnectCount]);
 
   // Request replay for terminals we haven't replayed yet
   useEffect(() => {
@@ -161,7 +167,7 @@ export function ManagerView({
 
   const deadReviewers = useMemo(
     () => prs.filter((p) =>
-      (p.status === 'open' || p.status === 'reviewing') && !p.reviewerTerminalId,
+      p.status === 'reviewing' && !p.reviewerTerminalId,
     ),
     [prs],
   );
@@ -170,26 +176,39 @@ export function ManagerView({
 
   const handleKill = useCallback(async (issueId: string) => {
     setActionError(null);
-    const err = await onStatusChange(issueId, 'todo');
-    if (err) setActionError(err);
+    try {
+      const err = await onStatusChange(issueId, 'todo');
+      if (err) setActionError(err);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    }
   }, [onStatusChange]);
 
   const handleRestart = useCallback(async (issueId: string) => {
     setActionError(null);
-    const err = await onStatusChange(issueId, 'in_progress');
-    if (err) setActionError(err);
+    try {
+      const err = await onStatusChange(issueId, 'in_progress');
+      if (err) setActionError(err);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    }
   }, [onStatusChange]);
 
   const handleMerge = useCallback(async (prId: string) => {
     setMerging((prev) => new Set(prev).add(prId));
     setActionError(null);
-    const result = await onMerge(prId);
-    setMerging((prev) => {
-      const next = new Set(prev);
-      next.delete(prId);
-      return next;
-    });
-    if (result.error) setActionError(result.error);
+    try {
+      const result = await onMerge(prId);
+      if (result.error) setActionError(result.error);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMerging((prev) => {
+        const next = new Set(prev);
+        next.delete(prId);
+        return next;
+      });
+    }
   }, [onMerge]);
 
   const handleSendBack = useCallback(async (prId: string) => {
@@ -197,40 +216,65 @@ export function ManagerView({
     const pr = prs.find((p) => p.id === prId);
     if (!pr) return;
     setActionError(null);
-    const err = await onStatusChange(pr.issueId, 'in_progress');
-    if (err) setActionError(err);
+    try {
+      const err = await onStatusChange(pr.issueId, 'in_progress');
+      if (err) setActionError(err);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    }
   }, [prs, onStatusChange]);
 
   const handleMergeAllApproved = useCallback(async () => {
     setActionError(null);
-    const approved = prs.filter((p) => p.verdict === 'approved' && p.status !== 'merged' && p.status !== 'closed');
-    for (const pr of approved) {
-      const result = await onMerge(pr.id);
-      if (result.error) {
-        setActionError(`Failed to merge ${pr.title}: ${result.error}`);
-        break;
+    setBatchLoading(true);
+    try {
+      const approved = prs.filter((p) => p.verdict === 'approved' && p.status !== 'merged' && p.status !== 'closed');
+      for (const pr of approved) {
+        const result = await onMerge(pr.id);
+        if (result.error) {
+          setActionError(`Failed to merge ${pr.title}: ${result.error}`);
+          break;
+        }
       }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBatchLoading(false);
     }
   }, [prs, onMerge]);
 
   const handleRestartAllCrashed = useCallback(async () => {
     setActionError(null);
-    const crashed = issues.filter((i) => i.status === 'in_progress' && !i.terminalId);
-    for (const issue of crashed) {
-      // Move to todo first then back to in_progress to re-trigger spawn
-      await onStatusChange(issue.id, 'todo');
-      const err = await onStatusChange(issue.id, 'in_progress');
-      if (err) {
-        setActionError(`Failed to restart ${issue.title}: ${err}`);
-        break;
+    setBatchLoading(true);
+    try {
+      const crashed = issues.filter((i) => i.status === 'in_progress' && !i.terminalId);
+      for (const issue of crashed) {
+        // Move to todo first then back to in_progress to re-trigger spawn
+        await onStatusChange(issue.id, 'todo');
+        const err = await onStatusChange(issue.id, 'in_progress');
+        if (err) {
+          setActionError(`Failed to restart ${issue.title}: ${err}`);
+          break;
+        }
       }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBatchLoading(false);
     }
   }, [issues, onStatusChange]);
 
   const handleRelaunchDeadReviewers = useCallback(async () => {
     setActionError(null);
-    for (const pr of deadReviewers) {
-      await onRelaunchReview(pr.id);
+    setBatchLoading(true);
+    try {
+      for (const pr of deadReviewers) {
+        await onRelaunchReview(pr.id);
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBatchLoading(false);
     }
   }, [deadReviewers, onRelaunchReview]);
 
@@ -269,7 +313,7 @@ export function ManagerView({
         <button
           className="manager-batch-btn manager-batch-merge"
           onClick={handleMergeAllApproved}
-          disabled={stats.prsAwaitingMerge === 0}
+          disabled={stats.prsAwaitingMerge === 0 || batchLoading}
           title="Merge all approved PRs"
         >
           ⎇ MERGE ALL APPROVED ({stats.prsAwaitingMerge})
@@ -277,7 +321,7 @@ export function ManagerView({
         <button
           className="manager-batch-btn manager-batch-restart"
           onClick={handleRestartAllCrashed}
-          disabled={stats.crashedAgents === 0}
+          disabled={stats.crashedAgents === 0 || batchLoading}
           title="Restart all crashed agents"
         >
           ↻ RESTART ALL CRASHED ({stats.crashedAgents})
@@ -285,7 +329,7 @@ export function ManagerView({
         <button
           className="manager-batch-btn manager-batch-relaunch"
           onClick={handleRelaunchDeadReviewers}
-          disabled={deadReviewers.length === 0}
+          disabled={deadReviewers.length === 0 || batchLoading}
           title="Relaunch all dead reviewer terminals"
         >
           ⚗ RELAUNCH DEAD REVIEWERS ({deadReviewers.length})
