@@ -139,10 +139,10 @@ function AppContent() {
 
           {/* Kanban view: board + optional split terminal */}
           <div className={`view-panel ${view === 'kanban' ? 'view-active' : 'view-hidden'}`}>
-            {showPlanning ? (
+            {showPlanning && planningIssue ? (
               <PlanningPane
-                key={planningIssue!.id}
-                issue={planningIssue!}
+                key={planningIssue.id}
+                issue={planningIssue}
                 agents={agents}
                 send={send}
                 subscribe={subscribe}

@@ -139,6 +139,12 @@ export interface AppContextValue {
   handleStopPlanning: (issueId: string) => Promise<void>;
 }
 
+// NOTE: This is a single monolithic context. Currently only AppContent consumes
+// it, so re-renders are scoped. If child components start using useApp() directly,
+// every state change (awaitingInputIds, git graph updates, WS reconnects) will
+// trigger re-renders of ALL consumers. When that happens, consider splitting into
+// focused contexts (e.g., TerminalContext, IssueContext) or using selector patterns
+// (use-context-selector, zustand) to avoid over-rendering.
 const AppContext = createContext<AppContextValue | null>(null);
 
 // ── Hook to consume the context ──
