@@ -90,12 +90,16 @@ export function createAgentApiRouter(
         }))
       : [];
 
-    // Build rework feedback: if there are previous reviews, extract the latest
-    // reviewer comment and present it prominently so agents see it first.
+    // Build rework feedback: only surface when the PR verdict is changes_requested,
+    // and only use comments from the reviewer (not human comments).
     let reworkFeedback: string | null = null;
-    if (previousReviews.length > 0) {
-      const latestReview = previousReviews[previousReviews.length - 1];
-      reworkFeedback = `REWORK REQUIRED: The reviewer requested changes.\n\n${latestReview.body}`;
+    if (existingPr && existingPr.verdict === 'changes_requested') {
+      const reviewerComments = existingPr.comments
+        .filter((c) => c.author === 'hermes-reviewer')
+        .sort((a, b) => b.createdAt - a.createdAt);
+      if (reviewerComments.length > 0) {
+        reworkFeedback = `REWORK REQUIRED: The reviewer requested changes.\n\n${reviewerComments[0].body}`;
+      }
     }
 
     const baseUrl = `http://localhost:${PORT}`;

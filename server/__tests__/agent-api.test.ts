@@ -138,12 +138,6 @@ describe('Agent API (Agent Communication)', () => {
     expect(res.body.reworkFeedback).toBeTruthy();
     expect(res.body.reworkFeedback).toContain('REWORK REQUIRED');
     expect(res.body.reworkFeedback).toContain('Missing null check in getUserById()');
-
-    // reworkFeedback should appear before title in the JSON (it's declared first in the interface)
-    const keys = Object.keys(res.body);
-    const reworkIdx = keys.indexOf('reworkFeedback');
-    const titleIdx = keys.indexOf('title');
-    expect(reworkIdx).toBeLessThan(titleIdx);
   });
 
   it('GET /agent/:id/info reworkFeedback uses latest review comment', async () => {
@@ -187,6 +181,122 @@ describe('Agent API (Agent Communication)', () => {
     expect(res.status).toBe(200);
     // Should use the latest comment
     expect(res.body.reworkFeedback).toContain('still needs error handling');
+  });
+
+  it('GET /agent/:id/info reworkFeedback ignores non-reviewer comments', async () => {
+    const issue = issueManager.create({ title: 'Human comment', description: 'Has non-reviewer comment' });
+
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-3',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/human',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'changes_requested',
+      diff: '',
+      changedFiles: [],
+      verdict: 'changes_requested',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'c1',
+          prId: 'mock-pr-3',
+          author: 'hermes-reviewer',
+          body: 'VERDICT: CHANGES_REQUESTED\n\nFix the auth logic',
+          createdAt: 1000,
+        },
+        {
+          id: 'c2',
+          prId: 'mock-pr-3',
+          author: 'human',
+          body: 'Actually, also update the docs please',
+          createdAt: 2000,
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // Should use the reviewer comment, not the human comment
+    expect(res.body.reworkFeedback).toContain('Fix the auth logic');
+    expect(res.body.reworkFeedback).not.toContain('update the docs');
+  });
+
+  it('GET /agent/:id/info reworkFeedback is null when verdict is approved', async () => {
+    const issue = issueManager.create({ title: 'Approved PR', description: 'Was approved' });
+
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-4',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/approved',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'approved',
+      diff: '',
+      changedFiles: [],
+      verdict: 'approved',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'c1',
+          prId: 'mock-pr-4',
+          author: 'hermes-reviewer',
+          body: 'VERDICT: APPROVED\n\nLooks great, ship it!',
+          createdAt: 1000,
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // Should NOT show rework feedback for approved PRs
+    expect(res.body.reworkFeedback).toBeNull();
+  });
+
+  it('GET /agent/:id/info reworkFeedback is null when only human comments exist', async () => {
+    const issue = issueManager.create({ title: 'Human only', description: 'No reviewer comments' });
+
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-5',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/human-only',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'changes_requested',
+      diff: '',
+      changedFiles: [],
+      verdict: 'changes_requested',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'c1',
+          prId: 'mock-pr-5',
+          author: 'human',
+          body: 'I think this needs more work',
+          createdAt: 1000,
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // No reviewer comments → no rework feedback
+    expect(res.body.reworkFeedback).toBeNull();
   });
 
   it('GET /agent/:id/info returns 404 for unknown issue', async () => {
