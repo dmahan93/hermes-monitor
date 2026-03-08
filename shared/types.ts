@@ -27,7 +27,7 @@ export interface Issue {
   terminalId: string | null;
   branch: string | null;
   parentId: string | null;  // if set, this issue is a subtask of the parent
-  reviewerModel?: string | null;  // which model reviews this ticket (null = agent default)
+  reviewerModel: string | null;  // which model reviews this ticket (null = agent default)
   submitterNotes?: string;  // transient: notes from agent when submitting for review
   progressMessage?: string | null;   // transient: agent progress status (not persisted)
   progressPercent?: number | null;   // transient: agent progress 0-100 (not persisted)

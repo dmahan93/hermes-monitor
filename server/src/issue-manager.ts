@@ -211,7 +211,7 @@ export class IssueManager {
     if (options.branch !== undefined) issue.branch = options.branch;
     if (options.submitterNotes !== undefined) issue.submitterNotes = options.submitterNotes;
     if (options.screenshotBypassReason !== undefined) issue.screenshotBypassReason = options.screenshotBypassReason;
-    if (options.reviewerModel !== undefined) issue.reviewerModel = options.reviewerModel;
+    if (options.reviewerModel !== undefined) issue.reviewerModel = options.reviewerModel || null;
     issue.updatedAt = Date.now();
 
     this.persist(issue);

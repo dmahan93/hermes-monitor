@@ -131,6 +131,7 @@ export function NewIssueModal({ agents, agentsLoading, agentsError, onSubmit, on
               className="modal-select"
               value={reviewerModel}
               onChange={(e) => setReviewerModel(e.target.value)}
+              aria-label="Reviewer model"
             >
               <option value="">Same as agent (default)</option>
               {models.map((m) => (

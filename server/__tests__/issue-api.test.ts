@@ -415,4 +415,57 @@ describe('Issue API — Diagnostics', () => {
     expect(first).toHaveProperty('name');
     expect(first).toHaveProperty('provider');
   });
+
+  // ── Reviewer Model Validation ──
+
+  it('POST /api/issues rejects invalid reviewerModel', async () => {
+    const res = await request(server, 'POST', '/api/issues', {
+      title: 'Bad model',
+      reviewerModel: 'hacker/evil-model; rm -rf /',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('reviewerModel must be one of');
+  });
+
+  it('POST /api/issues rejects non-string reviewerModel', async () => {
+    const res = await request(server, 'POST', '/api/issues', {
+      title: 'Bad type',
+      reviewerModel: 42,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('reviewerModel must be a string');
+  });
+
+  it('PATCH /api/issues/:id rejects invalid reviewerModel', async () => {
+    const created = await request(server, 'POST', '/api/issues', { title: 'Validate patch' });
+    const res = await request(server, 'PATCH', `/api/issues/${created.body.id}`, {
+      reviewerModel: 'not-a-real-model',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('reviewerModel must be one of');
+  });
+
+  it('PATCH /api/issues/:id accepts null reviewerModel (clear)', async () => {
+    const created = await request(server, 'POST', '/api/issues', {
+      title: 'Clear test',
+      reviewerModel: 'openai/gpt-4.1',
+    });
+    const res = await request(server, 'PATCH', `/api/issues/${created.body.id}`, {
+      reviewerModel: null,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.reviewerModel).toBeNull();
+  });
+
+  it('PATCH /api/issues/:id accepts empty string reviewerModel (clears to null)', async () => {
+    const created = await request(server, 'POST', '/api/issues', {
+      title: 'Empty string clear',
+      reviewerModel: 'openai/gpt-4.1',
+    });
+    const res = await request(server, 'PATCH', `/api/issues/${created.body.id}`, {
+      reviewerModel: '',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.reviewerModel).toBeNull();
+  });
 });

@@ -254,11 +254,20 @@ export class PRManager {
     // If the issue has a specific reviewer model, add --model flag to the hermes command
     const issue = this.issueManager?.get(pr.issueId);
     if (issue?.reviewerModel) {
+      // Shell-escape the model value (validated against allowlist in issue-api, but defense-in-depth)
+      const escapedModel = issue.reviewerModel.replace(/'/g, "'\\''");
+      const originalCommand = reviewCommand;
       // Insert --model flag after 'hermes chat'
       reviewCommand = reviewCommand.replace(
         /^hermes chat\b/,
-        `hermes chat --model ${issue.reviewerModel}`,
+        `hermes chat --model '${escapedModel}'`,
       );
+      if (reviewCommand === originalCommand) {
+        console.warn(
+          `[pr-manager] Failed to insert --model flag into review command for PR "${pr.title}" — ` +
+          `command does not start with "hermes chat". Model "${issue.reviewerModel}" will not be used.`,
+        );
+      }
     }
 
     const terminal = this.terminalManager.create({

@@ -23,6 +23,8 @@ const makeIssue = (overrides: Partial<Issue> = {}): Issue => ({
   command: '',
   terminalId: null,
   branch: null,
+  parentId: null,
+  reviewerModel: null,
   createdAt: Date.now(),
   updatedAt: Date.now(),
   ...overrides,

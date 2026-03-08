@@ -55,8 +55,6 @@ export function IssueDetail({
   const status = STATUS_LABELS[issue.status] || STATUS_LABELS.todo;
   const { models } = useModels();
 
-  const currentModel = models.find((m) => m.id === issue.reviewerModel);
-
   const handleAddSubtask = async () => {
     if (!subtaskTitle.trim() || !onCreateSubtask) return;
     setSubtaskError(null);

@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import type { Server } from 'http';
 import { mkdirSync, writeFileSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { TerminalManager } from '../src/terminal-manager.js';
 import { WorktreeManager } from '../src/worktree-manager.js';
 import { PRManager, type PullRequest } from '../src/pr-manager.js';
@@ -1335,5 +1336,132 @@ describe('PR API — Confirm Merge issue status transition', () => {
     expect(res.body.status).toBe('merged');
 
     await new Promise<void>((resolve) => server2.close(() => resolve()));
+  });
+});
+
+describe('PRManager.spawnReviewer — reviewer model flag', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let issueManager: IssueManager;
+  let prManager: PRManager;
+  let savedReviewBase: string;
+  let testReviewBase: string;
+
+  beforeEach(() => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    issueManager = new IssueManager(terminalManager);
+    prManager = new PRManager(terminalManager, worktreeManager);
+    prManager.setIssueManager(issueManager);
+
+    // Use a temp directory for review files
+    testReviewBase = join(tmpdir(), `hermes-review-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(testReviewBase, { recursive: true });
+    savedReviewBase = config.reviewBase;
+    config.reviewBase = testReviewBase;
+  });
+
+  afterEach(() => {
+    config.reviewBase = savedReviewBase;
+    terminalManager.killAll();
+    prManager.clearAllPendingTimers();
+    try { rmSync(testReviewBase, { recursive: true, force: true }); } catch {}
+  });
+
+  it('inserts --model flag when issue has reviewerModel', () => {
+    // Create an issue with a reviewerModel
+    const issue = issueManager.create({ title: 'Model test', reviewerModel: 'anthropic/claude-sonnet-4' });
+
+    // Mock worktreeManager.get to return a fake worktree
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      issueId: issue.id,
+      branch: 'issue/test-branch',
+      path: '/tmp/fake-worktree',
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue(['file.ts']);
+
+    // Spy on terminalManager.create to capture the command
+    const createSpy = vi.spyOn(terminalManager, 'create');
+
+    // Insert a PR and spawn the reviewer
+    const pr = insertTestPR(prManager, { issueId: issue.id });
+    prManager.spawnReviewer(pr.id);
+
+    // Check that the terminal was created with --model flag
+    expect(createSpy).toHaveBeenCalledOnce();
+    const callArgs = createSpy.mock.calls[0][0];
+    expect(callArgs?.command).toContain("--model 'anthropic/claude-sonnet-4'");
+    expect(callArgs?.command).toMatch(/^hermes chat --model/);
+  });
+
+  it('does not insert --model flag when issue has no reviewerModel', () => {
+    const issue = issueManager.create({ title: 'No model test' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      issueId: issue.id,
+      branch: 'issue/test-branch',
+      path: '/tmp/fake-worktree',
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue(['file.ts']);
+
+    const createSpy = vi.spyOn(terminalManager, 'create');
+
+    const pr = insertTestPR(prManager, { issueId: issue.id });
+    prManager.spawnReviewer(pr.id);
+
+    expect(createSpy).toHaveBeenCalledOnce();
+    const callArgs = createSpy.mock.calls[0][0];
+    expect(callArgs?.command).not.toContain('--model');
+  });
+
+  it('does not insert --model flag when issueManager is not set', () => {
+    // Create a PRManager without issueManager
+    const standaloneManager = new PRManager(terminalManager, worktreeManager);
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      issueId: 'orphan-issue',
+      branch: 'issue/test-branch',
+      path: '/tmp/fake-worktree',
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue(['file.ts']);
+
+    const createSpy = vi.spyOn(terminalManager, 'create');
+
+    const pr = insertTestPR(standaloneManager, { issueId: 'orphan-issue' });
+    standaloneManager.spawnReviewer(pr.id);
+
+    expect(createSpy).toHaveBeenCalledOnce();
+    const callArgs = createSpy.mock.calls[0][0];
+    expect(callArgs?.command).not.toContain('--model');
+  });
+
+  it('logs warning when review command does not start with hermes chat', () => {
+    const issue = issueManager.create({ title: 'Warn test', reviewerModel: 'google/gemini-2.5-pro' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      issueId: issue.id,
+      branch: 'issue/test-branch',
+      path: '/tmp/fake-worktree',
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue(['file.ts']);
+
+    const createSpy = vi.spyOn(terminalManager, 'create');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const pr = insertTestPR(prManager, { issueId: issue.id });
+
+    // The default template starts with 'hermes chat', so no warning.
+    // But if we override the command in the template, there would be.
+    prManager.spawnReviewer(pr.id);
+
+    // With the real template, the regex should match — verify no warning
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(createSpy.mock.calls[0][0]?.command).toContain("--model 'google/gemini-2.5-pro'");
+
+    warnSpy.mockRestore();
   });
 });

@@ -310,6 +310,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       terminalId: pr.reviewerTerminalId,
       branch: pr.sourceBranch,
       parentId: null,
+      reviewerModel: null,
       createdAt: pr.createdAt,
       updatedAt: pr.updatedAt,
     };

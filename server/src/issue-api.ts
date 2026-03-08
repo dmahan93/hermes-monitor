@@ -30,8 +30,8 @@ const agentPresetsWithStatus: AgentPreset[] = AGENT_PRESETS.map((p) => {
   return { ...p, installed: checkInstalled(bin) };
 });
 
-/** Static list of known reviewer models. */
-const AVAILABLE_MODELS: ModelInfo[] = [
+/** Static list of known reviewer models. Exported for validation + tests. */
+export const AVAILABLE_MODELS: ModelInfo[] = [
   { id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet', provider: 'anthropic' },
   { id: 'anthropic/claude-opus-4', name: 'Claude Opus', provider: 'anthropic' },
   { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google' },
@@ -42,6 +42,23 @@ const AVAILABLE_MODELS: ModelInfo[] = [
   { id: 'deepseek/deepseek-r1', name: 'DeepSeek R1', provider: 'deepseek' },
   { id: 'qwen/qwen-3-235b', name: 'Qwen 3 235B', provider: 'qwen' },
 ];
+
+/** Set of valid reviewer model IDs for fast lookup. */
+const VALID_MODEL_IDS = new Set(AVAILABLE_MODELS.map((m) => m.id));
+
+/**
+ * Validate a reviewerModel value from a request body.
+ * Returns null if valid, or an error message string if invalid.
+ */
+function validateReviewerModel(reviewerModel: unknown): string | null {
+  if (reviewerModel === undefined || reviewerModel === null || reviewerModel === '') return null;
+  if (typeof reviewerModel !== 'string') return 'reviewerModel must be a string';
+  if (reviewerModel.length > 100) return 'reviewerModel exceeds maximum length (100)';
+  if (!VALID_MODEL_IDS.has(reviewerModel)) {
+    return `reviewerModel must be one of: ${AVAILABLE_MODELS.map((m) => m.id).join(', ')}`;
+  }
+  return null;
+}
 
 export function createIssueApiRouter(manager: IssueManager): Router {
   const router = Router();
@@ -79,6 +96,11 @@ export function createIssueApiRouter(manager: IssueManager): Router {
       res.status(400).json({ error: 'title is required' });
       return;
     }
+    const modelError = validateReviewerModel(reviewerModel);
+    if (modelError) {
+      res.status(400).json({ error: modelError });
+      return;
+    }
     try {
       const issue = manager.create({ title, description, agent, command, branch, parentId, reviewerModel });
       res.status(201).json(issue);
@@ -90,6 +112,11 @@ export function createIssueApiRouter(manager: IssueManager): Router {
   // Update issue fields
   router.patch('/issues/:id', (req, res) => {
     const { title, description, command, branch, reviewerModel } = req.body || {};
+    const modelError = validateReviewerModel(reviewerModel);
+    if (modelError) {
+      res.status(400).json({ error: modelError });
+      return;
+    }
     const issue = manager.update(req.params.id, { title, description, command, branch, reviewerModel });
     if (!issue) {
       res.status(404).json({ error: 'Issue not found' });
@@ -167,6 +194,11 @@ export function createIssueApiRouter(manager: IssueManager): Router {
     const { title, description, agent, command, branch, reviewerModel } = req.body || {};
     if (!title || typeof title !== 'string') {
       res.status(400).json({ error: 'title is required' });
+      return;
+    }
+    const modelError = validateReviewerModel(reviewerModel);
+    if (modelError) {
+      res.status(400).json({ error: modelError });
       return;
     }
     try {
