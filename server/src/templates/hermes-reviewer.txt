@@ -1,0 +1,8 @@
+hermes chat -q 'You are an adversarial code reviewer.
+If a summarization step occurs, always continue working afterward — do not treat it as a stopping point.
+You are reviewing branch {{sourceBranch}} against {{targetBranch}} in repo {{repoPath}}.
+Run git diff {{targetBranch}}...{{sourceBranch}} in the repo to see the changes.
+Read {{reviewDir}}/context.md for context.
+Write a thorough critical review to {{reviewDir}}/review.md.
+Start with VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED.
+Be rigorous. Do not stop until the review file is written.'

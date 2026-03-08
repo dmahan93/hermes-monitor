@@ -7,6 +7,7 @@ import type { WorktreeManager } from './worktree-manager.js';
 import type { Store } from './store.js';
 import { config } from './config.js';
 import { buildScreenshotSection } from './screenshot-utils.js';
+import { loadTemplate, renderTemplate } from './agents.js';
 
 // Re-export shared types so existing server imports continue to work.
 export type { PRStatus, Verdict, PRComment, Screenshot, PullRequest } from '@hermes-monitor/shared/types';
@@ -216,7 +217,12 @@ export class PRManager {
     writeFileSync(join(reviewDir, 'context.md'), contextSections.join('\n'));
 
     // Spawn reviewer — give it the repo, branch info, and let it git diff itself
-    const reviewCommand = `hermes chat -q 'You are an adversarial code reviewer. If a summarization step occurs, always continue working afterward — do not treat it as a stopping point. You are reviewing branch ${pr.sourceBranch} against ${pr.targetBranch} in repo ${pr.repoPath}. Run git diff ${pr.targetBranch}...${pr.sourceBranch} in the repo to see the changes. Read ${reviewDir}/context.md for context. Write a thorough critical review to ${reviewDir}/review.md. Start with VERDICT: APPROVED or VERDICT: CHANGES_REQUESTED. Be rigorous. Do not stop until the review file is written.'`;
+    const reviewCommand = renderTemplate(loadTemplate('hermes-reviewer.txt'), {
+      sourceBranch: pr.sourceBranch,
+      targetBranch: pr.targetBranch,
+      repoPath: pr.repoPath,
+      reviewDir,
+    });
 
     const terminal = this.terminalManager.create({
       title: `Review: ${pr.title}`,
