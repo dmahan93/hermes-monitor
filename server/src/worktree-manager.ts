@@ -230,10 +230,17 @@ export class WorktreeManager {
       }
 
       for (const entry of entries) {
+        const worktreePath = join(config.worktreeBase, entry);
+
+        // Only prune directories — skip stray files (README, .gitkeep, etc.)
+        try {
+          if (!lstatSync(worktreePath).isDirectory()) continue;
+        } catch {
+          continue;
+        }
+
         // Skip if this worktree belongs to an active issue
         if (activeIssueIds.has(entry)) continue;
-
-        const worktreePath = join(config.worktreeBase, entry);
 
         // Try git worktree remove first (cleanest), fall back to rm
         try {
@@ -276,17 +283,28 @@ export class WorktreeManager {
 
     for (const branch of branches) {
       // Extract the short ID from the branch name: issue/<shortId>-<slug>
+      // NOTE: 8-char hex prefix matching has ~1 in 4 billion collision chance.
+      // Two issues could theoretically share a short ID, causing a stale branch
+      // to be incorrectly preserved. This is acceptable — the alternative
+      // (persisting full branch-to-issue mappings) adds significant complexity.
       const match = branch.match(/^issue\/([a-f0-9]{8})-/);
       if (!match) continue;
 
       const shortId = match[1];
       if (activeShortIds.has(shortId)) continue;
 
-      // No active issue matches this branch — delete it
+      // No active issue matches this branch — try safe delete first,
+      // fall back to force delete with a warning for unmerged branches
       try {
-        git(['branch', '-D', branch], config.repoPath);
+        git(['branch', '-d', branch], config.repoPath);
         result.prunedBranches.push(branch);
-      } catch {}
+      } catch {
+        try {
+          console.warn(`[prune] Force-deleting unmerged branch: ${branch}`);
+          git(['branch', '-D', branch], config.repoPath);
+          result.prunedBranches.push(branch);
+        } catch {}
+      }
     }
 
     return result;

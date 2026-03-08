@@ -1,4 +1,4 @@
-import express, { json, static as serveStatic } from 'express';
+import express, { static as serveStatic } from 'express';
 import { createServer } from 'http';
 import { mkdirSync } from 'fs';
 import { TerminalManager } from './terminal-manager.js';
@@ -70,24 +70,34 @@ function runWorktreePrune(): { removedWorktrees: number; prunedBranches: number 
 }
 
 if (isGitRepo(config.repoPath)) {
-  const pruned = runWorktreePrune();
-  if (pruned.removedWorktrees > 0 || pruned.prunedBranches > 0) {
-    console.log(
-      `Pruned ${pruned.removedWorktrees} stale worktree(s), ${pruned.prunedBranches} orphaned branch(es)`
-    );
+  try {
+    const pruned = runWorktreePrune();
+    if (pruned.removedWorktrees > 0 || pruned.prunedBranches > 0) {
+      console.log(
+        `Pruned ${pruned.removedWorktrees} stale worktree(s), ${pruned.prunedBranches} orphaned branch(es)`
+      );
+    }
+  } catch (err) {
+    console.error('Startup worktree prune failed:', err);
   }
 }
 
 // Periodic cleanup every 4 hours
 const PRUNE_INTERVAL_MS = 4 * 60 * 60 * 1000;
 const pruneInterval = setInterval(() => {
-  const pruned = runWorktreePrune();
-  if (pruned.removedWorktrees > 0 || pruned.prunedBranches > 0) {
-    console.log(
-      `[auto-prune] Cleaned ${pruned.removedWorktrees} worktree(s), ${pruned.prunedBranches} branch(es)`
-    );
+  try {
+    const pruned = runWorktreePrune();
+    if (pruned.removedWorktrees > 0 || pruned.prunedBranches > 0) {
+      console.log(
+        `[auto-prune] Cleaned ${pruned.removedWorktrees} worktree(s), ${pruned.prunedBranches} branch(es)`
+      );
+    }
+  } catch (err) {
+    console.error('[auto-prune] Periodic worktree prune failed:', err);
   }
 }, PRUNE_INTERVAL_MS);
+// Don't let the timer prevent natural process exit during graceful shutdown
+pruneInterval.unref();
 
 const issueCount = issueManager.list().length;
 const prCount = prManager.list().length;
@@ -107,7 +117,7 @@ app.use('/api', createGitApiRouter());
 app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, worktreeManager));
 
 // Manual worktree prune endpoint
-app.post('/api/worktrees/prune', json(), (_req, res) => {
+app.post('/api/worktrees/prune', (_req, res) => {
   if (!isGitRepo(config.repoPath)) {
     res.status(400).json({ error: 'Not a git repo — worktrees disabled' });
     return;
