@@ -48,6 +48,14 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
         setIssues((prev) =>
           prev.map((i) => (i.id === msg.issue.id ? msg.issue : i))
         );
+      } else if (msg.type === 'issue:progress') {
+        setIssues((prev) =>
+          prev.map((i) =>
+            i.id === msg.issueId
+              ? { ...i, progressMessage: msg.message, progressPercent: msg.percent, progressUpdatedAt: Date.now() }
+              : i
+          )
+        );
       } else if (msg.type === 'issue:deleted') {
         setIssues((prev) => prev.filter((i) => i.id !== msg.issueId));
       }

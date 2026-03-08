@@ -301,6 +301,60 @@ export function createAgentApiRouter(
     res.json({ screenshots });
   });
 
+  // Agent reports progress during execution (transient — not persisted)
+  router.post('/:id/progress', (req, res) => {
+    const issue = issueManager.get(req.params.id);
+    if (!issue) {
+      res.status(404).json({ error: 'Issue not found' });
+      return;
+    }
+
+    if (issue.status !== 'in_progress') {
+      res.status(400).json({ error: `Issue is ${issue.status}, not in_progress` });
+      return;
+    }
+
+    const { message, percent } = req.body || {};
+
+    // Require at least one field — reject empty body {}
+    if (message === undefined && percent === undefined) {
+      res.status(400).json({ error: 'At least one of message or percent is required' });
+      return;
+    }
+
+    // Validate types
+    if (message !== undefined && typeof message !== 'string') {
+      res.status(400).json({ error: 'message must be a string' });
+      return;
+    }
+    if (percent !== undefined && (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0 || percent > 100)) {
+      res.status(400).json({ error: 'percent must be a number between 0 and 100' });
+      return;
+    }
+
+    // Truncate long messages to prevent broadcast bloat
+    const truncatedMessage = (message !== undefined && message.length > 200)
+      ? message.slice(0, 200)
+      : message;
+
+    const updated = issueManager.updateProgress(
+      issue.id,
+      truncatedMessage !== undefined ? truncatedMessage : undefined,
+      percent !== undefined ? percent : undefined,
+    );
+
+    if (!updated) {
+      res.status(500).json({ error: 'Failed to update progress' });
+      return;
+    }
+
+    res.json({
+      ok: true,
+      message: updated.progressMessage,
+      percent: updated.progressPercent,
+    });
+  });
+
   // Agent calls this when done — kills terminal, moves issue to review
   // Accepts optional { details: "..." } in the request body for submitter notes
   router.post('/:id/review', (req, res) => {

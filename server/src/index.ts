@@ -154,11 +154,18 @@ const wss = setupWebSocket(server, terminalManager);
 
 // Broadcast issue events
 issueManager.onEvent((event, issue) => {
-  broadcastToAll(wss,
-    event === 'issue:deleted'
-      ? { type: 'issue:deleted', issueId: issue.id }
-      : { type: event, issue }
-  );
+  if (event === 'issue:deleted') {
+    broadcastToAll(wss, { type: 'issue:deleted', issueId: issue.id });
+  } else if (event === 'issue:progress') {
+    broadcastToAll(wss, {
+      type: 'issue:progress',
+      issueId: issue.id,
+      message: issue.progressMessage ?? null,
+      percent: issue.progressPercent ?? null,
+    });
+  } else {
+    broadcastToAll(wss, { type: event, issue });
+  }
 });
 
 // Broadcast PR events — enrich with screenshot data so clients get consistent data
