@@ -11,7 +11,7 @@ const DB_PATH = process.env.HERMES_DB_PATH || join(process.cwd(), '..', 'hermes-
  *
  * **Key responsibilities:**
  * - Provides typed CRUD methods for all persistent entities (issues, PRs,
- *   PR comments, config key-value pairs, screenshots).
+ *   PR comments, and config key-value pairs).
  * - Runs schema migrations on construction — creates tables if missing and
  *   adds columns for newer schema versions (e.g., `submitterNotes`, `parentId`).
  * - Resets stale terminal state on startup: moves `in_progress` issues back

@@ -39,7 +39,7 @@ function git(args: string[], cwd?: string): string {
  * git worktrees on disk are the source of truth and survive server restarts;
  * the map is only used for fast lookups during a session.
  *
- * **Key lifecycle events:**
+ * **Key methods:**
  * - `create(issueId, title)` — branch created, worktree checked out, deps symlinked.
  * - `remove(issueId)` — worktree pruned, branch optionally deleted.
  */
