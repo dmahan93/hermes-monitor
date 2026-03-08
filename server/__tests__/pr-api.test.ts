@@ -621,3 +621,155 @@ describe('PR API — Enriched Screenshot Data', () => {
     expect(res.body.screenshotCount).toBe(1);
   });
 });
+
+describe('PRManager.handleReviewerExit — auto-relaunch', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+
+  /** Helper: wait for a condition to become true */
+  const waitFor = async (pred: () => boolean, ms = 10000) => {
+    const start = Date.now();
+    while (!pred() && Date.now() - start < ms) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    if (!pred()) throw new Error('Timed out waiting for condition');
+  };
+
+  beforeEach(() => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    prManager.setRelaunchDelay(100); // 100ms for fast tests
+  });
+
+  afterEach(() => {
+    prManager.clearAllPendingTimers();
+    terminalManager.killAll();
+  });
+
+  it('auto-relaunch: relaunches reviewer when it dies without producing a review', async () => {
+    // Create a terminal that exits immediately — no review.md will be written
+    const term = terminalManager.create({ command: '/bin/true' });
+    const pr = insertTestPR(prManager, {
+      id: 'relaunch-pr-1',
+      status: 'reviewing',
+      reviewerTerminalId: term.id,
+    });
+
+    const originalTermId = term.id;
+
+    // Wait for auto-relaunch to fire — PR should get a new terminal ID
+    await waitFor(() => {
+      const current = prManager.get(pr.id);
+      return !!current && current.reviewerTerminalId !== null
+        && current.reviewerTerminalId !== originalTermId;
+    }, 5000);
+
+    const updated = prManager.get(pr.id)!;
+    expect(updated.status).toBe('reviewing');
+    expect(updated.reviewerTerminalId).toBeTruthy();
+    expect(updated.reviewerTerminalId).not.toBe(originalTermId);
+  });
+
+  it('auto-relaunch: stops after max relaunch attempts', async () => {
+    // Create a terminal that exits immediately
+    const term = terminalManager.create({ command: '/bin/true' });
+    const pr = insertTestPR(prManager, {
+      id: 'relaunch-pr-2',
+      status: 'reviewing',
+      reviewerTerminalId: term.id,
+    });
+
+    // Wait for all relaunch cycles to complete.
+    // With MAX_REVIEWER_RELAUNCH=2:
+    // Exit 1 → relaunch (attempt 1) → Exit 2 → relaunch (attempt 2) → Exit 3 → max reached → done
+    // Each cycle: ~1s for process exit + 100ms delay = ~1.1s × 3 cycles ≈ 3.3s
+    // After max is reached, reviewerTerminalId should be null and a warning comment present
+    await waitFor(() => {
+      const current = prManager.get(pr.id);
+      if (!current) return false;
+      // Wait until the final cleanup happens: reviewerTerminalId is null and warning comment exists
+      return current.reviewerTerminalId === null
+        && current.comments.some((c) => c.body.includes('without producing a review file'));
+    }, 15000);
+
+    const updated = prManager.get(pr.id)!;
+    expect(updated.reviewerTerminalId).toBeNull();
+    expect(updated.comments.some((c) => c.body.includes('without producing a review file'))).toBe(true);
+  }, 20000);
+
+  it('auto-relaunch: does NOT relaunch when review file exists (success)', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    const prId = 'relaunch-pr-3';
+    insertTestPR(prManager, {
+      id: prId,
+      status: 'reviewing',
+      reviewerTerminalId: term.id,
+    });
+
+    // Write a review file so the success path is taken
+    const reviewDir = join(config.reviewBase, prId);
+    mkdirSync(reviewDir, { recursive: true });
+    writeFileSync(join(reviewDir, 'review.md'), 'VERDICT: APPROVED\nLooks great!');
+
+    // Wait for the terminal to exit and review to be processed
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const updated = prManager.get(prId)!;
+    // Review was processed — not relaunched
+    expect(updated.status).toBe('approved');
+    expect(updated.verdict).toBe('approved');
+    expect(updated.reviewerTerminalId).toBeNull();
+    expect(updated.comments.some((c) => c.body.includes('VERDICT: APPROVED'))).toBe(true);
+  });
+
+  it('auto-relaunch: does NOT relaunch when terminal is killed intentionally', async () => {
+    const term = terminalManager.create({ command: 'sleep 60' });
+    const prId = 'relaunch-pr-4';
+    insertTestPR(prManager, {
+      id: prId,
+      status: 'reviewing',
+      reviewerTerminalId: term.id,
+    });
+
+    // Kill the terminal intentionally (simulates what relaunchReview does)
+    terminalManager.kill(term.id);
+
+    // Wait a bit — should NOT relaunch
+    await new Promise((r) => setTimeout(r, 500));
+
+    // PR should still have the old terminal ID (handleReviewerExit returned early)
+    // since we didn't clear it manually
+    const updated = prManager.get(prId)!;
+    expect(updated.status).toBe('reviewing');
+    // No warning comment added (handleReviewerExit returned early)
+    expect(updated.comments).toHaveLength(0);
+  });
+
+  it('auto-relaunch: does NOT relaunch when PR status changed during delay', async () => {
+    const term = terminalManager.create({ command: '/bin/true' });
+    const prId = 'relaunch-pr-5';
+    const pr = insertTestPR(prManager, {
+      id: prId,
+      status: 'reviewing',
+      reviewerTerminalId: term.id,
+    });
+
+    // Use a longer delay so we can change status before relaunch fires
+    prManager.setRelaunchDelay(500);
+
+    // Wait for the process to exit (triggers auto-relaunch timer)
+    await new Promise((r) => setTimeout(r, 300));
+
+    // Change PR status during the delay — should prevent relaunch
+    pr.status = 'closed';
+
+    // Wait past the relaunch delay
+    await new Promise((r) => setTimeout(r, 500));
+
+    // PR should still be closed, no new terminal
+    const updated = prManager.get(prId)!;
+    expect(updated.status).toBe('closed');
+  });
+});
