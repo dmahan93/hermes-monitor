@@ -85,8 +85,13 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
         }
 
         // Curved merge/branch lines:
-        // Draw from the node (mid-height) curving down to the target lane at the bottom.
-        // Also draw a straight segment from the top to the node for the incoming lane.
+        // Smooth bezier from the node (mid-height) curving down to the target lane
+        // at the bottom edge. Also draw a straight segment from the top to the node
+        // for the incoming lane (the commit's own lane arriving from the row above).
+        //
+        // Control points: CP1 keeps the curve departing vertically downward from
+        // the commit dot; CP2 brings it into the target lane from above so it
+        // arrives going vertically.
         return (
           <g key={i}>
             {/* Straight segment from top to node center on the source lane */}
@@ -99,9 +104,9 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
               strokeWidth={1.5}
               opacity={0.6}
             />
-            {/* Curve from node center on source lane to bottom of target lane */}
+            {/* Bezier from commit dot to bottom of target lane */}
             <path
-              d={`M ${x1} ${cy} C ${x1} ${ROW_H * 0.75}, ${x2} ${ROW_H * 0.25}, ${x2} ${ROW_H + LINE_EXT}`}
+              d={`M ${x1} ${cy} C ${x1} ${ROW_H}, ${x2} ${cy}, ${x2} ${ROW_H + LINE_EXT}`}
               stroke={laneColor(line.toCol)}
               strokeWidth={1.5}
               fill="none"

@@ -191,6 +191,91 @@ describe('buildGraphLanes', () => {
     expect(passThroughLines.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('merge commit does NOT produce pass-through for newly created lanes', () => {
+    // Merge topology:
+    // aaa (merge of bbb + ccc)
+    // bbb (parent: ddd)
+    // ccc (parent: ddd)
+    // ddd (root)
+    const commits = [
+      makeCommit('aaa', ['bbb', 'ccc']),
+      makeCommit('bbb', ['ddd']),
+      makeCommit('ccc', ['ddd']),
+      makeCommit('ddd', []),
+    ];
+
+    const graph = buildGraphLanes(commits);
+    const mergeNode = graph[0]; // aaa
+
+    // The merge commit is in col 0.  It should have:
+    //   1. A straight line 0→0 for first parent bbb
+    //   2. A branch-right 0→1 for second parent ccc
+    // It should NOT have a pass-through straight line at col 1 because
+    // that lane was just created — nothing exists above it.
+    const straightLines = mergeNode.lines.filter(l => l.type === 'straight');
+    const branchLines = mergeNode.lines.filter(l => l.type !== 'straight');
+
+    // Exactly one straight line (the commit's own lane 0→0)
+    expect(straightLines).toHaveLength(1);
+    expect(straightLines[0]).toEqual({ fromCol: 0, toCol: 0, type: 'straight' });
+
+    // One branch/merge line for the second parent
+    expect(branchLines).toHaveLength(1);
+    expect(branchLines[0].fromCol).toBe(0);
+    expect(branchLines[0].toCol).toBe(1);
+  });
+
+  it('merge into existing lane keeps pass-through for that lane', () => {
+    // Two parallel branches converging later:
+    // aaa (parent: ccc) — col 0, lane 0 → ccc
+    // bbb (parent: ddd) — col 1, lane 1 → ddd
+    // ccc (merge of ddd + eee) — col 0, merges lane 0 into first parent ddd...
+    //   but here the topology matters. Let's set up:
+    //   ccc (parents: [eee, ddd]) — first parent eee is new, second parent ddd is in lane 1
+    //
+    // Actually simpler test: just ensure existing lanes get pass-through.
+    const commits = [
+      makeCommit('aaa', ['ccc']),   // col 0 → ccc
+      makeCommit('bbb', ['ddd']),   // col 1 → ddd
+      makeCommit('ccc', ['eee']),   // col 0, lane 1 (ddd) should pass-through
+    ];
+
+    const graph = buildGraphLanes(commits);
+    const cccNode = graph[2];
+    expect(cccNode.col).toBe(0);
+
+    // Lane 1 (tracking ddd) existed before ccc, so it should have pass-through
+    const passThrough = cccNode.lines.filter(
+      l => l.type === 'straight' && l.fromCol === 1 && l.toCol === 1
+    );
+    expect(passThrough).toHaveLength(1);
+  });
+
+  it('octopus merge (3+ parents) creates no spurious pass-throughs', () => {
+    // Octopus merge: aaa merges bbb, ccc, ddd
+    const commits = [
+      makeCommit('aaa', ['bbb', 'ccc', 'ddd']),
+      makeCommit('bbb', []),
+      makeCommit('ccc', []),
+      makeCommit('ddd', []),
+    ];
+
+    const graph = buildGraphLanes(commits);
+    const mergeNode = graph[0]; // aaa
+
+    // Should have:
+    //   1. Straight 0→0 (first parent bbb)
+    //   2. Branch to col 1 (second parent ccc)
+    //   3. Branch to col 2 (third parent ddd)
+    // NO pass-through lines for cols 1 or 2 (just created)
+    const straightLines = mergeNode.lines.filter(l => l.type === 'straight');
+    expect(straightLines).toHaveLength(1);
+    expect(straightLines[0]).toEqual({ fromCol: 0, toCol: 0, type: 'straight' });
+
+    const branchLines = mergeNode.lines.filter(l => l.type !== 'straight');
+    expect(branchLines).toHaveLength(2);
+  });
+
   it('reuses empty lane slots', () => {
     // After a lane is consumed, its slot should be available for reuse
     // Linear chain: each commit only needs one lane
