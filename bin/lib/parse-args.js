@@ -39,6 +39,7 @@ function parseArgs(argv, defaults = {}) {
     list: false,
     add: null,
     remove: null,
+    _explicit: new Set(), // tracks which flags were explicitly set
   };
 
   function requireArg(flag, i) {
@@ -58,6 +59,7 @@ function parseArgs(argv, defaults = {}) {
         if (isNaN(opts.port) || opts.port < 1 || opts.port > 65535) {
           throw new ParseError('--port must be a valid port number (1-65535)');
         }
+        opts._explicit.add('port');
         break;
       }
       case '--server-port': {
@@ -66,6 +68,7 @@ function parseArgs(argv, defaults = {}) {
         if (isNaN(opts.serverPort) || opts.serverPort < 1 || opts.serverPort > 65535) {
           throw new ParseError('--server-port must be a valid port number (1-65535)');
         }
+        opts._explicit.add('serverPort');
         break;
       }
       case '--repo':
@@ -107,6 +110,11 @@ function parseArgs(argv, defaults = {}) {
     }
   }
 
+  // Validate --foreground is only used with 'hub' command
+  if (opts.foreground && opts.command !== 'hub') {
+    throw new ParseError('--foreground can only be used with the "hub" command');
+  }
+
   // Validate port collision (skip when just showing help, running a subcommand,
   // or using hub management flags)
   if (!opts.help && !opts.command && !opts.list && !opts.add && !opts.remove &&
@@ -136,8 +144,8 @@ Hub Management:
   --remove <id>                  Unregister a repo by ID
 
 Options:
-  --port, -p <port>              Client port (default: 3000)
-  --server-port <port>           Server API port (default: 4000)
+  --port, -p <port>              Client port (ignored in hub mode — auto-assigned)
+  --server-port <port>           Server API port (ignored in hub mode — auto-assigned)
   --repo, -r <path>              Target git repo (default: current directory)
   --no-browser                   Don't auto-open browser
   --build                        Serve pre-built client (faster startup, no HMR)

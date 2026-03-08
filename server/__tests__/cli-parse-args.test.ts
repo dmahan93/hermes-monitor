@@ -12,18 +12,45 @@ describe('CLI parseArgs', () => {
 
   it('returns defaults with no arguments', () => {
     const opts = parseArgs([], { cwd: CWD });
-    expect(opts).toEqual({
-      command: null,
-      port: 3000,
-      serverPort: 4000,
-      repo: CWD,
-      browser: true,
-      build: false,
-      help: false,
-      foreground: false,
-      list: false,
-      add: null,
-      remove: null,
+    expect(opts.command).toBeNull();
+    expect(opts.port).toBe(3000);
+    expect(opts.serverPort).toBe(4000);
+    expect(opts.repo).toBe(CWD);
+    expect(opts.browser).toBe(true);
+    expect(opts.build).toBe(false);
+    expect(opts.help).toBe(false);
+    expect(opts.foreground).toBe(false);
+    expect(opts.list).toBe(false);
+    expect(opts.add).toBeNull();
+    expect(opts.remove).toBeNull();
+    expect(opts._explicit).toBeInstanceOf(Set);
+    expect(opts._explicit.size).toBe(0);
+  });
+
+  // ── Explicit flag tracking ──
+
+  describe('_explicit tracking', () => {
+    it('tracks when --port is explicitly set', () => {
+      const opts = parseArgs(['--port', '5000'], { cwd: CWD });
+      expect(opts._explicit.has('port')).toBe(true);
+      expect(opts._explicit.has('serverPort')).toBe(false);
+    });
+
+    it('tracks when --server-port is explicitly set', () => {
+      const opts = parseArgs(['--server-port', '8000'], { cwd: CWD });
+      expect(opts._explicit.has('serverPort')).toBe(true);
+      expect(opts._explicit.has('port')).toBe(false);
+    });
+
+    it('tracks both when both are set', () => {
+      const opts = parseArgs(['--port', '5000', '--server-port', '8000'], { cwd: CWD });
+      expect(opts._explicit.has('port')).toBe(true);
+      expect(opts._explicit.has('serverPort')).toBe(true);
+    });
+
+    it('does not track when using defaults', () => {
+      const opts = parseArgs([], { cwd: CWD });
+      expect(opts._explicit.size).toBe(0);
     });
   });
 
@@ -164,10 +191,22 @@ describe('CLI parseArgs', () => {
       expect(opts.help).toBe(true);
     });
 
-    it('--foreground sets foreground flag', () => {
+    it('--foreground sets foreground flag with hub command', () => {
       const opts = parseArgs(['hub', '--foreground'], { cwd: CWD });
       expect(opts.foreground).toBe(true);
       expect(opts.command).toBe('hub');
+    });
+
+    it('--foreground rejects without hub command', () => {
+      expect(() => parseArgs(['--foreground'], { cwd: CWD }))
+        .toThrow(ParseError);
+      expect(() => parseArgs(['--foreground'], { cwd: CWD }))
+        .toThrow('--foreground can only be used with the "hub" command');
+    });
+
+    it('--foreground rejects with non-hub command', () => {
+      expect(() => parseArgs(['stop', '--foreground'], { cwd: CWD }))
+        .toThrow('--foreground can only be used with the "hub" command');
     });
   });
 

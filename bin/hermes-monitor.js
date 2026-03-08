@@ -231,6 +231,12 @@ async function handleRemove(id) {
     process.exit(1);
   }
 
+  const reachable = await isHubReachable();
+  if (!reachable) {
+    console.error('Hub is not reachable. Try restarting: hermes-monitor stop && hermes-monitor hub');
+    process.exit(1);
+  }
+
   try {
     const removed = await unregisterRepo(id);
     if (removed) {
@@ -257,6 +263,11 @@ async function handleDefault() {
     process.exit(1);
   }
 
+  // ── Warn if --port or --server-port were explicitly set (ignored in hub mode) ──
+  if (opts._explicit.has('port') || opts._explicit.has('serverPort')) {
+    console.error('Warning: --port and --server-port are ignored in hub mode. Ports are auto-assigned by the registry.');
+  }
+
   // ── Ensure hub is running ──
   await ensureHubRunning();
 
@@ -271,16 +282,32 @@ async function handleDefault() {
 
   // ── Check if repo server is already running ──
   if (entry.status === 'running' && entry.pid) {
+    let alive = false;
     try {
       process.kill(entry.pid, 0);
-      // Server is alive
-      console.log(`Repo ${entry.name} is already running on :${entry.port}`);
-      if (opts.browser) {
-        openBrowser(`http://localhost:${entry.port}`);
-      }
-      process.exit(0);
+      alive = true;
     } catch {
-      // PID is stale, will restart below
+      // PID is stale
+    }
+    if (alive) {
+      // Verify HTTP server is actually responding (not just PID alive)
+      const serverUp = await new Promise((res) => {
+        const req = http.get(`http://localhost:${entry.port}/api/health`, (resp) => {
+          resp.resume();
+          res(resp.statusCode >= 200 && resp.statusCode < 500);
+        });
+        req.on('error', () => res(false));
+        req.setTimeout(2000, () => { req.destroy(); res(false); });
+      });
+
+      if (serverUp) {
+        console.log(`Repo ${entry.name} is already running on :${entry.port}`);
+        if (opts.browser) {
+          openBrowser(`http://localhost:${entry.port}`);
+        }
+        process.exit(0);
+      }
+      // PID alive but server not responding — restart below
     }
   }
 
@@ -322,6 +349,12 @@ async function handleDefault() {
   // ── Use the port assigned by the hub registry ──
   const SERVER_PORT = entry.port;
   const CLIENT_PORT = entry.port + 1000; // offset client port to avoid collisions
+
+  if (CLIENT_PORT > 65535) {
+    console.error(`Error: computed client port ${CLIENT_PORT} exceeds 65535 (server port: ${SERVER_PORT}).`);
+    console.error('Too many repos registered or port range is fragmented. Try removing unused repos with --remove.');
+    process.exit(1);
+  }
 
   const env = {
     ...process.env,
@@ -378,16 +411,12 @@ async function handleDefault() {
   });
   children.push(clientProc);
 
-  // ── Update status to running ──
-  try {
-    await updateRepoStatus(entry.id, 'running', process.pid);
-  } catch { /* non-fatal */ }
-
-  // ── Auto-open browser when both server and client are ready ──
+  // ── Poll for readiness, then update status and optionally open browser ──
   let shuttingDown = false;
   let worstExitCode = 0;
+  let statusUpdated = false;
 
-  if (opts.browser) {
+  {
     const url = `http://localhost:${CLIENT_PORT}`;
     const MAX_WAIT = 30000;
     const POLL_INTERVAL = 500;
@@ -425,7 +454,16 @@ async function handleDefault() {
       ]);
 
       if (serverReady && clientReady) {
-        openBrowser(url);
+        // Update status to 'running' only after health check confirms readiness
+        if (!statusUpdated) {
+          statusUpdated = true;
+          try {
+            await updateRepoStatus(entry.id, 'running', process.pid);
+          } catch { /* non-fatal */ }
+        }
+        if (opts.browser) {
+          openBrowser(url);
+        }
       } else {
         const t = setTimeout(pollReady, POLL_INTERVAL);
         t.unref();
@@ -468,7 +506,7 @@ async function handleDefault() {
   // Track child exits
   let exitCount = 0;
   for (const child of children) {
-    child.on('exit', (code, signal) => {
+    child.on('exit', (code) => {
       exitCount++;
 
       if (code != null && code !== 0 && worstExitCode === 0) {

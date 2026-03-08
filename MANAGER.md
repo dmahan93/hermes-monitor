@@ -31,21 +31,26 @@ hermes-monitor stop                 # stop hub + all repo instances
 ```
 
 The hub runs as a background process (PID stored in `~/.hermes/hub.pid`).
-Each repo gets auto-assigned a unique port starting from 4001.
+Each repo gets auto-assigned a unique server port starting from 4001.
+The client (vite dev server) runs at server port + 1000 (e.g. 4001 → 5001).
 The hub landing page at `http://localhost:3000` shows all repos with links.
+
+**Note:** `--port` and `--server-port` flags are ignored in hub mode — ports are
+auto-assigned by the registry to avoid collisions.
 
 ### Hub Architecture
 
 ```
 Hub (:3000)                    Per-Repo Instances
-┌──────────────────┐          ┌────────────────────────┐
-│ Landing page     │          │ Repo A (:4001 / :5001) │
-│ Registry API     │          │ Repo B (:4002 / :5002) │
-│ ~/.hermes/       │          │ Repo C (:4003 / :5003) │
-│   hub.pid        │          │                        │
-│   hermes-hub.db  │          │ Each has full server +  │
-│   hub.log        │          │ client + worktrees     │
-└──────────────────┘          └────────────────────────┘
+┌──────────────────┐          ┌──────────────────────────────┐
+│ Landing page     │          │ Repo A (:4001 srv / :5001 ui)│
+│ Registry API     │          │ Repo B (:4002 srv / :5002 ui)│
+│ ~/.hermes/       │          │ Repo C (:4003 srv / :5003 ui)│
+│   hub.pid        │          │                              │
+│   hub.lock       │          │ Port convention:             │
+│   hermes-hub.db  │          │   server = auto-assigned     │
+│   hub.log        │          │   client = server + 1000     │
+└──────────────────┘          └──────────────────────────────┘
 ```
 
 ### Hub API Cheat Sheet

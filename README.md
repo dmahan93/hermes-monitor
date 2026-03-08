@@ -57,9 +57,11 @@ hermes-monitor --remove <id>            # unregister a repo by ID
    repos in a SQLite database (`~/.hermes/hermes-hub.db`). Provides a landing
    page and registry API. Runs as a background process (PID in `~/.hermes/hub.pid`).
 
-2. **Per-Repo Instances** — Each repo gets its own server+client on an
-   auto-assigned port (starting from 4001). Running `hermes-monitor` in a git
-   repo registers it with the hub and starts the instance.
+2. **Per-Repo Instances** — Each repo gets its own server+client pair.
+   The server port is auto-assigned starting from 4001, and the client (vite)
+   runs at server port + 1000 (e.g. server :4001 → client :5001). Running
+   `hermes-monitor` in a git repo registers it with the hub and starts the
+   instance. `--port` and `--server-port` flags are ignored in hub mode.
 
 3. **Auto-Start** — Running `hermes-monitor` in any git repo automatically
    starts the hub if it isn't already running, registers the repo, and launches
@@ -103,12 +105,12 @@ The server manages the repo at `HERMES_REPO_PATH` (defaults to parent of
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--port` | `-p` | `3000` | Client port (browser UI) |
-| `--server-port` | | `4000` | Server API port |
+| `--port` | `-p` | `3000` | Client port (ignored in hub mode — auto-assigned) |
+| `--server-port` | | `4000` | Server API port (ignored in hub mode — auto-assigned) |
 | `--repo` | `-r` | cwd | Target git repo path |
 | `--no-browser` | | | Don't auto-open browser |
 | `--build` | | | Serve pre-built client (no HMR) |
-| `--foreground` | | | Run hub in foreground |
+| `--foreground` | | | Run hub in foreground (only with `hub` command) |
 | `--list` | `-l` | | List registered repos |
 | `--add` | | | Register a repo path |
 | `--remove` | | | Unregister a repo by ID |

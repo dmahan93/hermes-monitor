@@ -12,13 +12,14 @@
  */
 
 const http = require('http');
-const { existsSync, readFileSync, unlinkSync, mkdirSync } = require('fs');
+const { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } = require('fs');
 const { join, resolve } = require('path');
-const { spawn, execSync } = require('child_process');
+const { spawn } = require('child_process');
 const os = require('os');
 
 const HERMES_DIR = join(os.homedir(), '.hermes');
 const PID_FILE = join(HERMES_DIR, 'hub.pid');
+const LOCK_FILE = join(HERMES_DIR, 'hub.lock');
 const HUB_PORT = 3000;
 const HUB_BASE = `http://localhost:${HUB_PORT}`;
 
@@ -94,6 +95,37 @@ async function waitForHub(port = HUB_PORT, timeoutMs = 15000) {
  * @returns {import('child_process').ChildProcess|null} child process in foreground mode, null in background
  */
 function startHub({ foreground = false, port = HUB_PORT } = {}) {
+  // Acquire startup lock to prevent concurrent hub starts (TOCTOU race)
+  mkdirSync(HERMES_DIR, { recursive: true });
+  try {
+    writeFileSync(LOCK_FILE, String(process.pid), { flag: 'wx' });
+  } catch (err) {
+    if (err.code === 'EEXIST') {
+      // Lock file exists — check if the locking process is still alive
+      try {
+        const lockPid = parseInt(readFileSync(LOCK_FILE, 'utf8').trim(), 10);
+        if (!isNaN(lockPid)) {
+          try {
+            process.kill(lockPid, 0);
+            // Process is alive — another CLI is starting the hub
+            console.error('Another hermes-monitor instance is starting the hub. Waiting...');
+            return null;
+          } catch {
+            // Stale lock — remove and retry
+          }
+        }
+      } catch { /* can't read lock, remove it */ }
+      try { unlinkSync(LOCK_FILE); } catch { /* ignore */ }
+      writeFileSync(LOCK_FILE, String(process.pid), { flag: 'wx' });
+    } else {
+      throw err;
+    }
+  }
+
+  // Clean up lock on exit
+  const cleanupLock = () => { try { unlinkSync(LOCK_FILE); } catch { /* ignore */ } };
+  process.on('exit', cleanupLock);
+
   const tsxBin = join(ROOT, 'node_modules', '.bin', 'tsx');
   const hubScript = join(ROOT, 'server', 'src', 'hub-server.ts');
 
@@ -143,13 +175,14 @@ function stopHub() {
 
   try {
     process.kill(pid, 'SIGTERM');
-    // Wait briefly for cleanup
+    // Wait briefly for cleanup (synchronous sleep using Atomics.wait)
+    const sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
     const start = Date.now();
     while (Date.now() - start < 3000) {
       try {
         process.kill(pid, 0);
         // Still alive, wait
-        execSync('sleep 0.1', { stdio: 'ignore' });
+        sleepMs(100);
       } catch {
         // Process is gone
         break;
@@ -337,6 +370,7 @@ function openBrowser(url) {
 module.exports = {
   HERMES_DIR,
   PID_FILE,
+  LOCK_FILE,
   HUB_PORT,
   HUB_BASE,
   getHubPid,
@@ -346,6 +380,7 @@ module.exports = {
   startHub,
   stopHub,
   stopAllRepos,
+  hubRequest,
   registerRepo,
   unregisterRepo,
   updateRepoStatus,
