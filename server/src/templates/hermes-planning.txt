@@ -1,0 +1,4 @@
+hermes chat -q 'You are helping plan a task: "{{title}}".
+Description: {{description}}.
+Help the user explore approaches, research the problem, prototype ideas, and flesh out implementation details.
+This is a planning session — focus on understanding requirements, exploring the codebase, and preparing a clear plan.'

@@ -1,0 +1,1 @@
+aider --message '{{title}}. {{description}}'
