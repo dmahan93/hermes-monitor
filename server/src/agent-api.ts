@@ -23,12 +23,12 @@ const MIME_TO_EXT: Record<string, string> = {
   'image/svg+xml': '.svg',
 };
 
-interface TicketGuidelines {
+interface AgentGuidelines {
   screenshots: string;
   requireScreenshotsForUiChanges: boolean;
 }
 
-interface TicketInfoResponse {
+interface AgentInfoResponse {
   id: string;
   title: string;
   description: string;
@@ -45,15 +45,17 @@ interface TicketInfoResponse {
   reviewUrl: string;
   screenshotUploadUrl: string;
   screenshotUploadInstructions: string;
-  guidelines: TicketGuidelines;
+  guidelines: AgentGuidelines;
 }
 
 /**
  * Agent-facing API — these endpoints are called BY the agent during task execution.
- * GET  /ticket/:id/info   — agent gets its task context
- * POST /ticket/:id/review — agent signals it's done, moves issue to review
+ * GET  /:id/info   — agent gets its task context
+ * POST /:id/review — agent signals it's done, moves issue to review
+ *
+ * Mounted at /agent in index.ts, so full paths are /agent/:id/info, /agent/:id/review, etc.
  */
-export function createTicketApiRouter(
+export function createAgentApiRouter(
   issueManager: IssueManager,
   prManager: PRManager,
   terminalManager: TerminalManager,
@@ -63,7 +65,7 @@ export function createTicketApiRouter(
   router.use(json());
 
   // Agent calls this to get task details, worktree path, previous reviews
-  router.get('/ticket/:id/info', (req, res) => {
+  router.get('/:id/info', (req, res) => {
     const issue = issueManager.get(req.params.id);
     if (!issue) {
       res.status(404).json({ error: 'Issue not found' });
@@ -83,7 +85,7 @@ export function createTicketApiRouter(
 
     const baseUrl = `http://localhost:${PORT}`;
 
-    const screenshotUploadUrl = `${baseUrl}/ticket/${issue.id}/screenshots`;
+    const screenshotUploadUrl = `${baseUrl}/agent/${issue.id}/screenshots`;
     const screenshotUploadInstructions = [
       'To upload a screenshot, POST the image file to the upload URL:',
       '',
@@ -95,7 +97,7 @@ export function createTicketApiRouter(
       'To list existing screenshots: GET ' + screenshotUploadUrl,
     ].join('\n');
 
-    const response: TicketInfoResponse = {
+    const response: AgentInfoResponse = {
       id: issue.id,
       title: issue.title,
       description: issue.description,
@@ -104,12 +106,12 @@ export function createTicketApiRouter(
       repoPath: config.repoPath,
       targetBranch: config.targetBranch,
       previousReviews,
-      reviewUrl: `${baseUrl}/ticket/${issue.id}/review`,
+      reviewUrl: `${baseUrl}/agent/${issue.id}/review`,
       screenshotUploadUrl,
       screenshotUploadInstructions,
       guidelines: {
         screenshots: config.requireScreenshotsForUiChanges
-          ? 'Screenshots are REQUIRED when your changes modify UI files (.tsx, .jsx, .css, .scss, .less, .html, .vue, .svelte). Upload before/after screenshots using the screenshotUploadUrl BEFORE calling /review. If you did not make visual changes, bypass with: POST /ticket/:id/review?no_ui_changes=true or send {"noUiChanges": true} in the request body.'
+          ? 'Screenshots are REQUIRED when your changes modify UI files (.tsx, .jsx, .css, .scss, .less, .html, .vue, .svelte). Upload before/after screenshots using the screenshotUploadUrl BEFORE calling /review. If you did not make visual changes, bypass with: POST /agent/:id/review?no_ui_changes=true or send {"noUiChanges": true} in the request body.'
           : 'If your changes modify UI components (.tsx, .css, .html files), upload before/after screenshots using the screenshotUploadUrl and include the returned markdown in your PR description.',
         requireScreenshotsForUiChanges: config.requireScreenshotsForUiChanges,
       },
@@ -117,8 +119,8 @@ export function createTicketApiRouter(
     res.json(response);
   });
 
-  // Agent uploads a screenshot for its ticket
-  router.post('/ticket/:id/screenshots', raw({ type: 'image/*', limit: '10mb' }), (req, res) => {
+  // Agent uploads a screenshot for its issue
+  router.post('/:id/screenshots', raw({ type: 'image/*', limit: '10mb' }), (req, res) => {
     const issue = issueManager.get(req.params.id);
     if (!issue) {
       res.status(404).json({ error: 'Issue not found' });
@@ -175,7 +177,7 @@ export function createTicketApiRouter(
   });
 
   // Agent lists its uploaded screenshots
-  router.get('/ticket/:id/screenshots', (req, res) => {
+  router.get('/:id/screenshots', (req, res) => {
     const issue = issueManager.get(req.params.id);
     if (!issue) {
       res.status(404).json({ error: 'Issue not found' });
@@ -196,7 +198,7 @@ export function createTicketApiRouter(
 
   // Agent calls this when done — kills terminal, moves issue to review
   // Accepts optional { details: "..." } in the request body for submitter notes
-  router.post('/ticket/:id/review', (req, res) => {
+  router.post('/:id/review', (req, res) => {
     const issue = issueManager.get(req.params.id);
     if (!issue) {
       res.status(404).json({ error: 'Issue not found' });
@@ -241,10 +243,10 @@ export function createTicketApiRouter(
                 'UI files changed:',
                 ...uiFiles.map((f) => `  - ${f}`),
                 '',
-                'To fix: upload screenshots using the screenshotUploadUrl from /ticket/:id/info',
+                'To fix: upload screenshots using the screenshotUploadUrl from /agent/:id/info',
                 '',
                 'To bypass (if no visual changes): resubmit with ?no_ui_changes=true',
-                '  curl -s -X POST http://localhost:' + PORT + '/ticket/' + issue.id + '/review?no_ui_changes=true',
+                '  curl -s -X POST http://localhost:' + PORT + '/agent/' + issue.id + '/review?no_ui_changes=true',
                 '',
                 'Or send JSON body: { "noUiChanges": true }',
               ].join('\n'),

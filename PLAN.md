@@ -5,7 +5,7 @@
 
 ## What This Is
 
-A web dashboard for orchestrating AI coding agents. Agents get tickets via
+A web dashboard for orchestrating AI coding agents. Agents get issues via
 a kanban board, work in isolated git worktrees, submit PRs, and get
 adversarial code reviews — all automated.
 
@@ -21,7 +21,7 @@ adversarial code reviews — all automated.
 - ✅ Git worktrees per issue (isolated branches)
 - ✅ PR system with adversarial AI reviewer
 - ✅ SQLite persistence (survives server restart)
-- ✅ Agent API (GET /ticket/:id/info, POST /ticket/:id/review)
+- ✅ Agent API (GET /agent/:id/info, POST /agent/:id/review)
 - ✅ Screenshot upload system for UI changes
 - ✅ Auto-resume (respawns crashed agent terminals)
 - ✅ Subtasks (parent/child issue hierarchy)
@@ -35,7 +35,7 @@ Server: 6.5/10 | Client: 6.5/10 | Agent-DX: 5.2/10
 
 ### P0 — Security & Bugs
 - Shell injection in git commands (worktree-manager, pr-manager use string concat)
-- Direct mutation bypassing manager encapsulation (ticket-api.ts)
+- Direct mutation bypassing manager encapsulation (agent-api.ts)
 - Missing shutdown cleanup (prManager timers not cleared)
 - Unchecked JSON.parse in store.ts (can crash on startup)
 
@@ -44,7 +44,7 @@ Server: 6.5/10 | Client: 6.5/10 | Agent-DX: 5.2/10
 - App.css is 2717 lines (monolithic, no component scoping)
 - Types duplicated between server/client (Issue, PR, etc.)
 - No README.md or API reference document
-- `ticket-api.ts` naming confuses agents (should be `agent-api.ts`)
+- ✅ `ticket-api.ts` renamed to `agent-api.ts`
 - ~~`api.ts` breaks the `*-api.ts` naming convention~~ ✅ Fixed (renamed to `terminal-api.ts`)
 
 ### P2 — Type Safety & DX
@@ -72,7 +72,7 @@ Goal: Make the codebase navigable for AI agents in under 2 minutes.
    file map ("where to find things"), key concepts
 2. **Create docs/API.md** — complete API reference for ALL endpoints 
    (currently 15+ undocumented since PLAN.md went stale)
-3. **Rename `ticket-api.ts` → `agent-api.ts`** and routes `/ticket/` → `/agent/`
+3. ✅ **Renamed `ticket-api.ts` → `agent-api.ts`** and routes `/ticket/` → `/agent/`
 4. ~~**Rename `api.ts` → `terminal-api.ts`** to match `*-api.ts` convention~~ ✅ Done
 5. **Delete HELLO.md** (test artifact)
 6. **Clean up .playwright-cli/** (80+ files cluttering searches)
@@ -82,7 +82,7 @@ Goal: Make the codebase navigable for AI agents in under 2 minutes.
 7. **Fix shell injection** — switch worktree-manager.ts and pr-manager.ts 
    from `execSync` string concat to `execFileSync` with array args 
    (git-api.ts already does this correctly — use it as reference)
-8. **Fix direct mutation** in ticket-api.ts — use manager methods instead 
+8. **Fix direct mutation** in agent-api.ts — use manager methods instead 
    of mutating issue objects directly
 9. **Add shutdown cleanup** — call prManager.clearAllPendingTimers() in 
    index.ts shutdown handler

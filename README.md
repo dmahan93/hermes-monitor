@@ -1,6 +1,6 @@
 # Hermes Monitor
 
-Web dashboard for orchestrating AI coding agents. Agents get tickets via a
+Web dashboard for orchestrating AI coding agents. Agents get issues via a
 kanban board, work in isolated git worktrees, submit PRs that get adversarial
 AI code reviews, and iterate until approved.
 
@@ -25,7 +25,7 @@ Browser (:3000)                    Server (:4000)
 │ React + xterm.js │──── WS ──────│ Express + node-pty        │
 │                  │──── REST ────│                            │
 │ Views:           │              │ Managers:                  │
-│  • Kanban board  │              │  • IssueManager (tickets)  │
+│  • Kanban board  │              │  • IssueManager (issues)   │
 │  • Terminal grid │              │  • TerminalManager (PTYs)  │
 │  • PR list/diff  │              │  • WorktreeManager (git)   │
 │  • Git graph     │              │  • PRManager (reviews)     │
@@ -45,7 +45,7 @@ backlog → todo → in_progress → review → done
 When an issue moves to `in_progress`:
 1. Git worktree created on branch `issue/<id>-<slug>`
 2. Agent terminal spawned with the issue's command template
-3. Agent works, then calls `POST /ticket/:id/review` when done
+3. Agent works, then calls `POST /agent/:id/review` when done
 4. PR created from diff, adversarial reviewer agent spawned
 5. If changes requested, issue goes back to `in_progress`
 
@@ -66,7 +66,7 @@ server/src/
   pr-api.ts             UI-facing REST: /api/prs/*, /api/config
   terminal-api.ts       UI-facing REST: /api/terminals/*
   git-api.ts            UI-facing REST: /api/git/*
-  ticket-api.ts         AGENT-facing REST: /ticket/:id/* (called BY agents)
+  agent-api.ts          AGENT-facing REST: /agent/:id/* (called BY agents)
 
   ws.ts                 WebSocket handler
   types.ts              Server-side type definitions
@@ -114,7 +114,7 @@ client/src/
 
 Two APIs exist:
 - **UI API** (`/api/*`) — called by the React frontend
-- **Agent API** (`/ticket/*`) — called by agents during task execution
+- **Agent API** (`/agent/*`) — called by agents during task execution
 
 See [docs/API.md](docs/API.md) for the complete API reference.
 
@@ -122,10 +122,10 @@ See [docs/API.md](docs/API.md) for the complete API reference.
 
 ```bash
 # Agent gets task context (worktree path, previous reviews, etc.)
-curl http://localhost:4000/ticket/:id/info
+curl http://localhost:4000/agent/:id/info
 
 # Agent submits for review when done
-curl -X POST http://localhost:4000/ticket/:id/review
+curl -X POST http://localhost:4000/agent/:id/review
 ```
 
 ## Environment Variables

@@ -4,16 +4,16 @@ Base URL: `http://localhost:4000`
 
 Two API surfaces:
 - **UI API** (`/api/*`) — called by the React frontend and external tools
-- **Agent API** (`/ticket/*`) — called by agents during task execution
+- **Agent API** (`/agent/*`) — called by agents during task execution
 
 ---
 
 ## Agent API (called BY agents)
 
 These endpoints are what agents call to get their task context and signal
-completion. Defined in `server/src/ticket-api.ts`.
+completion. Defined in `server/src/agent-api.ts`.
 
-### GET /ticket/:id/info
+### GET /agent/:id/info
 
 Returns everything the agent needs to execute its task.
 
@@ -30,8 +30,8 @@ Returns everything the agent needs to execute its task.
   "previousReviews": [
     { "author": "hermes-reviewer", "verdict": "changes_requested", "body": "...", "createdAt": 123 }
   ],
-  "reviewUrl": "http://localhost:4000/ticket/uuid/review",
-  "screenshotUploadUrl": "http://localhost:4000/ticket/uuid/screenshots",
+  "reviewUrl": "http://localhost:4000/agent/uuid/review",
+  "screenshotUploadUrl": "http://localhost:4000/agent/uuid/screenshots",
   "screenshotUploadInstructions": "...",
   "guidelines": {
     "screenshots": "...",
@@ -40,7 +40,7 @@ Returns everything the agent needs to execute its task.
 }
 ```
 
-### POST /ticket/:id/review
+### POST /agent/:id/review
 
 Agent calls this when done working. Kills agent terminal, creates PR, 
 spawns adversarial reviewer.
@@ -60,14 +60,14 @@ spawns adversarial reviewer.
 
 **Error (400):** Returns if UI files were changed but no screenshots uploaded.
 
-### POST /ticket/:id/screenshots
+### POST /agent/:id/screenshots
 
 Upload a screenshot for the task.
 
 ```bash
 curl -X POST --data-binary @screenshot.png \
   -H 'Content-Type: image/png' \
-  'http://localhost:4000/ticket/:id/screenshots?filename=my-screenshot.png&description=Before+changes'
+  'http://localhost:4000/agent/:id/screenshots?filename=my-screenshot.png&description=Before+changes'
 ```
 
 **Response (201):**
@@ -75,9 +75,9 @@ curl -X POST --data-binary @screenshot.png \
 { "url": "/screenshots/id/file.png", "fullUrl": "http://...", "markdown": "![...](http://...)", "filename": "..." }
 ```
 
-### GET /ticket/:id/screenshots
+### GET /agent/:id/screenshots
 
-List uploaded screenshots for a ticket.
+List uploaded screenshots for an issue.
 
 ---
 
