@@ -15,7 +15,8 @@ completion. Defined in `server/src/agent-api.ts`.
 
 ### GET /agent/:id/info
 
-Returns everything the agent needs to execute its task.
+Returns everything the agent needs to execute its task, including rework context
+when the agent is on a subsequent review cycle.
 
 **Response:**
 ```json
@@ -27,8 +28,33 @@ Returns everything the agent needs to execute its task.
   "worktreePath": "/tmp/hermes-worktrees/uuid/",
   "repoPath": "/home/user/project",
   "targetBranch": "master",
+  "isRework": true,
+  "attempt": 2,
+  "changedFiles": ["src/auth.ts", "src/auth.test.ts"],
   "previousReviews": [
-    { "author": "hermes-reviewer", "verdict": "changes_requested", "body": "...", "createdAt": 123 }
+    {
+      "author": "hermes-reviewer",
+      "verdict": "changes_requested",
+      "body": "VERDICT: CHANGES_REQUESTED\n- Missing null check in auth handler\n- Add test for expired tokens",
+      "createdAt": 1700000002,
+      "isLatest": true,
+      "actionItems": ["Missing null check in auth handler", "Add test for expired tokens"]
+    },
+    {
+      "author": "hermes-reviewer",
+      "verdict": "changes_requested",
+      "body": "...",
+      "createdAt": 1700000001,
+      "isLatest": false,
+      "actionItems": []
+    }
+  ],
+  "recentMerges": [
+    {
+      "title": "Add user profile page",
+      "changedFiles": ["src/profile.ts", "src/routes.ts"],
+      "mergedAt": 1700000000
+    }
   ],
   "reviewUrl": "http://localhost:4000/agent/uuid/review",
   "screenshotUploadUrl": "http://localhost:4000/agent/uuid/screenshots",
@@ -39,6 +65,16 @@ Returns everything the agent needs to execute its task.
   }
 }
 ```
+
+**Rework context fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `isRework` | `boolean` | `true` if the issue has been in review before (a PR exists) |
+| `attempt` | `number` | Which review cycle this is (1 = first attempt, 2 = first rework, etc.) |
+| `changedFiles` | `string[]` | Files the agent changed in its branch (from `git diff --name-only`) |
+| `previousReviews` | `ReviewInfo[]` | Past reviews sorted **latest first**, each with `isLatest` flag and extracted `actionItems` |
+| `recentMerges` | `RecentMerge[]` | Last 5 merged PRs with titles and changed files (warns about potential conflicts) |
 
 ### POST /agent/:id/review
 

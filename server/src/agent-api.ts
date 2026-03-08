@@ -34,6 +34,21 @@ interface AgentGuidelines {
   requireScreenshotsForUiChanges: boolean;
 }
 
+interface ReviewInfo {
+  author: string;
+  verdict: string | null;
+  body: string;
+  createdAt: number;
+  isLatest: boolean;
+  actionItems: string[];
+}
+
+interface RecentMerge {
+  title: string;
+  changedFiles: string[];
+  mergedAt: number;
+}
+
 interface AgentInfoResponse {
   id: string;
   title: string;
@@ -42,16 +57,36 @@ interface AgentInfoResponse {
   worktreePath: string | null;
   repoPath: string;
   targetBranch: string;
-  previousReviews: Array<{
-    author: string;
-    verdict: string | null;
-    body: string;
-    createdAt: number;
-  }>;
+  isRework: boolean;
+  attempt: number;
+  changedFiles: string[];
+  previousReviews: ReviewInfo[];
+  recentMerges: RecentMerge[];
   reviewUrl: string;
   screenshotUploadUrl: string;
   screenshotUploadInstructions: string;
   guidelines: AgentGuidelines;
+}
+
+/**
+ * Extract action items from a review body.
+ * Looks for bullet points, numbered lists, and lines after common
+ * review headings that contain actionable feedback.
+ */
+function extractActionItems(body: string): string[] {
+  const items: string[] = [];
+  const lines = body.split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Match bullet points (- or *) and numbered lists (1. 2. etc.)
+    const match = trimmed.match(/^(?:[-*]|\d+\.)\s+(.+)/);
+    if (match) {
+      items.push(match[1].trim());
+    }
+  }
+
+  return items;
 }
 
 /**
@@ -80,14 +115,47 @@ export function createAgentApiRouter(
 
     const worktree = worktreeManager.get(issue.id);
     const existingPr = prManager.getByIssueId(issue.id);
-    const previousReviews = existingPr
-      ? existingPr.comments.map((c) => ({
-          author: c.author,
-          verdict: existingPr.verdict,
-          body: c.body,
-          createdAt: c.createdAt,
-        }))
+
+    // isRework: true if a PR already exists for this issue (it's been through review before)
+    const isRework = existingPr !== undefined;
+
+    // changedFiles: files the agent changed in its branch
+    const changedFiles = worktreeManager.getChangedFiles(issue.id);
+
+    // attempt: number of review cycles (count of reviewer comments on the PR)
+    const attempt = existingPr
+      ? existingPr.comments.filter((c) => c.author === 'hermes-reviewer').length + 1
+      : 1;
+
+    // previousReviews: sorted latest-first with isLatest flag and extracted action items
+    const previousReviews: ReviewInfo[] = existingPr
+      ? existingPr.comments
+          .map((c) => ({
+            author: c.author,
+            verdict: existingPr.verdict,
+            body: c.body,
+            createdAt: c.createdAt,
+            isLatest: false,
+            actionItems: extractActionItems(c.body),
+          }))
+          .sort((a, b) => b.createdAt - a.createdAt)
       : [];
+    // Mark the latest review
+    if (previousReviews.length > 0) {
+      previousReviews[0].isLatest = true;
+    }
+
+    // recentMerges: last 5 merged PRs with titles and changed files
+    const recentMerges: RecentMerge[] = prManager
+      .list()
+      .filter((pr) => pr.status === 'merged')
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 5)
+      .map((pr) => ({
+        title: pr.title,
+        changedFiles: pr.changedFiles,
+        mergedAt: pr.updatedAt,
+      }));
 
     const baseUrl = `http://localhost:${PORT}`;
 
@@ -111,7 +179,11 @@ export function createAgentApiRouter(
       worktreePath: worktree?.path || null,
       repoPath: config.repoPath,
       targetBranch: config.targetBranch,
+      isRework,
+      attempt,
+      changedFiles,
       previousReviews,
+      recentMerges,
       reviewUrl: `${baseUrl}/agent/${issue.id}/review`,
       screenshotUploadUrl,
       screenshotUploadInstructions,

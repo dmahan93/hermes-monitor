@@ -82,7 +82,11 @@ describe('Agent API (Agent Communication)', () => {
     expect(res.body.title).toBe('Test task');
     expect(res.body.description).toBe('Do the thing');
     expect(res.body.reviewUrl).toContain(`/agent/${issue.id}/review`);
+    expect(res.body.isRework).toBe(false);
+    expect(res.body.attempt).toBe(1);
+    expect(res.body.changedFiles).toEqual([]);
     expect(res.body.previousReviews).toEqual([]);
+    expect(res.body.recentMerges).toEqual([]);
     expect(res.body.guidelines).toBeDefined();
     expect(res.body.guidelines.screenshots).toContain('screenshotUploadUrl');
     expect(res.body.guidelines.screenshots).toContain('REQUIRED');
@@ -375,6 +379,290 @@ describe('Agent API — Backward Compatibility (/ticket/ routes)', () => {
     const res = await request(server, 'POST', `/ticket/${issue.id}/review?no_ui_changes=true`);
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
+  });
+});
+
+describe('Agent API — Rework Context', () => {
+  let terminalManager: TerminalManager;
+  let issueManager: IssueManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let server: Server;
+
+  beforeEach(async () => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+    issueManager.setWorktreeManager(worktreeManager);
+    issueManager.setPRManager(prManager);
+
+    const app = express();
+    app.use('/api', createIssueApiRouter(issueManager));
+    app.use('/agent', createAgentApiRouter(issueManager, prManager, terminalManager, worktreeManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    terminalManager.killAll();
+    prManager.clearAllPendingTimers();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('GET /agent/:id/info returns isRework=false and attempt=1 when no PR exists', async () => {
+    const issue = issueManager.create({ title: 'Fresh task', description: 'Brand new' });
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.isRework).toBe(false);
+    expect(res.body.attempt).toBe(1);
+    expect(res.body.changedFiles).toEqual([]);
+    expect(res.body.previousReviews).toEqual([]);
+    expect(res.body.recentMerges).toEqual([]);
+  });
+
+  it('GET /agent/:id/info returns isRework=true when PR exists for issue', async () => {
+    const issue = issueManager.create({ title: 'Reviewed task' });
+
+    // Mock worktree to allow PR creation
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: issue.id,
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff content');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue(['src/index.ts']);
+
+    // Create a PR for this issue
+    prManager.create({ issueId: issue.id, title: issue.title });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.isRework).toBe(true);
+    expect(res.body.changedFiles).toEqual(['src/index.ts']);
+  });
+
+  it('GET /agent/:id/info returns correct attempt count based on reviewer comments', async () => {
+    const issue = issueManager.create({ title: 'Multi-attempt task' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: issue.id,
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const pr = prManager.create({ issueId: issue.id, title: issue.title });
+    expect(pr).not.toBeNull();
+
+    // Add two reviewer comments (simulating two review cycles)
+    prManager.addComment(pr!.id, 'hermes-reviewer', 'VERDICT: CHANGES_REQUESTED\n- Fix bug A');
+    prManager.addComment(pr!.id, 'hermes-reviewer', 'VERDICT: CHANGES_REQUESTED\n- Fix bug B');
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // 2 reviewer comments + 1 = attempt 3
+    expect(res.body.attempt).toBe(3);
+  });
+
+  it('GET /agent/:id/info does not count non-reviewer comments in attempt', async () => {
+    const issue = issueManager.create({ title: 'Mixed comments task' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: issue.id,
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const pr = prManager.create({ issueId: issue.id, title: issue.title });
+    expect(pr).not.toBeNull();
+
+    // Add one reviewer comment and one human comment
+    prManager.addComment(pr!.id, 'hermes-reviewer', 'VERDICT: CHANGES_REQUESTED\n- Fix it');
+    prManager.addComment(pr!.id, 'human', 'Looks almost good, just one thing.');
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // Only 1 hermes-reviewer comment + 1 = attempt 2
+    expect(res.body.attempt).toBe(2);
+  });
+
+  it('GET /agent/:id/info sorts previousReviews latest-first with isLatest flag', async () => {
+    const issue = issueManager.create({ title: 'Sorted reviews task' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: issue.id,
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const pr = prManager.create({ issueId: issue.id, title: issue.title });
+    expect(pr).not.toBeNull();
+
+    // Add comments with different timestamps
+    prManager.addComment(pr!.id, 'hermes-reviewer', 'First review');
+    // Small delay to ensure different createdAt
+    await new Promise((r) => setTimeout(r, 10));
+    prManager.addComment(pr!.id, 'hermes-reviewer', 'Second review');
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+
+    const reviews = res.body.previousReviews;
+    expect(reviews.length).toBe(2);
+    // Latest first
+    expect(reviews[0].body).toBe('Second review');
+    expect(reviews[0].isLatest).toBe(true);
+    expect(reviews[1].body).toBe('First review');
+    expect(reviews[1].isLatest).toBe(false);
+    // Confirm sort order
+    expect(reviews[0].createdAt).toBeGreaterThanOrEqual(reviews[1].createdAt);
+  });
+
+  it('GET /agent/:id/info extracts actionItems from review body', async () => {
+    const issue = issueManager.create({ title: 'Action items task' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: issue.id,
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const pr = prManager.create({ issueId: issue.id, title: issue.title });
+    expect(pr).not.toBeNull();
+
+    const reviewBody = [
+      'VERDICT: CHANGES_REQUESTED',
+      '',
+      '## Issues found:',
+      '- Missing error handling in auth module',
+      '- No input validation on user endpoint',
+      '* Should add rate limiting',
+      '',
+      'Also noticed:',
+      '1. Tests are incomplete',
+      '2. Missing documentation for new API',
+    ].join('\n');
+
+    prManager.addComment(pr!.id, 'hermes-reviewer', reviewBody);
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+
+    const reviews = res.body.previousReviews;
+    expect(reviews.length).toBe(1);
+    expect(reviews[0].actionItems).toEqual([
+      'Missing error handling in auth module',
+      'No input validation on user endpoint',
+      'Should add rate limiting',
+      'Tests are incomplete',
+      'Missing documentation for new API',
+    ]);
+  });
+
+  it('GET /agent/:id/info returns empty actionItems for reviews without bullet points', async () => {
+    const issue = issueManager.create({ title: 'No bullets task' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: issue.id,
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const pr = prManager.create({ issueId: issue.id, title: issue.title });
+    expect(pr).not.toBeNull();
+
+    prManager.addComment(pr!.id, 'hermes-reviewer', 'VERDICT: APPROVED\nLooks great overall.');
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.previousReviews[0].actionItems).toEqual([]);
+  });
+
+  it('GET /agent/:id/info returns recentMerges from merged PRs', async () => {
+    const issue = issueManager.create({ title: 'Main task' });
+
+    // Create some "merged" PRs by manipulating the prManager
+    // We need worktree mocks for each
+    const otherIssue1 = issueManager.create({ title: 'Other task 1' });
+    const otherIssue2 = issueManager.create({ title: 'Other task 2' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/other-branch',
+      path: '/tmp/other',
+      issueId: 'other',
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue(['file1.ts']);
+
+    const pr1 = prManager.create({ issueId: otherIssue1.id, title: 'Merged PR 1' });
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue(['file2.ts']);
+    const pr2 = prManager.create({ issueId: otherIssue2.id, title: 'Merged PR 2' });
+
+    expect(pr1).not.toBeNull();
+    expect(pr2).not.toBeNull();
+
+    // Manually set status to merged (simulating a real merge without git)
+    prManager.setVerdict(pr1!.id, 'approved');
+    (pr1 as any).status = 'merged';
+    (pr1 as any).updatedAt = Date.now();
+
+    prManager.setVerdict(pr2!.id, 'approved');
+    (pr2 as any).status = 'merged';
+    (pr2 as any).updatedAt = Date.now() + 1000;
+
+    // Reset mock for the main issue
+    vi.spyOn(worktreeManager, 'get').mockReturnValue(undefined);
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+
+    const merges = res.body.recentMerges;
+    expect(merges.length).toBe(2);
+    // Most recent first
+    expect(merges[0].title).toBe('Merged PR 2');
+    expect(merges[0].changedFiles).toEqual(['file2.ts']);
+    expect(merges[0].mergedAt).toBeDefined();
+    expect(merges[1].title).toBe('Merged PR 1');
+  });
+
+  it('GET /agent/:id/info limits recentMerges to 5', async () => {
+    const issue = issueManager.create({ title: 'Main task' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: 'test',
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue(['f.ts']);
+
+    // Create 7 merged PRs
+    for (let i = 0; i < 7; i++) {
+      const otherIssue = issueManager.create({ title: `Task ${i}` });
+      const pr = prManager.create({ issueId: otherIssue.id, title: `Merged PR ${i}` });
+      if (pr) {
+        (pr as any).status = 'merged';
+        (pr as any).updatedAt = Date.now() + i;
+      }
+    }
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue(undefined);
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.recentMerges.length).toBe(5);
   });
 });
 
