@@ -21,7 +21,7 @@
   transition: all 0.1s;
 }
 
-.view-switcher-btn.active {
+.view-switcher-btn.view-switcher-active {
   color: var(--accent);
   background: var(--accent-dim);
   border-top-color: var(--bevel-dark);
@@ -30,6 +30,6 @@
   border-right-color: var(--bevel-light);
 }
 
-.view-switcher-btn:hover:not(.active) {
+.view-switcher-btn:hover:not(.view-switcher-active) {
   color: var(--text);
 }

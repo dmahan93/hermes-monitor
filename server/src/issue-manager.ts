@@ -36,6 +36,31 @@ export interface UpdateIssueOptions {
 
 export type IssueEventCallback = (event: IssueEvent, issue: Issue) => void;
 
+/**
+ * Manages the full issue lifecycle from backlog to done.
+ *
+ * **Key responsibilities:**
+ * - CRUD operations on issues (create, update, delete, list, reorder).
+ * - Orchestrates status transitions: backlog → todo → in_progress → review → done.
+ *   Each transition triggers side effects via the collaborating managers:
+ *   - `in_progress`: creates a git worktree ({@link WorktreeManager}), spawns an
+ *     agent terminal ({@link TerminalManager}).
+ *   - `review`: creates a pull request ({@link PRManager}).
+ *   - `done`: removes the worktree (branch is preserved for history).
+ * - Auto-resumes crashed agent terminals — watches for unexpected terminal exits
+ *   and re-spawns the agent (up to {@link MAX_RESUME_ATTEMPTS} within a
+ *   {@link RESUME_WINDOW_MS} window) with a brief delay to avoid tight loops.
+ * - Fires event callbacks so the WebSocket layer can push updates to clients.
+ *
+ * **Persistence:** Issues are persisted to SQLite via {@link Store}. The in-memory
+ * `Map<string, Issue>` is the authoritative runtime copy; changes are written
+ * through to the store immediately. On startup, `loadFromStore()` hydrates the map.
+ *
+ * **Key lifecycle events:**
+ * - `issue:created` — new issue added.
+ * - `issue:updated` — any field or status change.
+ * - `issue:deleted` — issue removed.
+ */
 export class IssueManager {
   private issues = new Map<string, Issue>();
   private terminalManager: TerminalManager;

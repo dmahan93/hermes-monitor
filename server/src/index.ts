@@ -9,7 +9,7 @@ import { Store } from './store.js';
 import { createApiRouter } from './terminal-api.js';
 import { createIssueApiRouter } from './issue-api.js';
 import { createPRApiRouter } from './pr-api.js';
-import { createTicketApiRouter } from './ticket-api.js';
+import { createAgentApiRouter } from './agent-api.js';
 import { createGitApiRouter } from './git-api.js';
 import { setupWebSocket, broadcastToAll } from './ws.js';
 import { config, isGitRepo } from './config.js';
@@ -124,7 +124,7 @@ app.use('/api', createIssueApiRouter(issueManager));
 app.use('/api', createPRApiRouter(prManager, issueManager));
 app.use('/api', createGitApiRouter());
 
-// Manual worktree prune endpoint — registered before the catch-all ticket router
+// Manual worktree prune endpoint — registered before the catch-all agent router
 app.post('/api/worktrees/prune', (_req, res) => {
   if (!isGitRepo(config.repoPath)) {
     res.status(400).json({ error: 'Not a git repo — worktrees disabled' });
@@ -140,8 +140,14 @@ app.post('/api/worktrees/prune', (_req, res) => {
   });
 });
 
-// Catch-all ticket/agent API router — must be last
-app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, worktreeManager));
+// Agent API router — must be registered after specific routes above
+const agentRouter = createAgentApiRouter(issueManager, prManager, terminalManager, worktreeManager);
+app.use('/agent', agentRouter);
+// Backward compatibility: mount the same router at /ticket so existing agents
+// (which use curl -s without -L) still work without needing to follow redirects.
+// Response URLs (reviewUrl, screenshotUploadUrl) will reference /agent/, nudging
+// callers toward the canonical prefix.
+app.use('/ticket', agentRouter);
 
 // WebSocket
 const wss = setupWebSocket(server, terminalManager);

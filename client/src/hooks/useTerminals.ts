@@ -1,11 +1,16 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { TerminalInfo, GridItem, ServerMessage } from '../types';
 import { API_BASE } from '../config';
 
-export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void) => () => void) {
+export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void) => () => void, onError?: (message: string) => void) {
   const [terminals, setTerminals] = useState<TerminalInfo[]>([]);
   const [layout, setLayout] = useState<GridItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Store onError in a ref to avoid triggering re-renders and infinite fetch loops
+  // when callers pass an unstable callback reference.
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   const fetchTerminals = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -30,6 +35,7 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return;
       console.error('Failed to fetch terminals:', err);
+      onErrorRef.current?.('Failed to fetch terminals');
     } finally {
       setLoading(false);
     }
@@ -66,6 +72,7 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
       return term;
     } catch (err) {
       console.error('Failed to create terminal:', err);
+      onErrorRef.current?.('Failed to create terminal');
       return null;
     }
   }, []);
@@ -78,6 +85,7 @@ export function useTerminals(subscribe?: (handler: (msg: ServerMessage) => void)
       setLayout((prev) => prev.filter((l) => l.i !== id));
     } catch (err) {
       console.error('Failed to remove terminal:', err);
+      onErrorRef.current?.('Failed to remove terminal');
     }
   }, []);
 

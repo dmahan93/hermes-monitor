@@ -1,3 +1,9 @@
+/**
+ * @module pr-api
+ * UI-facing REST API for PR management, review verdicts, and merging.
+ * Exposes endpoints to list PRs, view diffs, submit review verdicts,
+ * trigger merges, manage comments, and configure review settings.
+ */
 import { Router, json } from 'express';
 import type { PRManager } from './pr-manager.js';
 import type { IssueManager } from './issue-manager.js';

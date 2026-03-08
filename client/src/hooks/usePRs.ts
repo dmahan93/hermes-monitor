@@ -1,10 +1,15 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { PullRequest, ServerMessage } from '../types';
 import { API_BASE } from '../config';
 
-export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () => void) {
+export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () => void, onError?: (message: string) => void) {
   const [prs, setPRs] = useState<PullRequest[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Store onError in a ref to avoid triggering re-renders and infinite fetch loops
+  // when callers pass an unstable callback reference.
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   const fetchPRs = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -15,6 +20,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return;
       console.error('Failed to fetch PRs:', err);
+      onErrorRef.current?.('Failed to fetch PRs');
     } finally {
       setLoading(false);
     }
@@ -53,6 +59,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
       if (!res.ok) throw new Error(`Failed to add comment (${res.status})`);
     } catch (err) {
       console.error('Failed to add comment:', err);
+      onErrorRef.current?.('Failed to add comment');
     }
   }, []);
 
@@ -66,6 +73,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
       if (!res.ok) throw new Error(`Failed to set verdict (${res.status})`);
     } catch (err) {
       console.error('Failed to set verdict:', err);
+      onErrorRef.current?.('Failed to set verdict');
     }
   }, []);
 
@@ -89,6 +97,7 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
       if (!res.ok) throw new Error(`Failed to fix conflicts (${res.status})`);
     } catch (err) {
       console.error('Failed to fix conflicts:', err);
+      onErrorRef.current?.('Failed to fix conflicts');
     }
   }, []);
 
@@ -98,9 +107,11 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         console.error('Failed to relaunch review:', data?.error || res.statusText);
+        onErrorRef.current?.('Failed to relaunch review');
       }
     } catch (err) {
       console.error('Failed to relaunch review:', err);
+      onErrorRef.current?.('Failed to relaunch review');
     }
   }, []);
 

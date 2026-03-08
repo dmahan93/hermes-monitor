@@ -12,10 +12,10 @@ describe('ViewSwitcher', () => {
     expect(screen.getByText('[CONFIG]')).toBeInTheDocument();
   });
 
-  it('highlights active mode', () => {
+  it('highlights active mode with view-switcher-active class', () => {
     render(<ViewSwitcher mode="kanban" onChange={() => {}} />);
-    expect(screen.getByText('[KANBAN]').className).toContain('active');
-    expect(screen.getByText('[TERMINALS]').className).not.toContain('active');
+    expect(screen.getByText('[KANBAN]').className).toContain('view-switcher-active');
+    expect(screen.getByText('[TERMINALS]').className).not.toContain('view-switcher-active');
   });
 
   it('calls onChange when clicking inactive mode', () => {
@@ -39,8 +39,8 @@ describe('ViewSwitcher', () => {
 
   it('highlights config when active', () => {
     render(<ViewSwitcher mode="config" onChange={() => {}} />);
-    expect(screen.getByText('[CONFIG]').className).toContain('active');
-    expect(screen.getByText('[KANBAN]').className).not.toContain('active');
+    expect(screen.getByText('[CONFIG]').className).toContain('view-switcher-active');
+    expect(screen.getByText('[KANBAN]').className).not.toContain('view-switcher-active');
   });
 
   it('calls onChange with config when clicking CONFIG tab', () => {
@@ -52,8 +52,8 @@ describe('ViewSwitcher', () => {
 
   it('highlights research when active', () => {
     render(<ViewSwitcher mode="research" onChange={() => {}} />);
-    expect(screen.getByText('[RESEARCH]').className).toContain('active');
-    expect(screen.getByText('[KANBAN]').className).not.toContain('active');
+    expect(screen.getByText('[RESEARCH]').className).toContain('view-switcher-active');
+    expect(screen.getByText('[KANBAN]').className).not.toContain('view-switcher-active');
   });
 
   it('calls onChange with research when clicking RESEARCH tab', () => {
