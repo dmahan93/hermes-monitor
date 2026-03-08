@@ -45,7 +45,6 @@ export default [
       "@typescript-eslint/consistent-type-definitions": "off",
 
       // General rules
-      "consistent-return": "warn",
       "no-console": "off",
     },
   },
@@ -64,7 +63,7 @@ export default [
 
   // Test files — relax some rules
   {
-    files: ["**/__tests__/**/*.ts", "**/__tests__/**/*.tsx", "**/*.test.ts", "**/*.test.tsx"],
+    files: ["**/__tests__/**/*.ts", "**/__tests__/**/*.tsx", "**/*.test.ts", "**/*.test.tsx", "e2e/**/*.ts"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "off",

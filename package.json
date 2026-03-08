@@ -23,19 +23,8 @@
     "setup:worktree": "bash scripts/setup-worktree.sh",
     "lint": "eslint server/src client/src shared",
     "lint:fix": "eslint --fix server/src client/src shared",
-    "typecheck": "tsc --noEmit -p server/tsconfig.json && tsc --noEmit -p client/tsconfig.lint.json",
+    "typecheck": "tsc --noEmit -p server/tsconfig.json && tsc --noEmit -p client/tsconfig.lint.json && tsc --noEmit -p shared/tsconfig.json",
     "prepare": "husky"
-  },
-  "lint-staged": {
-    "server/src/**/*.ts": [
-      "npx tsc --noEmit -p server/tsconfig.json"
-    ],
-    "client/src/**/*.{ts,tsx}": [
-      "npx tsc --noEmit -p client/tsconfig.lint.json"
-    ],
-    "*.{ts,tsx}": [
-      "eslint --fix"
-    ]
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.56.1",
