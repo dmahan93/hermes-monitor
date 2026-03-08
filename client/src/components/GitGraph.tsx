@@ -65,7 +65,12 @@ function GraphSvg({ node, maxCols, isFirstRow }: { node: GraphNode; maxCols: num
       style={{ width: `${wRem}rem`, height: `${ROW_H_REM}rem` }}
       className={`git-graph-svg${isFirstRow ? ' git-graph-svg-first' : ''}`}
     >
-      {/* Pass-through and branch lines */}
+      {/* Pass-through and branch lines.
+         * First-row fix: For the topmost commit, lines must not extend above
+         * the circle (there is no row above to connect to). Straight lines
+         * start at cy (circle center) instead of -LINE_EXT, and the incoming
+         * straight segment of curved lines is omitted entirely. The CSS class
+         * git-graph-svg-first provides a clip-path safety net. */}
       {node.lines.map((line, i) => {
         const x1 = line.fromCol * LANE_W + LANE_W / 2 + 2;
         const x2 = line.toCol * LANE_W + LANE_W / 2 + 2;
