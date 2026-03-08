@@ -43,19 +43,19 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
       setScreenshots(pr.screenshots);
       return;
     }
-    let cancelled = false;
-    fetch(`${API_BASE}/prs/${pr.id}/screenshots`)
+    const controller = new AbortController();
+    fetch(`${API_BASE}/prs/${pr.id}/screenshots`, { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`Failed to fetch screenshots: ${res.status}`);
         return res.json();
       })
       .then((data) => {
-        if (!cancelled) setScreenshots(data.screenshots || []);
+        if (!controller.signal.aborted) setScreenshots(data.screenshots || []);
       })
-      .catch(() => {
-        if (!cancelled) setScreenshots([]);
+      .catch((err) => {
+        if (!controller.signal.aborted && err.name !== 'AbortError') setScreenshots([]);
       });
-    return () => { cancelled = true; };
+    return () => controller.abort();
   }, [pr.id, pr.screenshotCount]);
 
   // Check merge status on open
@@ -64,15 +64,21 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
       setMergeCheck({ checking: false, canMerge: false, hasConflicts: false });
       return;
     }
+    const controller = new AbortController();
     setMergeCheck({ checking: true, canMerge: false, hasConflicts: false });
-    fetch(`${API_BASE}/prs/${pr.id}/merge-check`)
+    fetch(`${API_BASE}/prs/${pr.id}/merge-check`, { signal: controller.signal })
       .then((res) => res.json())
       .then((data) => {
-        setMergeCheck({ checking: false, canMerge: data.canMerge, hasConflicts: data.hasConflicts });
+        if (!controller.signal.aborted) {
+          setMergeCheck({ checking: false, canMerge: data.canMerge, hasConflicts: data.hasConflicts });
+        }
       })
-      .catch(() => {
-        setMergeCheck({ checking: false, canMerge: false, hasConflicts: false });
+      .catch((err) => {
+        if (!controller.signal.aborted && err.name !== 'AbortError') {
+          setMergeCheck({ checking: false, canMerge: false, hasConflicts: false });
+        }
       });
+    return () => controller.abort();
   }, [pr.id, pr.status]);
 
   const handleComment = () => {
@@ -181,9 +187,8 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
             {mergeError}
             {mergeError.includes('onflict') && (
               <button
-                className="pr-action-btn pr-fix-btn"
+                className="pr-action-btn pr-fix-btn pr-fix-btn-inline"
                 onClick={() => { setMergeError(null); onFixConflicts(pr.id); }}
-                style={{ marginLeft: 8 }}
               >
                 [🔧 FIX CONFLICTS]
               </button>
