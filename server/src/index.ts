@@ -160,7 +160,7 @@ app.use('/ticket', agentRouter);
 // In production, the Express server serves the built client and needs a
 // catch-all to serve index.html for any client-side route so that
 // refreshing on /my-repo/kanban doesn't 404.
-const clientDistPath = resolve(__dirname, '../../client/dist');
+const clientDistPath = resolve(new URL('.', import.meta.url).pathname, '../../client/dist');
 if (existsSync(clientDistPath)) {
   app.use(serveStatic(clientDistPath));
   app.get('*', (_req, res) => {
