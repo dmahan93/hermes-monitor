@@ -13,6 +13,8 @@ import { createPRApiRouter } from './pr-api.js';
 import { createAgentApiRouter } from './agent-api.js';
 import { createGitApiRouter } from './git-api.js';
 import { createBatchApiRouter } from './batch-api.js';
+import { Registry } from './manager/registry.js';
+import { createRegistryApiRouter } from './manager/registry-api.js';
 import { setupWebSocket, broadcastToAll } from './ws.js';
 import { config, isGitRepo } from './config.js';
 import { enrichPRWithScreenshots } from './screenshot-utils.js';
@@ -24,6 +26,9 @@ const server = createServer(app);
 
 // Persistent store
 const store = new Store();
+
+// Hub registry (multi-repo management)
+const registry = new Registry();
 
 // Core managers
 const terminalManager = new TerminalManager();
@@ -130,6 +135,7 @@ app.use('/api', createIssueApiRouter(issueManager));
 app.use('/api', createPRApiRouter(prManager, issueManager));
 app.use('/api', createGitApiRouter());
 app.use('/api/batch', createBatchApiRouter(prManager, issueManager, terminalManager));
+app.use('/api', createRegistryApiRouter(registry));
 
 // Manual worktree prune endpoint — registered before the catch-all agent router
 app.post('/api/worktrees/prune', (_req, res) => {
@@ -202,6 +208,7 @@ const shutdown = () => {
   prManager.clearAllPendingTimers();
   terminalManager.killAll();
   store.close();
+  registry.close();
   server.close();
   process.exit(0);
 };
@@ -212,4 +219,4 @@ server.listen(PORT, () => {
   console.log(`Hermes Monitor server listening on :${PORT}`);
 });
 
-export { app, server, terminalManager, issueManager, worktreeManager, prManager, store };
+export { app, server, terminalManager, issueManager, worktreeManager, prManager, store, registry };

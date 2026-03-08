@@ -1,0 +1,126 @@
+/**
+ * @module registry-api
+ * REST API for the repo registry. Provides CRUD endpoints for managing
+ * registered repos at /api/hub/repos.
+ *
+ * Endpoints:
+ *   GET    /hub/repos      — list all repos with status
+ *   POST   /hub/repos      — register { path, name? }
+ *   GET    /hub/repos/:id  — get repo details
+ *   PATCH  /hub/repos/:id  — update status/pid { status, pid? }
+ *   DELETE /hub/repos/:id  — unregister
+ */
+import { Router, json } from 'express';
+import { statSync } from 'fs';
+import type { Registry, RepoStatus } from './registry.js';
+
+export function createRegistryApiRouter(registry: Registry): Router {
+  const router = Router();
+  router.use(json());
+
+  /** GET /hub/repos — list all registered repos */
+  router.get('/hub/repos', (_req, res) => {
+    const repos = registry.list();
+    res.json(repos);
+  });
+
+  /** POST /hub/repos — register a new repo */
+  router.post('/hub/repos', (req, res) => {
+    const { path, name } = req.body || {};
+
+    const trimmedPath = typeof path === 'string' ? path.trim() : '';
+    if (!trimmedPath) {
+      res.status(400).json({ error: 'path is required and must be a non-empty string' });
+      return;
+    }
+
+    if (!trimmedPath.startsWith('/')) {
+      res.status(400).json({ error: 'path must be absolute' });
+      return;
+    }
+
+    // Validate path exists and is a directory (single statSync call avoids TOCTOU race)
+    try {
+      if (!statSync(trimmedPath).isDirectory()) {
+        res.status(400).json({ error: 'path must be an existing directory' });
+        return;
+      }
+    } catch {
+      res.status(400).json({ error: 'path must be an existing directory' });
+      return;
+    }
+
+    // Validate name type — guard against non-string truthy values (e.g. 123)
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+
+    try {
+      const entry = registry.register(trimmedPath, trimmedName || undefined);
+      res.status(201).json(entry);
+    } catch (err: any) {
+      // Duplicate path → 409 Conflict
+      if (err.message?.includes('already registered')) {
+        res.status(409).json({ error: err.message });
+        return;
+      }
+      res.status(500).json({ error: err.message || 'Failed to register repo' });
+    }
+  });
+
+  /** GET /hub/repos/:id — get a single repo */
+  router.get('/hub/repos/:id', (req, res) => {
+    const entry = registry.get(req.params.id);
+    if (!entry) {
+      res.status(404).json({ error: 'Repo not found' });
+      return;
+    }
+    res.json(entry);
+  });
+
+  /** PATCH /hub/repos/:id — update status and optionally pid */
+  router.patch('/hub/repos/:id', (req, res) => {
+    const { status, pid } = req.body || {};
+
+    if (!status || typeof status !== 'string') {
+      res.status(400).json({ error: 'status is required and must be a string' });
+      return;
+    }
+
+    // Validate pid type if provided
+    if (pid !== undefined && pid !== null && typeof pid !== 'number') {
+      res.status(400).json({ error: 'pid must be a number or null' });
+      return;
+    }
+
+    try {
+      const updated = registry.updateStatus(req.params.id, status as RepoStatus, pid);
+      if (!updated) {
+        res.status(404).json({ error: 'Repo not found' });
+        return;
+      }
+      res.json(updated);
+    } catch (err: any) {
+      if (err.message?.includes('Invalid status')) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      res.status(500).json({ error: err.message || 'Failed to update repo status' });
+    }
+  });
+
+  /** DELETE /hub/repos/:id — unregister a repo (must be stopped first) */
+  router.delete('/hub/repos/:id', (req, res) => {
+    const entry = registry.get(req.params.id);
+    if (!entry) {
+      res.status(404).json({ error: 'Repo not found' });
+      return;
+    }
+    if (entry.status === 'running' || entry.status === 'starting') {
+      res.status(409).json({ error: 'Cannot unregister a running repo. Stop it first.' });
+      return;
+    }
+    registry.unregister(req.params.id);
+    res.json({ ok: true });
+  });
+
+  return router;
+}
