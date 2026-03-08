@@ -1,14 +1,15 @@
 import './ViewSwitcher.css';
 
-export type ViewMode = 'kanban' | 'terminals' | 'prs' | 'research' | 'config';
+export type ViewMode = 'kanban' | 'terminals' | 'prs' | 'research' | 'config' | 'manager';
 
 interface ViewSwitcherProps {
   mode: ViewMode;
   onChange: (mode: ViewMode) => void;
   prCount?: number;
+  activeAgentCount?: number;
 }
 
-export function ViewSwitcher({ mode, onChange, prCount }: ViewSwitcherProps) {
+export function ViewSwitcher({ mode, onChange, prCount, activeAgentCount }: ViewSwitcherProps) {
   return (
     <div className="view-switcher">
       <button
@@ -28,6 +29,12 @@ export function ViewSwitcher({ mode, onChange, prCount }: ViewSwitcherProps) {
         onClick={() => onChange('prs')}
       >
         [PRs{prCount ? ` ${prCount}` : ''}]
+      </button>
+      <button
+        className={`view-switcher-btn ${mode === 'manager' ? 'view-switcher-active' : ''}`}
+        onClick={() => onChange('manager')}
+      >
+        [MANAGER{activeAgentCount ? ` ${activeAgentCount}` : ''}]
       </button>
       <button
         className={`view-switcher-btn ${mode === 'research' ? 'view-switcher-active' : ''}`}
