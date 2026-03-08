@@ -78,7 +78,7 @@ const MERGE_ALL_COMMAND_TEMPLATE =
   'curl -s localhost:__PORT__/api/prs | python3 -c "import json,sys; [print(p[\'id\']) for p in json.loads(sys.stdin.read(),strict=False) if p[\'verdict\']==\'approved\' and p[\'status\'] not in (\'merged\',\'closed\')]" | while read id; do echo "Merging $id..."; curl -s -X POST "localhost:__PORT__/api/prs/$id/merge"; echo ""; done\n';
 
 const RESTART_CRASHED_COMMAND_TEMPLATE =
-  'curl -s localhost:__PORT__/api/issues | python3 -c "import json,sys; [print(i[\'id\']) for i in json.loads(sys.stdin.read(),strict=False) if i[\'status\']==\'in_progress\' and not i.get(\'terminalId\')]" | while read id; do echo "Restarting $id..."; curl -s -X PATCH "localhost:__PORT__/api/issues/$id/status" -H \'Content-Type: application/json\' -d \'{\\"status\\":\\"todo\\"}\'; curl -s -X PATCH "localhost:__PORT__/api/issues/$id/status" -H \'Content-Type: application/json\' -d \'{\\"status\\":\\"in_progress\\"}\'; echo ""; done\n';
+  'curl -s localhost:__PORT__/api/issues | python3 -c "import json,sys; [print(i[\'id\']) for i in json.loads(sys.stdin.read(),strict=False) if i[\'status\']==\'in_progress\' and not i.get(\'terminalId\')]" | while read id; do echo "Restarting $id..."; curl -s -X PATCH "localhost:__PORT__/api/issues/$id/status" -H \'Content-Type: application/json\' -d \'{"status":"todo"}\'; curl -s -X PATCH "localhost:__PORT__/api/issues/$id/status" -H \'Content-Type: application/json\' -d \'{"status":"in_progress"}\'; echo ""; done\n';
 
 
 function withPort(template: string, port: number): string {
@@ -353,16 +353,9 @@ export function ManagerView({
     return terminals.some((t: { id: string }) => t.id === id);
   }, []);
 
-  const createManagerTerminal = useCallback(async (): Promise<string | null> => {
+  const createManagerTerminal = useCallback(async (config?: { repoPath?: string } | null): Promise<string | null> => {
     try {
-      // Fetch config for repoPath (serverPort already updated by fetchServerConfig in init)
-      let cwd: string | undefined;
-      try {
-        const cfg = await fetchServerConfig();
-        cwd = cfg?.repoPath;
-      } catch {
-        // If config fetch fails, create terminal without cwd
-      }
+      const cwd = config?.repoPath;
 
       const res = await fetch(`${API_BASE}/terminals`, {
         method: 'POST',
@@ -380,7 +373,7 @@ export function ManagerView({
       setManagerTerminalError(err.message || 'Failed to create manager terminal');
       return null;
     }
-  }, [fetchServerConfig]);
+  }, []);
 
   // Initialize or restore manager terminal when first opened
   const initManagerTerminal = useCallback(async () => {
@@ -392,7 +385,7 @@ export function ManagerView({
     try {
       // Always fetch config first so serverPortRef is current on both
       // the restore path and the create path
-      await fetchServerConfig();
+      const config = await fetchServerConfig();
 
       // Try to restore from localStorage
       const savedId = localStorage.getItem(MANAGER_TERMINAL_STORAGE_KEY);
@@ -402,23 +395,19 @@ export function ManagerView({
           if (exists) {
             setManagerTerminalId(savedId);
             managerInitRef.current = true;
-            setManagerTerminalLoading(false);
-            managerCreatingRef.current = false;
             return;
           }
         } catch {
           // Network error — don't create a duplicate
           setManagerTerminalError('Could not reach server to validate terminal.');
-          setManagerTerminalLoading(false);
-          managerCreatingRef.current = false;
           return;
         }
         // Stale — clear it
         localStorage.removeItem(MANAGER_TERMINAL_STORAGE_KEY);
       }
 
-      // Create a new one
-      const newId = await createManagerTerminal();
+      // Create a new one — pass config so we don't fetch it again
+      const newId = await createManagerTerminal(config);
       if (newId) {
         localStorage.setItem(MANAGER_TERMINAL_STORAGE_KEY, newId);
         setManagerTerminalId(newId);
@@ -723,6 +712,7 @@ export function ManagerView({
         <button
           className="manager-terminal-toggle"
           onClick={handleToggleTerminal}
+          aria-expanded={managerTerminalOpen}
         >
           <span className="manager-terminal-toggle-icon">
             {managerTerminalOpen ? '▾' : '▸'}

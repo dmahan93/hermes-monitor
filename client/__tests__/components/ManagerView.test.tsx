@@ -1018,6 +1018,19 @@ describe('ManagerView', () => {
           data: expect.stringContaining('Restarting'),
         }),
       );
+
+      // Verify the curl -d bodies contain valid JSON (no stray backslashes)
+      const sentData = sendFn.mock.calls.find(
+        (c: any[]) => c[0]?.type === 'stdin' && c[0]?.data?.includes('Restarting'),
+      )?.[0]?.data as string;
+      expect(sentData).toBeDefined();
+      // The -d bodies should be single-quoted JSON without backslash escaping
+      const dBodies = [...sentData.matchAll(/-d '([^']*)'/g)].map((m: RegExpMatchArray) => m[1]);
+      expect(dBodies.length).toBe(2);
+      for (const body of dBodies) {
+        expect(() => JSON.parse(body)).not.toThrow();
+        expect(body).not.toContain('\\');
+      }
     });
 
     it('shows spawning status while terminal is being created', async () => {
