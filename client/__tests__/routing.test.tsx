@@ -34,7 +34,7 @@ describe('Routing', () => {
   it('/ renders HubLanding', async () => {
     renderWithRoutes('/');
     await waitFor(() => {
-      expect(screen.getByText('HERMES MONITOR')).toBeInTheDocument();
+      expect(screen.getByText('HERMES MONITOR HUB')).toBeInTheDocument();
     });
   });
 

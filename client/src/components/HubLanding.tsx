@@ -1,52 +1,189 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '../config';
+import { useConfirm } from '../hooks/useConfirm';
 import './HubLanding.css';
 
-interface RepoInfo {
+export type RepoStatus = 'stopped' | 'starting' | 'running' | 'error';
+
+export interface RepoEntry {
   id: string;
   name: string;
   path: string;
+  port: number;
+  pid: number | null;
+  status: RepoStatus;
+  createdAt: number;
+  updatedAt: number;
+  /** Optional stats populated by the hub when the repo is running */
   issueCount?: number;
+  activeAgents?: number;
   prCount?: number;
 }
 
 /**
- * Landing page showing a list of repos to manage.
+ * Landing page for the Hermes Monitor Hub — shows all registered repos
+ * in a card grid with status indicators, quick stats, and repo management.
  *
- * TODO: The /api/repos endpoint does not exist yet on the server.
- * This component is scaffolding for future multi-repo support.
- * Currently it always falls back to a single "default" entry.
- * When the endpoint is added, remove the fallback logic below.
+ * Fetches from /api/hub/repos and provides add/start/stop/remove actions.
  */
 export function HubLanding() {
-  const [repos, setRepos] = useState<RepoInfo[]>([]);
+  const [repos, setRepos] = useState<RepoEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch(`${API_BASE}/repos`, { signal: controller.signal })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to fetch repos (${res.status})`);
-        return res.json();
-      })
-      .then((data: RepoInfo[]) => {
-        setRepos(data);
-        setError(null);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (err.name === 'AbortError') return;
-        // TODO: Remove this fallback once /api/repos is implemented on the server.
-        // For now, silently degrade to a single default repo entry.
-        console.warn('HubLanding: /api/repos unavailable, using default fallback.', err.message);
-        setRepos([{ id: 'default', name: 'default', path: '.' }]);
-        setError(null);
-        setLoading(false);
-      });
-    return () => controller.abort();
+  // Add repo form state
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addPath, setAddPath] = useState('');
+  const [addName, setAddName] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  const navigate = useNavigate();
+  const { confirm, ConfirmDialogElement } = useConfirm();
+
+  const fetchRepos = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/hub/repos`);
+      if (!res.ok) throw new Error(`Failed to fetch repos (${res.status})`);
+      const data: RepoEntry[] = await res.json();
+      setRepos(data);
+      setError(null);
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      console.warn('HubLanding: /api/hub/repos unavailable', err.message);
+      setError('Failed to load repositories');
+      setRepos([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchRepos();
+  }, [fetchRepos]);
+
+  /** Auto-detect name from path (last segment of the directory) */
+  const handlePathChange = (value: string) => {
+    setAddPath(value);
+    setAddError(null);
+    // Auto-detect name from directory basename
+    const trimmed = value.trim().replace(/\/+$/, '');
+    const segments = trimmed.split('/');
+    const detected = segments[segments.length - 1] || '';
+    setAddName(detected);
+  };
+
+  /** Register a new repo via POST /api/hub/repos */
+  const handleAddRepo = async () => {
+    const trimmed = addPath.trim();
+    if (!trimmed) {
+      setAddError('Path is required');
+      return;
+    }
+    if (!trimmed.startsWith('/')) {
+      setAddError('Path must be absolute (start with /)');
+      return;
+    }
+
+    setAdding(true);
+    setAddError(null);
+
+    try {
+      const body: { path: string; name?: string } = { path: trimmed };
+      if (addName.trim()) body.name = addName.trim();
+
+      const res = await fetch(`${API_BASE}/hub/repos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to register (${res.status})`);
+      }
+
+      // Success — refresh list, reset form
+      setAddPath('');
+      setAddName('');
+      setShowAddForm(false);
+      await fetchRepos();
+    } catch (err: any) {
+      setAddError(err.message || 'Failed to register repo');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  /** Toggle start/stop via PATCH /api/hub/repos/:id */
+  const handleToggle = async (repo: RepoEntry, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newStatus: RepoStatus = repo.status === 'running' || repo.status === 'starting'
+      ? 'stopped'
+      : 'running';
+
+    try {
+      const res = await fetch(`${API_BASE}/hub/repos/${repo.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to update (${res.status})`);
+      }
+      await fetchRepos();
+    } catch (err: any) {
+      setError(err.message || 'Failed to toggle repo');
+    }
+  };
+
+  /** Remove repo via DELETE /api/hub/repos/:id (with confirmation) */
+  const handleRemove = async (repo: RepoEntry, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const ok = await confirm({
+      title: 'Remove Repository',
+      message: `Remove "${repo.name}" from the hub? This will not delete any files.`,
+      confirmText: '[REMOVE]',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/hub/repos/${repo.id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to remove (${res.status})`);
+      }
+      await fetchRepos();
+    } catch (err: any) {
+      setError(err.message || 'Failed to remove repo');
+    }
+  };
+
+  /** Navigate to repo settings */
+  const handleSettings = (repo: RepoEntry, e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate(`/${encodeURIComponent(repo.id)}/config`);
+  };
+
+  /** Navigate to repo dashboard */
+  const handleCardClick = (repo: RepoEntry) => {
+    navigate(`/${encodeURIComponent(repo.id)}`);
+  };
+
+  const statusLabel = (status: RepoStatus): string => {
+    switch (status) {
+      case 'running': return 'Running';
+      case 'starting': return 'Starting';
+      case 'stopped': return 'Stopped';
+      case 'error': return 'Error';
+      default: return status;
+    }
+  };
 
   if (loading) {
     return (
@@ -59,34 +196,133 @@ export function HubLanding() {
   return (
     <div className="hub-landing">
       <header className="hub-header">
-        <h1 className="hub-title">HERMES MONITOR</h1>
+        <div className="hub-logo">⎇</div>
+        <h1 className="hub-title">HERMES MONITOR HUB</h1>
         <p className="hub-subtitle">Select a repository to manage</p>
       </header>
-      <div className="hub-repos">
-        {error && <div className="hub-error">{error}</div>}
-        {repos.length === 0 ? (
-          <div className="hub-empty">No repositories found.</div>
+
+      {error && <div className="hub-error">{error}</div>}
+
+      <div className="hub-toolbar">
+        <button
+          className="hub-add-btn"
+          onClick={() => setShowAddForm(!showAddForm)}
+          aria-label="Add repository"
+        >
+          {showAddForm ? '✕ Cancel' : '+ Add Repo'}
+        </button>
+      </div>
+
+      {showAddForm && (
+        <div className="hub-add-form" data-testid="add-repo-form">
+          <div className="hub-add-field">
+            <label className="hub-add-label" htmlFor="hub-add-path">
+              Repository path
+            </label>
+            <input
+              id="hub-add-path"
+              className="hub-add-input"
+              type="text"
+              placeholder="/home/user/my-project"
+              value={addPath}
+              onChange={(e) => handlePathChange(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="hub-add-field">
+            <label className="hub-add-label" htmlFor="hub-add-name">
+              Name (auto-detected)
+            </label>
+            <input
+              id="hub-add-name"
+              className="hub-add-input"
+              type="text"
+              placeholder="my-project"
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+            />
+          </div>
+          {addError && <div className="hub-add-error">{addError}</div>}
+          <button
+            className="hub-add-submit"
+            onClick={handleAddRepo}
+            disabled={adding}
+          >
+            {adding ? 'Registering...' : '[REGISTER]'}
+          </button>
+        </div>
+      )}
+
+      <div className="hub-grid">
+        {repos.length === 0 && !error ? (
+          <div className="hub-empty">
+            No repositories registered. Click "Add Repo" to get started.
+          </div>
         ) : (
           repos.map((repo) => (
-            <Link key={repo.id} to={`/${encodeURIComponent(repo.id)}`} className="hub-repo-card">
-              <span className="hub-repo-icon">⎇</span>
-              <div className="hub-repo-info">
-                <span className="hub-repo-name">{repo.name}</span>
-                <span className="hub-repo-path">{repo.path}</span>
+            <div
+              key={repo.id}
+              className="hub-card"
+              onClick={() => handleCardClick(repo)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCardClick(repo); }}
+            >
+              <div className="hub-card-header">
+                <span
+                  className={`hub-status-dot hub-status-${repo.status}`}
+                  title={statusLabel(repo.status)}
+                  aria-label={statusLabel(repo.status)}
+                />
+                <span className="hub-card-name">{repo.name}</span>
               </div>
-              <div className="hub-repo-stats">
-                {repo.issueCount !== undefined && (
-                  <span className="hub-repo-stat">{repo.issueCount} issues</span>
-                )}
-                {repo.prCount !== undefined && (
-                  <span className="hub-repo-stat">{repo.prCount} PRs</span>
-                )}
+              <span className="hub-card-path">{repo.path}</span>
+
+              {repo.status === 'running' && (
+                <div className="hub-card-stats">
+                  {repo.issueCount !== undefined && (
+                    <span className="hub-stat">{repo.issueCount} issues</span>
+                  )}
+                  {repo.activeAgents !== undefined && (
+                    <span className="hub-stat">{repo.activeAgents} agents</span>
+                  )}
+                  {repo.prCount !== undefined && (
+                    <span className="hub-stat">{repo.prCount} PRs</span>
+                  )}
+                </div>
+              )}
+
+              <div className="hub-card-actions">
+                <button
+                  className={`hub-action-btn ${repo.status === 'running' || repo.status === 'starting' ? 'hub-action-stop' : 'hub-action-start'}`}
+                  onClick={(e) => handleToggle(repo, e)}
+                  title={repo.status === 'running' || repo.status === 'starting' ? 'Stop' : 'Start'}
+                  aria-label={repo.status === 'running' || repo.status === 'starting' ? 'Stop' : 'Start'}
+                >
+                  {repo.status === 'running' || repo.status === 'starting' ? '■ Stop' : '▶ Start'}
+                </button>
+                <button
+                  className="hub-action-btn hub-action-settings"
+                  onClick={(e) => handleSettings(repo, e)}
+                  title="Settings"
+                  aria-label="Settings"
+                >
+                  ⚙
+                </button>
+                <button
+                  className="hub-action-btn hub-action-remove"
+                  onClick={(e) => handleRemove(repo, e)}
+                  title="Remove"
+                  aria-label="Remove"
+                >
+                  ✕
+                </button>
               </div>
-              <span className="hub-repo-arrow">→</span>
-            </Link>
+            </div>
           ))
         )}
       </div>
+      {ConfirmDialogElement}
     </div>
   );
 }
