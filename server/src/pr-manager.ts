@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import type { TerminalManager } from './terminal-manager.js';
@@ -464,9 +464,9 @@ export class PRManager {
         worktreePath = wt.path;
       } catch (err: any) {
         // Worktree might already exist on disk but not in our map
-        worktreePath = `/tmp/hermes-worktrees/${pr.issueId}`;
+        worktreePath = join(config.worktreeBase, pr.issueId);
         try {
-          execSync(`git worktree add "${worktreePath}" ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
+          execFileSync('git', ['worktree', 'add', worktreePath, pr.sourceBranch], { cwd: pr.repoPath, stdio: 'pipe' });
         } catch {
           // Already exists, just use it
         }

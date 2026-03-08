@@ -54,6 +54,60 @@ if (isGitRepo(config.repoPath)) {
   console.log(`Warning: ${config.repoPath} is not a git repo — worktrees disabled`);
 }
 
+// Startup cleanup: prune stale worktrees and branches from previous sessions
+function getActiveIssueIds(): Set<string> {
+  return new Set(issueManager.list().map((i) => i.id));
+}
+
+function runWorktreePrune(): { removedWorktrees: number; prunedBranches: number; skippedUnmergedBranches: number } {
+  if (!isGitRepo(config.repoPath)) return { removedWorktrees: 0, prunedBranches: 0, skippedUnmergedBranches: 0 };
+  const activeIds = getActiveIssueIds();
+  const result = worktreeManager.pruneStaleWorktrees(activeIds);
+  return {
+    removedWorktrees: result.removedWorktrees.length,
+    prunedBranches: result.prunedBranches.length,
+    skippedUnmergedBranches: result.skippedUnmergedBranches.length,
+  };
+}
+
+if (isGitRepo(config.repoPath)) {
+  try {
+    const pruned = runWorktreePrune();
+    if (pruned.removedWorktrees > 0 || pruned.prunedBranches > 0 || pruned.skippedUnmergedBranches > 0) {
+      const parts = [
+        `Pruned ${pruned.removedWorktrees} stale worktree(s), ${pruned.prunedBranches} orphaned branch(es)`,
+      ];
+      if (pruned.skippedUnmergedBranches > 0) {
+        parts.push(`(${pruned.skippedUnmergedBranches} unmerged branch(es) preserved — see warnings above)`);
+      }
+      console.log(parts.join(' '));
+    }
+  } catch (err) {
+    console.error('Startup worktree prune failed:', err);
+  }
+}
+
+// Periodic cleanup every 4 hours
+const PRUNE_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const pruneInterval = setInterval(() => {
+  try {
+    const pruned = runWorktreePrune();
+    if (pruned.removedWorktrees > 0 || pruned.prunedBranches > 0 || pruned.skippedUnmergedBranches > 0) {
+      const parts = [
+        `[auto-prune] Cleaned ${pruned.removedWorktrees} worktree(s), ${pruned.prunedBranches} branch(es)`,
+      ];
+      if (pruned.skippedUnmergedBranches > 0) {
+        parts.push(`(${pruned.skippedUnmergedBranches} unmerged preserved)`);
+      }
+      console.log(parts.join(' '));
+    }
+  } catch (err) {
+    console.error('[auto-prune] Periodic worktree prune failed:', err);
+  }
+}, PRUNE_INTERVAL_MS);
+// Don't let the timer prevent natural process exit during graceful shutdown
+pruneInterval.unref();
+
 const issueCount = issueManager.list().length;
 const prCount = prManager.list().length;
 if (issueCount > 0 || prCount > 0) {
@@ -69,6 +123,24 @@ app.use('/api', createApiRouter(terminalManager));
 app.use('/api', createIssueApiRouter(issueManager));
 app.use('/api', createPRApiRouter(prManager, issueManager));
 app.use('/api', createGitApiRouter());
+
+// Manual worktree prune endpoint — registered before the catch-all agent router
+app.post('/api/worktrees/prune', (_req, res) => {
+  if (!isGitRepo(config.repoPath)) {
+    res.status(400).json({ error: 'Not a git repo — worktrees disabled' });
+    return;
+  }
+  const activeIds = getActiveIssueIds();
+  const result = worktreeManager.pruneStaleWorktrees(activeIds);
+  res.json({
+    removedWorktrees: result.removedWorktrees,
+    prunedBranches: result.prunedBranches,
+    skippedUnmergedBranches: result.skippedUnmergedBranches,
+    summary: `Removed ${result.removedWorktrees.length} worktree(s), pruned ${result.prunedBranches.length} branch(es), ${result.skippedUnmergedBranches.length} unmerged preserved`,
+  });
+});
+
+// Agent API router — must be registered after specific routes above
 const agentRouter = createAgentApiRouter(issueManager, prManager, terminalManager, worktreeManager);
 app.use('/agent', agentRouter);
 // Backward compatibility: mount the same router at /ticket so existing agents
@@ -98,6 +170,7 @@ prManager.onEvent((event, pr) => {
 // Cleanup on shutdown
 const shutdown = () => {
   console.log('\nShutting down...');
+  clearInterval(pruneInterval);
   issueManager.clearResumeTimers();
   prManager.clearAllPendingTimers();
   terminalManager.killAll();
