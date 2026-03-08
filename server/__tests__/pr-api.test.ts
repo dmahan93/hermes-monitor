@@ -354,6 +354,160 @@ describe('PRManager.handleConflictFixerExit — conflict fixer lifecycle', () =>
   }, 10000);
 });
 
+describe('PRManager.close', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+
+  beforeEach(() => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+  });
+
+  afterEach(() => {
+    prManager.clearAllPendingTimers();
+    terminalManager.killAll();
+  });
+
+  it('closes an open PR', () => {
+    const pr = insertTestPR(prManager, { status: 'open', verdict: 'pending' });
+    const result = prManager.close(pr.id);
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe('closed');
+  });
+
+  it('closes an approved PR', () => {
+    const pr = insertTestPR(prManager, { id: 'close-approved', status: 'approved', verdict: 'approved' });
+    const result = prManager.close(pr.id);
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe('closed');
+  });
+
+  it('closes a reviewing PR', () => {
+    const pr = insertTestPR(prManager, { id: 'close-reviewing', status: 'reviewing', verdict: 'pending' });
+    const result = prManager.close(pr.id);
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe('closed');
+  });
+
+  it('closes a changes_requested PR', () => {
+    const pr = insertTestPR(prManager, { id: 'close-changes', status: 'changes_requested', verdict: 'changes_requested' });
+    const result = prManager.close(pr.id);
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe('closed');
+  });
+
+  it('returns null for merged PR', () => {
+    insertTestPR(prManager, { id: 'close-merged', status: 'merged', verdict: 'approved' });
+    const result = prManager.close('close-merged');
+    expect(result).toBeNull();
+  });
+
+  it('closes an already closed PR (idempotent)', () => {
+    insertTestPR(prManager, { id: 'close-closed', status: 'closed', verdict: 'pending' });
+    const result = prManager.close('close-closed');
+    // Still returns the PR since it's already closed (not merged)
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe('closed');
+  });
+
+  it('returns null for nonexistent PR', () => {
+    const result = prManager.close('nonexistent');
+    expect(result).toBeNull();
+  });
+
+  it('emits pr:updated event', () => {
+    const pr = insertTestPR(prManager, { id: 'close-event', status: 'open', verdict: 'pending' });
+    const events: string[] = [];
+    prManager.onEvent((event) => events.push(event));
+    prManager.close(pr.id);
+    expect(events).toContain('pr:updated');
+  });
+
+  it('kills active reviewer terminal when closing', () => {
+    const term = terminalManager.create({ title: 'Active reviewer' });
+    insertTestPR(prManager, {
+      id: 'close-with-terminal',
+      status: 'reviewing',
+      reviewerTerminalId: term.id,
+    });
+
+    prManager.close('close-with-terminal');
+    expect(terminalManager.get(term.id)).toBeUndefined();
+
+    const updated = prManager.get('close-with-terminal');
+    expect(updated!.reviewerTerminalId).toBeNull();
+  });
+});
+
+describe('PR API — Close PR endpoint', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let issueManager: IssueManager;
+  let server: Server;
+
+  beforeEach(async () => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+
+    const app = express();
+    app.use('/api', createPRApiRouter(prManager, issueManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    prManager.clearAllPendingTimers();
+    terminalManager.killAll();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('POST /api/prs/:id/close closes an open PR', async () => {
+    insertTestPR(prManager, { id: 'api-close-1', status: 'open' });
+    const res = await request(server, 'POST', '/api/prs/api-close-1/close');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('closed');
+  });
+
+  it('POST /api/prs/:id/close returns 404 for unknown PR', async () => {
+    const res = await request(server, 'POST', '/api/prs/nonexistent/close');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('PR not found');
+  });
+
+  it('POST /api/prs/:id/close returns 400 for merged PR', async () => {
+    insertTestPR(prManager, { id: 'api-close-merged', status: 'merged' });
+    const res = await request(server, 'POST', '/api/prs/api-close-merged/close');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('merged');
+  });
+
+  it('POST /api/prs/:id/close returns 400 for already closed PR', async () => {
+    insertTestPR(prManager, { id: 'api-close-closed', status: 'closed' });
+    const res = await request(server, 'POST', '/api/prs/api-close-closed/close');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('already closed');
+  });
+
+  it('POST /api/prs/:id/close works for reviewing PRs', async () => {
+    insertTestPR(prManager, { id: 'api-close-reviewing', status: 'reviewing' });
+    const res = await request(server, 'POST', '/api/prs/api-close-reviewing/close');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('closed');
+  });
+
+  it('POST /api/prs/:id/close works for approved PRs', async () => {
+    insertTestPR(prManager, { id: 'api-close-approved', status: 'approved', verdict: 'approved' });
+    const res = await request(server, 'POST', '/api/prs/api-close-approved/close');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('closed');
+  });
+});
+
 describe('PR API — Relaunch Review', () => {
   let terminalManager: TerminalManager;
   let worktreeManager: WorktreeManager;

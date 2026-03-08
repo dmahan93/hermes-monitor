@@ -130,5 +130,32 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
     }
   }, []);
 
-  return { prs, loading, addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, refetch: fetchPRs };
+  const closePR = useCallback(async (prId: string): Promise<{ error?: string }> => {
+    try {
+      const res = await fetch(`${API_BASE}/prs/${prId}/close`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        return { error: data?.error || 'Failed to close PR' };
+      }
+      return {};
+    } catch (err) {
+      console.error('Failed to close PR:', err);
+      return { error: 'Network error' };
+    }
+  }, []);
+
+  const closeAllStalePRs = useCallback(async (): Promise<{ closed: Array<{ id: string; title: string }>; errors: Array<{ id: string; title: string; error: string }> }> => {
+    try {
+      const res = await fetch(`${API_BASE.replace('/api', '/api/batch')}/close-stale-prs`, { method: 'POST' });
+      if (!res.ok) {
+        return { closed: [], errors: [{ id: '', title: '', error: 'Request failed' }] };
+      }
+      return await res.json();
+    } catch (err) {
+      console.error('Failed to close stale PRs:', err);
+      return { closed: [], errors: [{ id: '', title: '', error: 'Network error' }] };
+    }
+  }, []);
+
+  return { prs, loading, addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, closePR, closeAllStalePRs, refetch: fetchPRs };
 }

@@ -404,4 +404,85 @@ describe('usePRs', () => {
     expect(mergeResult.status).toBe('github_pr_created');
     expect(mergeResult.prUrl).toBe('https://github.com/test/repo/pull/1');
   });
+
+  it('closePR calls POST /prs/:id/close', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ status: 'closed' }) }) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    let closeResult: { error?: string } = {};
+    await act(async () => {
+      closeResult = await result.current.closePR('pr-1');
+    });
+
+    expect(closeResult.error).toBeUndefined();
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/prs/pr-1/close`, { method: 'POST' });
+  });
+
+  it('closePR returns error on failure', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'Cannot close a merged PR' }) }) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    let closeResult: { error?: string } = {};
+    await act(async () => {
+      closeResult = await result.current.closePR('pr-1');
+    });
+
+    expect(closeResult.error).toBe('Cannot close a merged PR');
+  });
+
+  it('closePR handles network error', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockRejectedValueOnce(new Error('Network down')) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    let closeResult: { error?: string } = {};
+    await act(async () => {
+      closeResult = await result.current.closePR('pr-1');
+    });
+
+    expect(closeResult.error).toBe('Network error');
+    consoleSpy.mockRestore();
+  });
+
+  it('closeAllStalePRs calls POST /batch/close-stale-prs', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ closed: [{ id: 'pr-1', title: 'Old PR' }], errors: [] }) }) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    let staleResult: any = {};
+    await act(async () => {
+      staleResult = await result.current.closeAllStalePRs();
+    });
+
+    expect(staleResult.closed).toHaveLength(1);
+    expect(staleResult.closed[0].id).toBe('pr-1');
+    expect(staleResult.errors).toHaveLength(0);
+  });
 });
