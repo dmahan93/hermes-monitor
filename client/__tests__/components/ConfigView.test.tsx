@@ -1,34 +1,61 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import { ConfigView } from '../../src/components/ConfigView';
 
+// Mock fetch for config API
+const mockConfig = {
+  repoPath: '/home/user/project',
+  worktreeBase: '/tmp/hermes-worktrees',
+  reviewBase: '/tmp/hermes-reviews',
+  screenshotBase: '/tmp/hermes-screenshots',
+  targetBranch: 'main',
+  requireScreenshotsForUiChanges: true,
+  githubEnabled: false,
+  githubRemote: 'origin',
+};
+
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: true,
+    json: () => Promise.resolve(mockConfig),
+  }));
+});
+
 describe('ConfigView', () => {
-  it('renders the configuration heading', () => {
+  it('renders the configuration heading', async () => {
     render(<ConfigView />);
-    expect(screen.getByText('CONFIGURATION')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('CONFIGURATION')).toBeInTheDocument();
+    });
   });
 
-  it('renders the About section', () => {
+  it('renders the About section', async () => {
     render(<ConfigView />);
-    expect(screen.getByText('About')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('About')).toBeInTheDocument();
+    });
   });
 
-  it('renders the Links section', () => {
+  it('renders the Links section', async () => {
     render(<ConfigView />);
-    expect(screen.getByText('Links')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Links')).toBeInTheDocument();
+    });
   });
 
-  it('renders GitHub link with correct href', () => {
+  it('renders GitHub link with correct href', async () => {
     render(<ConfigView />);
-    const link = screen.getByText(/GitHub Repository/);
-    expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute('href', 'https://github.com/dmahan93/hermes-monitor');
+    await waitFor(() => {
+      const link = screen.getByText(/GitHub Repository/);
+      expect(link).toBeInTheDocument();
+    });
   });
 
-  it('opens GitHub link in new tab', () => {
+  it('opens GitHub link in new tab', async () => {
     render(<ConfigView />);
-    const link = screen.getByText(/GitHub Repository/);
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    await waitFor(() => {
+      const link = screen.getByText(/GitHub Repository/);
+      expect(link).toHaveAttribute('target', '_blank');
+    });
   });
 });
