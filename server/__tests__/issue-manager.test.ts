@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { TerminalManager } from '../src/terminal-manager.js';
 import { IssueManager } from '../src/issue-manager.js';
 import type { PRManager } from '../src/pr-manager.js';
+import type { WorktreeManager } from '../src/worktree-manager.js';
 
 describe('IssueManager', () => {
   let terminalManager: TerminalManager;
@@ -596,6 +597,127 @@ describe('IssueManager', () => {
 
     // Should NOT create a new PR, should relaunch review instead
     expect(mockPRManager.create).toHaveBeenCalledTimes(1); // still 1
-    expect(mockPRManager.relaunchReview).toHaveBeenCalledWith('pr-123', undefined);
+    expect(mockPRManager.relaunchReview).toHaveBeenCalledWith('pr-123', undefined, undefined);
+  });
+
+  // ── Health check integration tests ──
+
+  it('runs health check before spawning agent terminal on in_progress', () => {
+    setup();
+
+    const callOrder: string[] = [];
+
+    const mockWorktreeManager = {
+      create: vi.fn().mockImplementation(() => {
+        callOrder.push('worktree.create');
+        return { branch: 'issue/test-branch', path: '/tmp/test-wt', issueId: 'test' };
+      }),
+      healthCheck: vi.fn().mockImplementation(() => {
+        callOrder.push('worktree.healthCheck');
+        return { healthy: true, issues: [], fixes: [] };
+      }),
+      get: vi.fn(),
+      remove: vi.fn(),
+      getHealthCheck: vi.fn(),
+    } as unknown as WorktreeManager;
+
+    issueManager.setWorktreeManager(mockWorktreeManager);
+
+    // Spy on terminal creation to track order
+    const origCreate = terminalManager.create.bind(terminalManager);
+    vi.spyOn(terminalManager, 'create').mockImplementation((opts) => {
+      callOrder.push('terminal.create');
+      return origCreate(opts);
+    });
+
+    const issue = issueManager.create({ title: 'Health check order test' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    // Verify health check was called
+    expect(mockWorktreeManager.healthCheck).toHaveBeenCalledWith(issue.id);
+
+    // Verify order: worktree.create → healthCheck → terminal.create
+    expect(callOrder).toEqual(['worktree.create', 'worktree.healthCheck', 'terminal.create']);
+  });
+
+  it('health check failure does not prevent terminal spawn', () => {
+    setup();
+
+    const mockWorktreeManager = {
+      create: vi.fn().mockReturnValue({
+        branch: 'issue/test-branch', path: '/tmp/test-wt', issueId: 'test',
+      }),
+      healthCheck: vi.fn().mockReturnValue({
+        healthy: false,
+        issues: ['Worktree directory does not exist', 'Failed to recreate worktree'],
+        fixes: [],
+      }),
+      get: vi.fn(),
+      remove: vi.fn(),
+      getHealthCheck: vi.fn(),
+    } as unknown as WorktreeManager;
+
+    issueManager.setWorktreeManager(mockWorktreeManager);
+
+    const issue = issueManager.create({ title: 'Unhealthy workspace' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    // Terminal should still be spawned even if health check reports unhealthy
+    expect(issue.terminalId).toBeTruthy();
+    expect(terminalManager.size).toBe(1);
+  });
+
+  it('health check exception does not prevent terminal spawn', () => {
+    setup();
+
+    const mockWorktreeManager = {
+      create: vi.fn().mockReturnValue({
+        branch: 'issue/test-branch', path: '/tmp/test-wt', issueId: 'test',
+      }),
+      healthCheck: vi.fn().mockImplementation(() => {
+        throw new Error('git command failed');
+      }),
+      get: vi.fn(),
+      remove: vi.fn(),
+      getHealthCheck: vi.fn(),
+    } as unknown as WorktreeManager;
+
+    issueManager.setWorktreeManager(mockWorktreeManager);
+
+    const issue = issueManager.create({ title: 'Crash-proof health check' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    // Terminal should still be spawned despite health check throwing
+    expect(issue.terminalId).toBeTruthy();
+    expect(terminalManager.size).toBe(1);
+  });
+
+  it('health check logs fixes when present', () => {
+    setup();
+
+    const mockWorktreeManager = {
+      create: vi.fn().mockReturnValue({
+        branch: 'issue/test-branch', path: '/tmp/test-wt', issueId: 'test',
+      }),
+      healthCheck: vi.fn().mockReturnValue({
+        healthy: true,
+        issues: ['Wrong branch checked out: main (expected issue/test-branch)'],
+        fixes: ['Checked out correct branch: issue/test-branch', 'Re-symlinked node_modules'],
+      }),
+      get: vi.fn(),
+      remove: vi.fn(),
+      getHealthCheck: vi.fn(),
+    } as unknown as WorktreeManager;
+
+    issueManager.setWorktreeManager(mockWorktreeManager);
+
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const issue = issueManager.create({ title: 'Log fixes test' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[health-check] Fixed:')
+    );
+    consoleSpy.mockRestore();
   });
 });

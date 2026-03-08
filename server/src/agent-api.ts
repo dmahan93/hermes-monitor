@@ -11,9 +11,10 @@ import { v4 as uuidv4 } from 'uuid';
 import type { IssueManager } from './issue-manager.js';
 import type { PRManager } from './pr-manager.js';
 import type { TerminalManager } from './terminal-manager.js';
-import type { WorktreeManager } from './worktree-manager.js';
+import type { WorktreeManager, HealthCheckResult } from './worktree-manager.js';
 import { config } from './config.js';
 import { ALLOWED_EXTENSIONS, getUploadedScreenshots, UI_EXTENSIONS } from './screenshot-utils.js';
+import { analyzeUiDiff } from './ui-change-analyzer.js';
 
 /** File extensions that indicate UI changes requiring screenshots (derived from screenshot-utils) */
 const UI_FILE_EXTENSIONS = new Set(UI_EXTENSIONS);
@@ -66,6 +67,16 @@ interface AgentInfoResponse {
   screenshotUploadUrl: string;
   screenshotUploadInstructions: string;
   guidelines: AgentGuidelines;
+  workspaceHealth: HealthCheckResult | null;
+}
+
+/**
+ * Record a screenshot bypass reason on the issue.
+ * Single source of truth — the reason is stored as a structured field
+ * and flows to the PR via issue-manager → pr-manager.
+ */
+function recordBypass(issueManager: IssueManager, issueId: string, reason: string): void {
+  issueManager.update(issueId, { screenshotBypassReason: reason });
 }
 
 /**
@@ -204,10 +215,11 @@ export function createAgentApiRouter(
       screenshotUploadInstructions,
       guidelines: {
         screenshots: config.requireScreenshotsForUiChanges
-          ? 'Screenshots are REQUIRED when your changes modify UI files (.tsx, .jsx, .css, .scss, .less, .html, .vue, .svelte). Upload before/after screenshots using the screenshotUploadUrl BEFORE calling /review. If you did not make visual changes, bypass with: POST /agent/:id/review?no_ui_changes=true or send {"noUiChanges": true} in the request body.'
+          ? 'Screenshots are REQUIRED when your changes modify UI files (.tsx, .jsx, .css, .scss, .less, .html, .vue, .svelte). Upload before/after screenshots using the screenshotUploadUrl BEFORE calling /review. Non-visual changes (comments, whitespace, imports, file renames) are auto-detected and bypass the requirement. If you did not make visual changes, bypass with: POST /agent/:id/review?no_ui_changes=true or send {"noUiChanges": true} in the request body. You can optionally include a reason: {"noUiChanges": true, "reason": "CSS class rename only"}.'
           : 'If your changes modify UI components (.tsx, .css, .html files), upload before/after screenshots using the screenshotUploadUrl and include the returned markdown in your PR description.',
         requireScreenshotsForUiChanges: config.requireScreenshotsForUiChanges,
       },
+      workspaceHealth: worktreeManager.getHealthCheck(issue.id) ?? null,
     };
     res.json(response);
   });
@@ -363,13 +375,25 @@ export function createAgentApiRouter(
       issueManager.update(issue.id, { submitterNotes: details });
     }
 
+    // Track screenshot bypass info for the response
+    let screenshotBypass: { bypassed: boolean; reason?: string } = { bypassed: false };
+
     // Check screenshot requirement for UI changes
     if (config.requireScreenshotsForUiChanges) {
+      // Manual bypass: agent explicitly says no UI changes
       const noUiChanges = req.query.no_ui_changes === 'true'
         || req.body?.noUiChanges === true
         || req.body?.noUiChanges === 'true';
 
-      if (!noUiChanges) {
+      // Optional reason for the bypass (shown to reviewer)
+      const bypassReason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
+
+      if (noUiChanges) {
+        // Agent self-certified: log the reason if provided
+        const reason = bypassReason || 'agent self-certified no visual changes';
+        screenshotBypass = { bypassed: true, reason };
+        recordBypass(issueManager, issue.id, reason);
+      } else {
         // Check if changed files include UI files
         const changedFiles = worktreeManager.getChangedFiles(issue.id);
         const uiFiles = changedFiles.filter((f) => {
@@ -382,24 +406,39 @@ export function createAgentApiRouter(
           const hasScreenshots = getUploadedScreenshots(issue.id).length > 0;
 
           if (!hasScreenshots) {
-            res.status(400).json({
-              error: 'Screenshots required for UI changes',
-              message: [
-                'Your changes include UI files but no screenshots were uploaded.',
-                '',
-                'UI files changed:',
-                ...uiFiles.map((f) => `  - ${f}`),
-                '',
-                'To fix: upload screenshots using the screenshotUploadUrl from /agent/:id/info',
-                '',
-                'To bypass (if no visual changes): resubmit with ?no_ui_changes=true',
-                '  curl -s -X POST http://localhost:' + PORT + '/agent/' + issue.id + '/review?no_ui_changes=true',
-                '',
-                'Or send JSON body: { "noUiChanges": true }',
-              ].join('\n'),
-              uiFilesChanged: uiFiles,
-            });
-            return;
+            // Auto-detect: analyze the diff to see if changes are non-visual
+            // Only auto-bypass if we successfully obtained a diff; undefined means
+            // we couldn't get the diff (no worktree, git error) — be conservative.
+            const uiDiff = worktreeManager.getDiffForFiles(issue.id, uiFiles);
+            const analysis = uiDiff !== undefined
+              ? analyzeUiDiff(uiDiff)
+              : { allNonVisual: false, reason: 'could not analyze diff' };
+
+            if (analysis.allNonVisual) {
+              // Auto-bypass: all UI changes are non-visual (comments, whitespace, imports, renames)
+              screenshotBypass = { bypassed: true, reason: analysis.reason };
+              recordBypass(issueManager, issue.id, analysis.reason);
+            } else {
+              // Visual changes detected — screenshots required
+              res.status(400).json({
+                error: 'Screenshots required for UI changes',
+                message: [
+                  'Your changes include UI files but no screenshots were uploaded.',
+                  '',
+                  'UI files changed:',
+                  ...uiFiles.map((f) => `  - ${f}`),
+                  '',
+                  'To fix: upload screenshots using the screenshotUploadUrl from /agent/:id/info',
+                  '',
+                  'To bypass (if no visual changes): resubmit with ?no_ui_changes=true',
+                  '  curl -s -X POST http://localhost:' + PORT + '/agent/' + issue.id + '/review?no_ui_changes=true',
+                  '',
+                  'Or send JSON body: { "noUiChanges": true, "reason": "explain why no visual change" }',
+                ].join('\n'),
+                uiFilesChanged: uiFiles,
+              });
+              return;
+            }
           }
         }
       }
@@ -417,6 +456,7 @@ export function createAgentApiRouter(
       status: 'review',
       message: 'Issue moved to review. PR created and adversarial reviewer spawned.',
       submitterNotes: issue.submitterNotes || null,
+      ...(screenshotBypass.bypassed ? { screenshotBypass } : {}),
     });
   });
 

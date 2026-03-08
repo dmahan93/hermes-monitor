@@ -32,6 +32,7 @@ export interface UpdateIssueOptions {
   command?: string;
   branch?: string;
   submitterNotes?: string;
+  screenshotBypassReason?: string;
 }
 
 export type IssueEventCallback = (event: IssueEvent, issue: Issue) => void;
@@ -204,6 +205,7 @@ export class IssueManager {
     if (options.command !== undefined) issue.command = options.command;
     if (options.branch !== undefined) issue.branch = options.branch;
     if (options.submitterNotes !== undefined) issue.submitterNotes = options.submitterNotes;
+    if (options.screenshotBypassReason !== undefined) issue.screenshotBypassReason = options.screenshotBypassReason;
     issue.updatedAt = Date.now();
 
     this.persist(issue);
@@ -305,6 +307,19 @@ export class IssueManager {
         } catch (err) {
           console.error('Failed to create worktree:', err);
         }
+
+        // Run health check before spawning agent
+        try {
+          const health = this.worktreeManager.healthCheck(issue.id);
+          if (health.fixes.length > 0) {
+            console.log(`[health-check] Fixed: ${health.fixes.join(', ')}`);
+          }
+          if (!health.healthy) {
+            console.warn(`[health-check] Unhealthy workspace for "${issue.title}": ${health.issues.join(', ')}`);
+          }
+        } catch (err) {
+          console.error('[health-check] Failed to run health check:', err);
+        }
       }
 
       const command = issue.command
@@ -327,6 +342,7 @@ export class IssueManager {
           title: issue.title,
           description: issue.description,
           submitterNotes: issue.submitterNotes,
+          screenshotBypassReason: issue.screenshotBypassReason,
         });
         if (pr) {
           // Spawn adversarial reviewer
@@ -335,7 +351,7 @@ export class IssueManager {
       } else {
         // PR already exists (e.g. review → in_progress → review cycle)
         // Relaunch the review to pick up new changes + updated submitter notes
-        this.prManager.relaunchReview(existingPr.id, issue.submitterNotes);
+        this.prManager.relaunchReview(existingPr.id, issue.submitterNotes, issue.screenshotBypassReason);
       }
     }
 

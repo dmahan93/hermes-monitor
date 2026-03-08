@@ -31,6 +31,7 @@ export interface Issue {
   progressMessage?: string | null;   // transient: agent progress status (not persisted)
   progressPercent?: number | null;   // transient: agent progress 0-100 (not persisted)
   progressUpdatedAt?: number | null; // transient: when progress was last reported
+  screenshotBypassReason?: string;  // transient: why screenshots were bypassed (auto-detected or agent-provided)
   createdAt: number;
   updatedAt: number;
 }
@@ -73,6 +74,7 @@ export interface PullRequest {
   title: string;
   description: string;
   submitterNotes: string;
+  screenshotBypassReason?: string;  // why screenshots were bypassed (auto-detected or agent-provided)
   sourceBranch: string;
   targetBranch: string;
   repoPath: string;
