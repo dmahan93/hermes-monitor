@@ -414,7 +414,31 @@ export function createAgentApiRouter(
       const bypassReason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
 
       if (noUiChanges) {
-        // Agent self-certified: log the reason if provided
+        // Agent self-certified no visual changes — but verify no NEW UI files exist.
+        // New .tsx/.css files are always visual changes; self-certification is only
+        // valid for modifications to existing files (refactors, renames, etc.)
+        const changedFiles = worktreeManager.getChangedFiles(issue.id);
+        const newUiFiles = worktreeManager.getNewFiles(issue.id).filter((f) => {
+          const ext = extname(f).toLowerCase();
+          return UI_FILE_EXTENSIONS.has(ext);
+        });
+        if (newUiFiles.length > 0) {
+          // Block bypass: new UI files always need screenshots
+          res.status(400).json({
+            error: 'Screenshots required for new UI files',
+            message: [
+              'Self-certification rejected: your changes include NEW UI files.',
+              'New components/styles always need screenshots.',
+              '',
+              'New UI files:',
+              ...newUiFiles.map((f) => `  - ${f}`),
+              '',
+              'Upload screenshots using the screenshotUploadUrl from /agent/:id/info',
+            ].join('\n'),
+            uiFilesChanged: newUiFiles,
+          });
+          return;
+        }
         const reason = bypassReason || 'agent self-certified no visual changes';
         screenshotBypass = { bypassed: true, reason };
         recordBypass(issueManager, issue.id, reason);

@@ -404,6 +404,21 @@ export class WorktreeManager {
   }
 
   /**
+   * Get list of NEW files (added, not modified) in the branch.
+   */
+  getNewFiles(issueId: string): string[] {
+    const info = this.worktrees.get(issueId);
+    if (!info) return [];
+
+    try {
+      const output = git(['diff', '--name-only', '--diff-filter=A', `${config.targetBranch}...${info.branch}`], config.repoPath);
+      return output ? output.split('\n').filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Merge the issue branch into the target branch.
    */
   merge(issueId: string): boolean {
