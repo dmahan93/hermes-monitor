@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { Registry, type RepoEntry } from '../src/manager/registry.js';
@@ -192,6 +192,24 @@ describe('Registry', () => {
     // Reassign so afterEach doesn't double-close
     registry = new Registry(dbPath);
   });
+
+  it('lazy init: constructor does not create DB file', () => {
+    const lazyDbPath = join(tmpDir, 'lazy-test.db');
+    const lazyRegistry = new Registry(lazyDbPath);
+    // DB file should not exist yet — no operations performed
+    const { existsSync } = require('fs');
+    expect(existsSync(lazyDbPath)).toBe(false);
+    // Trigger lazy init
+    lazyRegistry.list();
+    expect(existsSync(lazyDbPath)).toBe(true);
+    lazyRegistry.close();
+  });
+
+  it('close is safe to call multiple times', () => {
+    registry.list(); // trigger DB init
+    registry.close();
+    expect(() => registry.close()).not.toThrow();
+  });
 });
 
 // ── Registry API endpoint tests ──
@@ -200,6 +218,13 @@ describe('Registry API', () => {
   let registry: Registry;
   let server: Server;
   let tmpDir: string;
+
+  /** Create a real directory under tmpDir for use as a repo path. */
+  function makeRepo(name: string): string {
+    const p = join(tmpDir, name);
+    mkdirSync(p, { recursive: true });
+    return p;
+  }
 
   beforeEach(async () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'hermes-registry-api-test-'));
@@ -227,8 +252,10 @@ describe('Registry API', () => {
   });
 
   it('GET /api/hub/repos returns all registered repos', async () => {
-    registry.register('/tmp/repo-a', 'Repo A');
-    registry.register('/tmp/repo-b', 'Repo B');
+    const pathA = makeRepo('repo-a');
+    const pathB = makeRepo('repo-b');
+    registry.register(pathA, 'Repo A');
+    registry.register(pathB, 'Repo B');
 
     const res = await request(server, 'GET', '/api/hub/repos');
     expect(res.status).toBe(200);
@@ -240,20 +267,22 @@ describe('Registry API', () => {
   // ── POST /api/hub/repos ──
 
   it('POST /api/hub/repos registers a new repo', async () => {
+    const repoPath = makeRepo('new-repo');
     const res = await request(server, 'POST', '/api/hub/repos', {
-      path: '/tmp/new-repo',
+      path: repoPath,
       name: 'New Repo',
     });
     expect(res.status).toBe(201);
     expect(res.body.name).toBe('New Repo');
-    expect(res.body.path).toBe('/tmp/new-repo');
+    expect(res.body.path).toBe(repoPath);
     expect(res.body.port).toBe(4001);
     expect(res.body.status).toBe('stopped');
   });
 
   it('POST /api/hub/repos auto-detects name from path', async () => {
+    const repoPath = makeRepo('my-awesome-project');
     const res = await request(server, 'POST', '/api/hub/repos', {
-      path: '/home/user/my-awesome-project',
+      path: repoPath,
     });
     expect(res.status).toBe(201);
     expect(res.body.name).toBe('my-awesome-project');
@@ -283,37 +312,88 @@ describe('Registry API', () => {
     expect(res.body.error).toContain('path must be absolute');
   });
 
-  it('POST /api/hub/repos with empty string name auto-detects from path', async () => {
+  it('POST /api/hub/repos returns 400 when path does not exist', async () => {
     const res = await request(server, 'POST', '/api/hub/repos', {
-      path: '/tmp/auto-name-repo',
+      path: '/tmp/this-path-definitely-does-not-exist-xyz',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('path must be an existing directory');
+  });
+
+  it('POST /api/hub/repos returns 400 when path is a file not a directory', async () => {
+    const filePath = join(tmpDir, 'not-a-dir');
+    require('fs').writeFileSync(filePath, 'hello');
+    const res = await request(server, 'POST', '/api/hub/repos', { path: filePath });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('path must be an existing directory');
+  });
+
+  it('POST /api/hub/repos with empty string name auto-detects from path', async () => {
+    const repoPath = makeRepo('auto-name-repo');
+    const res = await request(server, 'POST', '/api/hub/repos', {
+      path: repoPath,
       name: '',
     });
     expect(res.status).toBe(201);
     expect(res.body.name).toBe('auto-name-repo');
   });
 
+  it('POST /api/hub/repos returns 400 when name is non-string truthy value', async () => {
+    const repoPath = makeRepo('num-name-repo');
+    const res = await request(server, 'POST', '/api/hub/repos', {
+      path: repoPath,
+      name: 123,
+    });
+    // Should succeed — non-string name is ignored, auto-detects from path
+    expect(res.status).toBe(201);
+    expect(res.body.name).toBe('num-name-repo');
+  });
+
+  it('POST /api/hub/repos handles boolean name gracefully', async () => {
+    const repoPath = makeRepo('bool-name-repo');
+    const res = await request(server, 'POST', '/api/hub/repos', {
+      path: repoPath,
+      name: true,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.name).toBe('bool-name-repo');
+  });
+
+  it('POST /api/hub/repos handles object name gracefully', async () => {
+    const repoPath = makeRepo('obj-name-repo');
+    const res = await request(server, 'POST', '/api/hub/repos', {
+      path: repoPath,
+      name: { foo: 'bar' },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.name).toBe('obj-name-repo');
+  });
+
   it('POST /api/hub/repos returns 409 for duplicate path', async () => {
-    await request(server, 'POST', '/api/hub/repos', { path: '/tmp/dup-repo' });
-    const res = await request(server, 'POST', '/api/hub/repos', { path: '/tmp/dup-repo' });
+    const repoPath = makeRepo('dup-repo');
+    await request(server, 'POST', '/api/hub/repos', { path: repoPath });
+    const res = await request(server, 'POST', '/api/hub/repos', { path: repoPath });
     expect(res.status).toBe(409);
     expect(res.body.error).toContain('already registered');
   });
 
   it('POST /api/hub/repos trims whitespace from path and name', async () => {
+    const repoPath = makeRepo('trimmed-repo');
     const res = await request(server, 'POST', '/api/hub/repos', {
-      path: '  /tmp/trimmed-repo  ',
+      path: `  ${repoPath}  `,
       name: '  Trimmed Name  ',
     });
     expect(res.status).toBe(201);
-    expect(res.body.path).toBe('/tmp/trimmed-repo');
+    expect(res.body.path).toBe(repoPath);
     expect(res.body.name).toBe('Trimmed Name');
   });
 
   // ── GET /api/hub/repos/:id ──
 
   it('GET /api/hub/repos/:id returns repo details', async () => {
+    const repoPath = makeRepo('detail-repo');
     const created = await request(server, 'POST', '/api/hub/repos', {
-      path: '/tmp/detail-repo',
+      path: repoPath,
     });
     const res = await request(server, 'GET', `/api/hub/repos/${created.body.id}`);
     expect(res.status).toBe(200);
@@ -330,8 +410,9 @@ describe('Registry API', () => {
   // ── DELETE /api/hub/repos/:id ──
 
   it('DELETE /api/hub/repos/:id removes a repo', async () => {
+    const repoPath = makeRepo('delete-repo');
     const created = await request(server, 'POST', '/api/hub/repos', {
-      path: '/tmp/delete-repo',
+      path: repoPath,
     });
     const res = await request(server, 'DELETE', `/api/hub/repos/${created.body.id}`);
     expect(res.status).toBe(200);
@@ -351,21 +432,26 @@ describe('Registry API', () => {
   // ── Port auto-assignment through API ──
 
   it('auto-assigns incrementing ports through API', async () => {
-    const a = await request(server, 'POST', '/api/hub/repos', { path: '/tmp/port-a' });
-    const b = await request(server, 'POST', '/api/hub/repos', { path: '/tmp/port-b' });
+    const pathA = makeRepo('port-a');
+    const pathB = makeRepo('port-b');
+    const a = await request(server, 'POST', '/api/hub/repos', { path: pathA });
+    const b = await request(server, 'POST', '/api/hub/repos', { path: pathB });
     expect(a.body.port).toBe(4001);
     expect(b.body.port).toBe(4002);
   });
 
   it('reassigns freed ports after deletion', async () => {
-    const a = await request(server, 'POST', '/api/hub/repos', { path: '/tmp/port-a' });
-    await request(server, 'POST', '/api/hub/repos', { path: '/tmp/port-b' });
+    const pathA = makeRepo('port-a');
+    const pathB = makeRepo('port-b');
+    const pathC = makeRepo('port-c');
+    const a = await request(server, 'POST', '/api/hub/repos', { path: pathA });
+    await request(server, 'POST', '/api/hub/repos', { path: pathB });
 
     // Delete the first one (port 4001)
     await request(server, 'DELETE', `/api/hub/repos/${a.body.id}`);
 
     // New registration should get port 4001 back
-    const c = await request(server, 'POST', '/api/hub/repos', { path: '/tmp/port-c' });
+    const c = await request(server, 'POST', '/api/hub/repos', { path: pathC });
     expect(c.body.port).toBe(4001);
   });
 });

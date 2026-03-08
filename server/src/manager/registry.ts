@@ -6,11 +6,14 @@
  * Database lives at ~/.hermes/hermes-hub.db (separate from per-repo DBs).
  * Provides CRUD operations for repo entries and auto-assigns ports starting
  * from 4001.
+ *
+ * The database is lazily initialized on first use — constructing a Registry
+ * instance has no filesystem side effects until a method is actually called.
  */
 // @ts-ignore - better-sqlite3 has no ESM types yet (see https://github.com/WiseLibs/better-sqlite3/issues/1043)
 import Database from 'better-sqlite3';
 import { join, dirname, basename, resolve } from 'path';
-import { mkdirSync } from 'fs';
+import { mkdirSync, realpathSync } from 'fs';
 import { homedir } from 'os';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -35,38 +38,55 @@ export interface RepoEntry {
 /**
  * Registry manages the set of registered repos and their port assignments.
  *
- * Uses better-sqlite3 in WAL mode. The database file is created automatically
- * under ~/.hermes/hermes-hub.db (overridable via constructor for testing).
+ * Uses better-sqlite3 in WAL mode. The database file is created lazily on
+ * first use under ~/.hermes/hermes-hub.db (overridable via constructor for
+ * testing). Constructing a Registry has no side effects until a method is
+ * called.
  */
 export class Registry {
-  private db: Database.Database;
+  private _db: Database.Database | null = null;
+  private dbPath: string;
 
   constructor(dbPath?: string) {
-    const resolvedPath = dbPath || DEFAULT_DB_PATH;
-
-    // Ensure parent directory exists
-    const dir = dirname(resolvedPath);
-    mkdirSync(dir, { recursive: true });
-
-    this.db = new Database(resolvedPath);
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('foreign_keys = ON');
-    this.migrate();
+    this.dbPath = dbPath || DEFAULT_DB_PATH;
   }
 
-  private migrate(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS repos (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        path TEXT NOT NULL UNIQUE,
-        port INTEGER NOT NULL UNIQUE,
-        pid INTEGER,
-        status TEXT NOT NULL DEFAULT 'stopped',
-        createdAt INTEGER NOT NULL,
-        updatedAt INTEGER NOT NULL
-      )
-    `);
+  /** Lazy-initialize the database connection and schema on first access. */
+  private get db(): Database.Database {
+    if (!this._db) {
+      const dir = dirname(this.dbPath);
+      mkdirSync(dir, { recursive: true });
+      this._db = new Database(this.dbPath);
+      this._db.pragma('journal_mode = WAL');
+      this._db.pragma('foreign_keys = ON');
+      this._db.exec(`
+        CREATE TABLE IF NOT EXISTS repos (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          path TEXT NOT NULL UNIQUE,
+          port INTEGER NOT NULL UNIQUE,
+          pid INTEGER,
+          status TEXT NOT NULL DEFAULT 'stopped',
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL
+        )
+      `);
+    }
+    return this._db;
+  }
+
+  /**
+   * Resolve a path, following symlinks when the path exists on disk.
+   * Falls back to path.resolve() for paths that don't exist yet (e.g.,
+   * direct Registry usage in tests or pre-clone registration).
+   */
+  private resolvePath(p: string): string {
+    try {
+      return realpathSync(p);
+    } catch {
+      // Path doesn't exist — normalize without symlink resolution
+      return resolve(p);
+    }
   }
 
   /**
@@ -74,7 +94,7 @@ export class Registry {
    * if not provided.
    */
   register(repoPath: string, name?: string): RepoEntry {
-    const resolved = resolve(repoPath);
+    const resolved = this.resolvePath(repoPath);
 
     // Check if already registered
     const existing = this.findByPath(resolved);
@@ -120,7 +140,7 @@ export class Registry {
     return row ? this.rowToEntry(row) : null;
   }
 
-  /** Update the running state of a repo. */
+  /** Update the running state of a repo. Returns null if ID not found. */
   updateStatus(id: string, status: RepoStatus, pid?: number | null): RepoEntry | null {
     const now = Date.now();
     const pidValue = pid !== undefined ? pid : null;
@@ -136,9 +156,12 @@ export class Registry {
     return this.get(id);
   }
 
-  /** Look up a repo by its filesystem path. */
+  /**
+   * Look up a repo by its filesystem path. Resolves symlinks when the path
+   * exists to match against the canonical stored path.
+   */
   findByPath(repoPath: string): RepoEntry | null {
-    const resolved = resolve(repoPath);
+    const resolved = this.resolvePath(repoPath);
     const row = this.db.prepare('SELECT * FROM repos WHERE path = ?').get(resolved) as any;
     return row ? this.rowToEntry(row) : null;
   }
@@ -160,9 +183,12 @@ export class Registry {
     return candidate;
   }
 
-  /** Close the database connection. */
+  /** Close the database connection. Safe to call multiple times. */
   close(): void {
-    this.db.close();
+    if (this._db) {
+      this._db.close();
+      this._db = null;
+    }
   }
 
   private rowToEntry(row: any): RepoEntry {

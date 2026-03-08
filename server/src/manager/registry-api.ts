@@ -10,6 +10,7 @@
  *   DELETE /hub/repos/:id  — unregister
  */
 import { Router, json } from 'express';
+import { existsSync, statSync } from 'fs';
 import type { Registry } from './registry.js';
 
 export function createRegistryApiRouter(registry: Registry): Router {
@@ -37,8 +38,17 @@ export function createRegistryApiRouter(registry: Registry): Router {
       return;
     }
 
+    // Validate path exists and is a directory
+    if (!existsSync(trimmedPath) || !statSync(trimmedPath).isDirectory()) {
+      res.status(400).json({ error: 'path must be an existing directory' });
+      return;
+    }
+
+    // Validate name type — guard against non-string truthy values (e.g. 123)
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+
     try {
-      const entry = registry.register(trimmedPath, name?.trim() || undefined);
+      const entry = registry.register(trimmedPath, trimmedName || undefined);
       res.status(201).json(entry);
     } catch (err: any) {
       // Duplicate path → 409 Conflict
