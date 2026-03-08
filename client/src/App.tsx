@@ -56,9 +56,6 @@ function AppContent() {
       <Header
         onAdd={view === 'terminals' ? handleAddTerminal : undefined}
         connected={connected}
-        terminalCount={terminals.length}
-        issueCount={issues.length}
-        awaitingInputCount={awaitingInputIds.size}
       >
         <ViewSwitcher mode={view} onChange={setView} prCount={prs.length} />
       </Header>
@@ -218,7 +215,7 @@ function AppContent() {
           </div>
         </main>
       </div>
-      <StatusBar connected={connected} terminalCount={terminals.length} issueCount={issues.length} awaitingInputCount={awaitingInputIds.size} />
+      <StatusBar terminalCount={terminals.length} issueCount={issues.length} awaitingInputCount={awaitingInputIds.size} />
 
       {/* Diff viewer overlay */}
       {gitGraph.diffFile && gitGraph.diffSha && (
