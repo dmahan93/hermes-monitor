@@ -1,3 +1,9 @@
+/**
+ * @module ticket-api
+ * Agent-facing REST API — called BY agents during task execution.
+ * Exposes endpoints for agents to retrieve task info, submit work for review,
+ * upload screenshots, and query their assigned issue/PR context.
+ */
 import { Router, json, raw } from 'express';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join, extname } from 'path';

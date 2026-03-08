@@ -1,3 +1,9 @@
+/**
+ * @module issue-api
+ * UI-facing REST API for issue CRUD and status changes.
+ * Exposes endpoints to create, list, update, delete, and reorder issues,
+ * as well as trigger status transitions (e.g., start, review, done).
+ */
 import { Router, json } from 'express';
 import { execSync } from 'child_process';
 import type { IssueManager, IssueStatus } from './issue-manager.js';
