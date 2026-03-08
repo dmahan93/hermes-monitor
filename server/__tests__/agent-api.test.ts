@@ -521,3 +521,152 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
     expect(res.body.guidelines.screenshots).not.toContain('REQUIRED');
   });
 });
+
+describe('Agent API — Progress Reporting', () => {
+  let terminalManager: TerminalManager;
+  let issueManager: IssueManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let server: Server;
+
+  beforeEach(async () => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+    issueManager.setWorktreeManager(worktreeManager);
+    issueManager.setPRManager(prManager);
+
+    const app = express();
+    app.use('/api', createIssueApiRouter(issueManager));
+    app.use('/agent', createAgentApiRouter(issueManager, prManager, terminalManager, worktreeManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    terminalManager.killAll();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('POST /agent/:id/progress updates progress on in_progress issue', async () => {
+    const issue = issueManager.create({ title: 'Progress test' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      message: 'Running tests...',
+      percent: 75,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.message).toBe('Running tests...');
+    expect(res.body.percent).toBe(75);
+
+    // Verify in-memory state
+    const updated = issueManager.get(issue.id);
+    expect(updated?.progressMessage).toBe('Running tests...');
+    expect(updated?.progressPercent).toBe(75);
+    expect(updated?.progressUpdatedAt).toBeGreaterThan(0);
+  });
+
+  it('POST /agent/:id/progress works with message only', async () => {
+    const issue = issueManager.create({ title: 'Message only' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      message: 'Installing dependencies',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.message).toBe('Installing dependencies');
+
+    const updated = issueManager.get(issue.id);
+    expect(updated?.progressMessage).toBe('Installing dependencies');
+    expect(updated?.progressPercent).toBeUndefined();
+  });
+
+  it('POST /agent/:id/progress works with percent only', async () => {
+    const issue = issueManager.create({ title: 'Percent only' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      percent: 50,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.percent).toBe(50);
+  });
+
+  it('POST /agent/:id/progress returns 404 for unknown issue', async () => {
+    const res = await request(server, 'POST', '/agent/nonexistent/progress', {
+      message: 'test',
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /agent/:id/progress rejects if not in_progress', async () => {
+    const issue = issueManager.create({ title: 'Not started' });
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      message: 'test',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('not in_progress');
+  });
+
+  it('POST /agent/:id/progress rejects invalid percent', async () => {
+    const issue = issueManager.create({ title: 'Bad percent' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      percent: 150,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('percent must be a number');
+  });
+
+  it('POST /agent/:id/progress rejects non-string message', async () => {
+    const issue = issueManager.create({ title: 'Bad message' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      message: 12345,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('message must be a string');
+  });
+
+  it('progress is cleared when issue status changes away from in_progress', async () => {
+    const issue = issueManager.create({ title: 'Clear progress' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    // Set progress
+    issueManager.updateProgress(issue.id, 'Working...', 50);
+    expect(issueManager.get(issue.id)?.progressMessage).toBe('Working...');
+
+    // Move to review — should clear progress
+    issueManager.changeStatus(issue.id, 'review');
+    const updated = issueManager.get(issue.id);
+    expect(updated?.progressMessage).toBeNull();
+    expect(updated?.progressPercent).toBeNull();
+    expect(updated?.progressUpdatedAt).toBeNull();
+  });
+
+  it('progress emits issue:progress event', async () => {
+    const issue = issueManager.create({ title: 'Event test' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const events: Array<{ event: string; issue: any }> = [];
+    issueManager.onEvent((event, issue) => {
+      if (event === 'issue:progress') {
+        events.push({ event, issue: { ...issue } });
+      }
+    });
+
+    issueManager.updateProgress(issue.id, 'Compiling...', 30);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toBe('issue:progress');
+    expect(events[0].issue.progressMessage).toBe('Compiling...');
+    expect(events[0].issue.progressPercent).toBe(30);
+  });
+});

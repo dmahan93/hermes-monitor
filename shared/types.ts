@@ -28,6 +28,9 @@ export interface Issue {
   branch: string | null;
   parentId: string | null;  // if set, this issue is a subtask of the parent
   submitterNotes?: string;  // transient: notes from agent when submitting for review
+  progressMessage?: string | null;   // transient: agent progress status (not persisted)
+  progressPercent?: number | null;   // transient: agent progress 0-100 (not persisted)
+  progressUpdatedAt?: number | null; // transient: when progress was last reported
   createdAt: number;
   updatedAt: number;
 }
@@ -104,5 +107,6 @@ export type ServerMessage =
   | { type: 'issue:created'; issue: Issue }
   | { type: 'issue:updated'; issue: Issue }
   | { type: 'issue:deleted'; issueId: string }
+  | { type: 'issue:progress'; issueId: string; message: string | null; percent: number | null }
   | { type: 'pr:created'; pr: PullRequest }
   | { type: 'pr:updated'; pr: PullRequest };
