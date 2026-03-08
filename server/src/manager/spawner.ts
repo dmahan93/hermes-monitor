@@ -7,8 +7,9 @@
  * - Start all / stop all on manager startup/shutdown
  * - Monitor child processes — mark crashed ones in the registry
  * - Periodic health checks (every 30s) to auto-restart crashed instances
- * - Log stdout/stderr to /tmp/hermes-hub/{repoId}.log
+ * - Log stdout/stderr to /tmp/hermes-hub/{repoId}.log (truncated on restart)
  * - Crash-loop backoff: exponential delay on repeated crashes (30s → 60s → 120s → 5min cap)
+ *   Backoff state only clears after a process stays alive for STABILITY_WINDOW_MS
  * - Per-repo spawn lock to prevent concurrent duplicate spawns
  */
 import { spawn, type ChildProcess } from 'child_process';
@@ -21,6 +22,7 @@ const HEALTH_CHECK_INTERVAL_MS = 30_000;
 const STOP_TIMEOUT_MS = 5_000;
 const MAX_BACKOFF_MS = 5 * 60_000; // 5 minutes
 const MAX_RESTART_ATTEMPTS = 10;
+const STABILITY_WINDOW_MS = 60_000; // 60 seconds — process must be alive this long to clear backoff
 
 /** Resolve the hermes-monitor root directory (repo root). */
 function getHermesRoot(): string {
@@ -43,23 +45,22 @@ export class SpawnerError extends Error {
   }
 }
 
-/** Environment variable patterns that should NOT be inherited by child processes. */
-const SENSITIVE_ENV_PATTERNS = [
-  /^DATABASE_URL$/i,
-  /_SECRET$/i,
-  /_KEY$/i,
-  /_TOKEN$/i,
-  /_PASSWORD$/i,
-  /^AWS_/i,
-  /^OPENAI_/i,
-  /^ANTHROPIC_/i,
-];
+/**
+ * Environment variables to strip from child processes.
+ * Minimal allowlist approach — only remove vars that would cause conflicts
+ * or are strictly parent-only. Child instances need access to the same
+ * credentials (GITHUB_TOKEN, API keys, etc.) since they run the same code.
+ */
+const STRIP_ENV_KEYS = new Set([
+  'DATABASE_URL', // Parent's DB — children have their own
+  'PORT',         // Parent's port — children get --server-port
+]);
 
-/** Filter out sensitive environment variables from process.env. */
+/** Filter out parent-only environment variables from process.env. */
 function sanitizeEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (!SENSITIVE_ENV_PATTERNS.some((re) => re.test(key))) {
+    if (!STRIP_ENV_KEYS.has(key)) {
       env[key] = value;
     }
   }
@@ -79,6 +80,8 @@ export interface SpawnerOptions {
   maxBackoffMs?: number;
   /** Override the max restart attempts (for testing). */
   maxRestartAttempts?: number;
+  /** Override the stability window in ms (for testing). */
+  stabilityWindowMs?: number;
 }
 
 export class Spawner {
@@ -91,6 +94,7 @@ export class Spawner {
   private stopTimeoutMs: number;
   private maxBackoffMs: number;
   private maxRestartAttempts: number;
+  private stabilityWindowMs: number;
   private stopped = false;
 
   /**
@@ -108,6 +112,12 @@ export class Spawner {
    */
   private restartState = new Map<string, { attempts: number; nextAllowedAt: number }>();
 
+  /**
+   * Tracks when each process was spawned, used to determine if a process
+   * has been alive long enough to clear backoff state (stability window).
+   */
+  private spawnedAt = new Map<string, number>();
+
   constructor(registry: Registry, options: SpawnerOptions = {}) {
     this.registry = registry;
     this.hermesRoot = options.hermesRoot ?? getHermesRoot();
@@ -116,6 +126,7 @@ export class Spawner {
     this.stopTimeoutMs = options.stopTimeoutMs ?? STOP_TIMEOUT_MS;
     this.maxBackoffMs = options.maxBackoffMs ?? MAX_BACKOFF_MS;
     this.maxRestartAttempts = options.maxRestartAttempts ?? MAX_RESTART_ATTEMPTS;
+    this.stabilityWindowMs = options.stabilityWindowMs ?? STABILITY_WINDOW_MS;
   }
 
   /**
@@ -164,13 +175,22 @@ export class Spawner {
     // Ensure log directory exists
     mkdirSync(this.logDir, { recursive: true });
 
+    // Truncate log on restart to prevent unbounded growth
     const logPath = join(this.logDir, `${repoId}.log`);
-    const logStream = createWriteStream(logPath, { flags: 'a' });
+    const logStream = createWriteStream(logPath, { flags: 'w' });
+    // Suppress stream errors (e.g., if log directory is removed externally)
+    logStream.on('error', () => {});
 
     // Write startup header
-    logStream.write(`\n--- Instance starting at ${new Date().toISOString()} ---\n`);
+    logStream.write(`--- Instance starting at ${new Date().toISOString()} ---\n`);
 
     const binPath = join(this.hermesRoot, 'bin', 'hermes-monitor.js');
+
+    // Build child environment — only include MARKER_DIR when defined (test-only concern)
+    const childEnv: NodeJS.ProcessEnv = { ...sanitizeEnv() };
+    if (process.env.MARKER_DIR) {
+      childEnv.MARKER_DIR = process.env.MARKER_DIR;
+    }
 
     let child: ChildProcess;
     try {
@@ -183,7 +203,7 @@ export class Spawner {
         cwd: this.hermesRoot,
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false,
-        env: { ...sanitizeEnv(), MARKER_DIR: process.env.MARKER_DIR },
+        env: childEnv,
       });
     } catch (err: any) {
       // Synchronous spawn failure — clean up the log stream
@@ -207,8 +227,10 @@ export class Spawner {
     const pid = child.pid ?? null;
     this.registry.updateStatus(repoId, 'running', pid);
 
-    // Clear restart backoff state on successful start
-    this.restartState.delete(repoId);
+    // Track spawn time for stability window checks
+    // (do NOT clear restartState here — it must persist until the process
+    // proves stability by staying alive for stabilityWindowMs)
+    this.spawnedAt.set(repoId, Date.now());
 
     // Monitor for unexpected exit
     child.on('exit', (code, signal) => {
@@ -246,6 +268,7 @@ export class Spawner {
     }
 
     this.processes.delete(repoId);
+    this.spawnedAt.delete(repoId);
 
     // Only update registry if we're not in a controlled shutdown
     if (this.stopped) return;
@@ -279,6 +302,7 @@ export class Spawner {
     }
 
     this.processes.delete(repoId);
+    this.spawnedAt.delete(repoId);
 
     if (!this.stopped) {
       const current = this.registry.get(repoId);
@@ -300,6 +324,7 @@ export class Spawner {
 
     // Clear restart backoff state on explicit stop
     this.restartState.delete(repoId);
+    this.spawnedAt.delete(repoId);
 
     const child = this.processes.get(repoId);
     if (!child) {
@@ -326,7 +351,7 @@ export class Spawner {
 
   /**
    * Start instances for all registered repos.
-   * Skips repos that are already running.
+   * Skips repos that are already running or explicitly stopped.
    * Uses Promise.allSettled for parallel startup — a single failure
    * doesn't block the rest.
    */
@@ -336,7 +361,13 @@ export class Spawner {
 
     const repos = this.registry.list();
     const startPromises = repos
-      .filter((repo) => !(repo.status === 'running' && this.processes.has(repo.id)))
+      .filter((repo) => {
+        // Skip explicitly stopped repos — user intent is sticky
+        if (repo.status === 'stopped') return false;
+        // Skip repos that are already running with a tracked process
+        if (repo.status === 'running' && this.processes.has(repo.id)) return false;
+        return true;
+      })
       .map((repo) =>
         this.spawnInstance(repo.id).catch((err: any) => {
           console.error(`[spawner] Failed to start ${repo.name} (${repo.id}): ${err.message}`);
@@ -348,6 +379,11 @@ export class Spawner {
 
   /**
    * Stop all running instances. Called on manager shutdown.
+   *
+   * Does NOT update registry status — repos keep their 'running' status so
+   * they auto-start on next manager startup via startAll(). Only explicit
+   * user stops (via stopInstance) set status to 'stopped'. The `this.stopped`
+   * flag prevents exit handlers from marking repos as 'error' during shutdown.
    */
   async stopAll(): Promise<void> {
     this.stopped = true;
@@ -355,17 +391,19 @@ export class Spawner {
 
     const stopPromises: Promise<void>[] = [];
     for (const [repoId, child] of Array.from(this.processes.entries())) {
-      this.registry.updateStatus(repoId, 'stopped');
       stopPromises.push(this.killProcess(repoId, child));
     }
 
     await Promise.all(stopPromises);
     this.processes.clear();
+    this.spawnedAt.clear();
   }
 
   /**
    * Start periodic health checks. Auto-restarts crashed instances
-   * with exponential backoff to avoid crash loops.
+   * with exponential backoff to avoid crash loops. Also clears
+   * backoff state for processes that have been stable (alive for
+   * longer than the stability window).
    */
   startHealthCheck(): void {
     if (this.healthCheckTimer) return;
@@ -390,13 +428,25 @@ export class Spawner {
 
   /**
    * Check all registered repos. If any are in 'error' status (crashed),
-   * attempt to restart them with exponential backoff.
+   * attempt to restart them with exponential backoff. Also clears
+   * backoff state for processes that have proven stable.
    *
    * Respects the per-repo spawn lock — if a spawn is already in progress
    * (from a concurrent API call or previous health check), it skips the repo.
    */
   private runHealthCheck(): void {
     if (this.stopped) return;
+
+    const now = Date.now();
+
+    // Clear backoff state for processes that have been stable
+    // (alive longer than the stability window)
+    for (const [repoId, spawnTime] of this.spawnedAt.entries()) {
+      if (this.restartState.has(repoId) && this.processes.has(repoId) &&
+          now - spawnTime >= this.stabilityWindowMs) {
+        this.restartState.delete(repoId);
+      }
+    }
 
     const repos = this.registry.list();
     for (const repo of repos) {
@@ -423,7 +473,7 @@ export class Spawner {
         }
 
         // Not yet eligible for restart — backoff not expired
-        if (Date.now() < state.nextAllowedAt) {
+        if (now < state.nextAllowedAt) {
           continue;
         }
       }

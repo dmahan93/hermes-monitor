@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
@@ -105,6 +105,7 @@ describe('Spawner', () => {
       healthCheckIntervalMs: 100, // Fast for testing
       stopTimeoutMs: 2000,
       maxRestartAttempts: 3,
+      stabilityWindowMs: 500, // Short for testing
     });
 
     // Set MARKER_DIR so the fake bin knows where to write markers
@@ -198,9 +199,14 @@ describe('Spawner', () => {
     expect(result.pid).toBeNull();
   });
 
-  it('startAll starts all registered repos in parallel', async () => {
-    registry.register('/tmp/test-repo-f');
-    registry.register('/tmp/test-repo-g');
+  it('startAll starts all non-stopped registered repos in parallel', async () => {
+    const repoF = registry.register('/tmp/test-repo-f');
+    const repoG = registry.register('/tmp/test-repo-g');
+
+    // Simulate repos that were running in a prior session (e.g., manager restart).
+    // Freshly registered repos start as 'stopped' and must be explicitly started.
+    registry.updateStatus(repoF.id, 'running', null);
+    registry.updateStatus(repoG.id, 'running', null);
 
     await spawner.startAll();
 
@@ -223,18 +229,36 @@ describe('Spawner', () => {
     expect(currentPid).toBe(firstPid);
   });
 
-  it('stopAll stops all running instances', async () => {
-    registry.register('/tmp/test-repo-i');
-    registry.register('/tmp/test-repo-j');
+  it('startAll skips explicitly stopped repos', async () => {
+    const repo = registry.register('/tmp/test-repo-stopped-skip');
+    await spawner.spawnInstance(repo.id);
+    await spawner.stopInstance(repo.id);
+    expect(registry.get(repo.id)!.status).toBe('stopped');
+
+    // startAll should NOT resurrect explicitly stopped repos
     await spawner.startAll();
+    const current = registry.get(repo.id)!;
+    expect(current.status).toBe('stopped');
+    expect(spawner.isRunning(repo.id)).toBe(false);
+  });
+
+  it('stopAll stops all running instances but preserves registry status', async () => {
+    const repoI = registry.register('/tmp/test-repo-i');
+    const repoJ = registry.register('/tmp/test-repo-j');
+    await spawner.spawnInstance(repoI.id);
+    await spawner.spawnInstance(repoJ.id);
 
     await spawner.stopAll();
 
+    // Processes should be killed
+    expect(spawner.isRunning(repoI.id)).toBe(false);
+    expect(spawner.isRunning(repoJ.id)).toBe(false);
+
+    // Registry status is preserved (not set to 'stopped') so repos
+    // auto-start on next manager startup via startAll()
     const repos = registry.list();
-    expect(repos[0].status).toBe('stopped');
-    expect(repos[1].status).toBe('stopped');
-    expect(repos[0].pid).toBeNull();
-    expect(repos[1].pid).toBeNull();
+    expect(repos[0].status).toBe('running');
+    expect(repos[1].status).toBe('running');
   });
 
   it('startAll resets stopped flag after stopAll', async () => {
@@ -242,7 +266,11 @@ describe('Spawner', () => {
     await spawner.spawnInstance(repo.id);
     await spawner.stopAll();
 
-    // startAll should reset the stopped flag and work again
+    // stopAll preserves registry status as 'running' (for auto-restart),
+    // but sets the internal stopped flag. startAll should reset that flag
+    // and re-spawn the process.
+    expect(spawner.isRunning(repo.id)).toBe(false);
+
     await spawner.startAll();
     const current = registry.get(repo.id)!;
     expect(current.status).toBe('running');
@@ -383,6 +411,110 @@ describe('Spawner', () => {
     await backoffSpawner.stopAll();
   });
 
+  it('crash-loop backoff escalates across multiple health-check-driven restart cycles', async () => {
+    const crashRoot = createCrashingBin(join(tmpDir, 'crash-escalate'));
+    const escalateSpawner = new Spawner(registry, {
+      hermesRoot: crashRoot,
+      logDir,
+      healthCheckIntervalMs: 50,  // Fast health checks for testing
+      stopTimeoutMs: 2000,
+      maxRestartAttempts: 5,
+      maxBackoffMs: 500,          // Cap backoff at 500ms for fast test
+      stabilityWindowMs: 60_000,  // High so it never clears during test
+    });
+
+    const repo = registry.register('/tmp/test-repo-escalate');
+    await escalateSpawner.spawnInstance(repo.id);
+
+    // Wait for first crash
+    await waitFor(() => {
+      const current = registry.get(repo.id);
+      return current?.status === 'error';
+    });
+
+    let state = escalateSpawner.getRestartState(repo.id);
+    expect(state).toBeDefined();
+    expect(state!.attempts).toBe(1);
+
+    // Start health check — it will try to restart the crashing process
+    escalateSpawner.startHealthCheck();
+
+    // Wait for attempts to escalate to at least 3
+    // Each crash increments attempts; backoff delays are capped at 500ms
+    await waitFor(() => {
+      const s = escalateSpawner.getRestartState(repo.id);
+      return !!s && s.attempts >= 3;
+    }, 15000);
+
+    state = escalateSpawner.getRestartState(repo.id);
+    expect(state).toBeDefined();
+    expect(state!.attempts).toBeGreaterThanOrEqual(3);
+
+    // Verify backoff time increases monotonically:
+    // attempts=1 → 50ms, attempts=2 → 100ms, attempts=3 → 200ms (capped at 500ms)
+    // The nextAllowedAt should reflect the latest backoff
+    expect(state!.nextAllowedAt).toBeGreaterThan(0);
+
+    escalateSpawner.stopHealthCheck();
+    await escalateSpawner.stopAll();
+  }, 20_000);
+
+  it('backoff state clears after process stays alive past stability window', async () => {
+    const crashRoot = createCrashingBin(join(tmpDir, 'crash-then-stable'));
+    const stableSpawner = new Spawner(registry, {
+      hermesRoot: crashRoot,
+      logDir,
+      healthCheckIntervalMs: 50,
+      stopTimeoutMs: 2000,
+      stabilityWindowMs: 200,  // Short stability window for testing
+    });
+
+    const repo = registry.register('/tmp/test-repo-stability');
+    await stableSpawner.spawnInstance(repo.id);
+
+    // Wait for crash
+    await waitFor(() => {
+      const current = registry.get(repo.id);
+      return current?.status === 'error';
+    });
+
+    // Should have backoff state
+    expect(stableSpawner.getRestartState(repo.id)).toBeDefined();
+    expect(stableSpawner.getRestartState(repo.id)!.attempts).toBe(1);
+
+    // Now swap to a stable binary and manually respawn
+    // (simulating a fix being deployed)
+    const stableRoot = createFakeBin(join(tmpDir, 'stable-after-crash'));
+    const stableSpawner2 = new Spawner(registry, {
+      hermesRoot: stableRoot,
+      logDir,
+      healthCheckIntervalMs: 50,
+      stopTimeoutMs: 2000,
+      stabilityWindowMs: 200,
+    });
+    process.env.MARKER_DIR = join(tmpDir, 'markers');
+
+    await stableSpawner2.spawnInstance(repo.id);
+    expect(registry.get(repo.id)!.status).toBe('running');
+
+    // Manually set restartState to simulate carrying over from crash
+    // (in real usage the same spawner instance would have it)
+    (stableSpawner2 as any).restartState.set(repo.id, { attempts: 1, nextAllowedAt: 0 });
+
+    // Start health check and wait for stability window to pass
+    stableSpawner2.startHealthCheck();
+    await waitFor(() => {
+      return !stableSpawner2.getRestartState(repo.id);
+    }, 5000);
+
+    // Backoff state should be cleared after stability window
+    expect(stableSpawner2.getRestartState(repo.id)).toBeUndefined();
+
+    stableSpawner2.stopHealthCheck();
+    await stableSpawner2.stopAll();
+    await stableSpawner.stopAll();
+  }, 15_000);
+
   it('explicit stop clears restart backoff state', async () => {
     const crashRoot = createCrashingBin(join(tmpDir, 'crash-clear'));
     const clearSpawner = new Spawner(registry, {
@@ -409,6 +541,34 @@ describe('Spawner', () => {
     expect(clearSpawner.getRestartState(repo.id)).toBeUndefined();
 
     await clearSpawner.stopAll();
+  });
+
+  it('log file is truncated on restart', async () => {
+    const repo = registry.register('/tmp/test-repo-log-truncate');
+    await spawner.spawnInstance(repo.id);
+
+    // Wait for log content
+    await waitFor(() => {
+      if (!existsSync(join(logDir, `${repo.id}.log`))) return false;
+      const content = readFileSync(join(logDir, `${repo.id}.log`), 'utf-8');
+      return content.includes('Instance starting');
+    });
+
+    const firstLog = readFileSync(join(logDir, `${repo.id}.log`), 'utf-8');
+    expect(firstLog).toContain('Instance starting');
+
+    // Restart — log should be truncated (new content only)
+    await spawner.restartInstance(repo.id);
+
+    await waitFor(() => {
+      const content = readFileSync(join(logDir, `${repo.id}.log`), 'utf-8');
+      return content.includes('Instance starting');
+    });
+
+    const secondLog = readFileSync(join(logDir, `${repo.id}.log`), 'utf-8');
+    // The log should start fresh — only one "Instance starting" header
+    const startCount = (secondLog.match(/Instance starting/g) || []).length;
+    expect(startCount).toBe(1);
   });
 
   it('SpawnerError has correct name and code', () => {
