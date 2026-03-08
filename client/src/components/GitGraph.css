@@ -18,7 +18,7 @@
 }
 
 .git-graph-closed {
-  width: 24px;
+  width: 2rem;
 }
 
 .git-graph-toggle {
@@ -30,12 +30,12 @@
   background: transparent;
   border: none;
   color: var(--text-muted);
-  font-size: 16px;
+  font-size: 1.333rem;
   cursor: pointer;
   writing-mode: vertical-rl;
   text-orientation: mixed;
   font-family: 'VT323', monospace;
-  letter-spacing: 2px;
+  letter-spacing: 0.167rem;
 }
 
 .git-graph-toggle:hover {
@@ -52,8 +52,8 @@
   border-left: 1px solid var(--bevel-dark);
   border-bottom: 1px solid var(--bevel-dark);
   color: var(--text-muted);
-  font-size: 10px;
-  padding: 2px 4px;
+  font-size: 0.833rem;
+  padding: 0.167rem 0.333rem;
   cursor: pointer;
   z-index: 2;
   line-height: 1;
@@ -75,10 +75,10 @@
 
 .git-graph-header {
   font-family: 'VT323', monospace;
-  font-size: 11px;
+  font-size: 0.917rem;
   color: var(--text-muted);
-  letter-spacing: 1px;
-  padding: 4px 8px;
+  letter-spacing: 0.083rem;
+  padding: 0.333rem 0.667rem;
   border-bottom: 1px solid var(--bevel-dark);
   flex-shrink: 0;
 }
@@ -86,8 +86,8 @@
 .git-graph-loading,
 .git-graph-error {
   color: var(--text-muted);
-  font-size: 10px;
-  padding: 12px 8px;
+  font-size: 0.833rem;
+  padding: 1rem 0.667rem;
   text-align: center;
 }
 
@@ -103,20 +103,21 @@
 
 /* ── Commit Row ── */
 
-/* Fixed height (must match ROW_H in GitGraph.tsx) so the per-row SVG
-   fills each row exactly, producing contiguous graph lines with no gaps. */
+/* Fixed rem height (the SVG uses viewBox to scale its coordinate system into
+   this height) so the per-row SVG fills each row exactly, producing contiguous
+   graph lines with no gaps.  Must stay in sync with ROW_H_REM in GitGraph.tsx. */
 .git-graph-row {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 28px;
+  height: 2.333rem;
   padding: 0;
   margin: 0;
   background: transparent;
   border: none;
   color: var(--text);
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 0.833rem;
   cursor: pointer;
   text-align: left;
   overflow: hidden;
@@ -150,7 +151,7 @@
 .git-graph-info {
   flex: 1;
   min-width: 0;
-  padding: 2px 4px 2px 0;
+  padding: 0.167rem 0.333rem 0.167rem 0;
   overflow: hidden;
   border-bottom: 1px solid var(--chrome-dark);
   /* Vertically center the two text lines within the fixed-height row */
@@ -162,21 +163,21 @@
 .git-graph-msg {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 0.25rem;
   overflow: hidden;
   line-height: 1.2;
 }
 
 .git-graph-refs {
   display: inline-flex;
-  gap: 2px;
+  gap: 0.167rem;
   flex-shrink: 0;
 }
 
 .git-graph-ref {
   font-family: 'VT323', monospace;
-  font-size: 9px;
-  padding: 0 3px;
+  font-size: 0.75rem;
+  padding: 0 0.25rem;
   border-radius: 2px;
   white-space: nowrap;
   line-height: 1.2;
@@ -204,13 +205,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 0.833rem;
 }
 
 .git-graph-meta {
   display: flex;
-  gap: 4px;
-  font-size: 8px;
+  gap: 0.333rem;
+  font-size: 0.667rem;
   color: var(--text-muted);
   font-family: 'VT323', monospace;
   margin-top: 0;
@@ -233,28 +234,28 @@
 .git-graph-files {
   background: var(--surface);
   border-bottom: 1px solid var(--accent);
-  padding: 2px 0;
+  padding: 0.167rem 0;
 }
 
 .git-graph-files-loading,
 .git-graph-files-empty {
-  font-size: 9px;
+  font-size: 0.75rem;
   color: var(--text-muted);
-  padding: 4px 8px;
+  padding: 0.333rem 0.667rem;
   font-family: 'VT323', monospace;
 }
 
 .git-graph-file {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0.333rem;
   width: 100%;
-  padding: 2px 8px 2px 16px;
+  padding: 0.167rem 0.667rem 0.167rem 1.333rem;
   background: transparent;
   border: none;
   color: var(--text);
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 0.833rem;
   cursor: pointer;
   text-align: left;
   transition: background 0.08s;
@@ -266,9 +267,9 @@
 
 .git-file-status {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 0.833rem;
   font-weight: 700;
-  width: 12px;
+  width: 1rem;
   text-align: center;
   flex-shrink: 0;
 }
@@ -287,8 +288,8 @@
 
 .git-file-stats {
   display: flex;
-  gap: 3px;
-  font-size: 9px;
+  gap: 0.25rem;
+  font-size: 0.75rem;
   flex-shrink: 0;
   font-family: 'VT323', monospace;
 }
