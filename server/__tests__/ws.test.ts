@@ -117,6 +117,23 @@ describe('WebSocket', () => {
     expect(typeof msg.exitCode).toBe('number');
   });
 
+  it('terminal create sends terminal:created message', async () => {
+    const ws = await connectWs(server);
+    clients.push(ws);
+
+    const createPromise = waitForMessage(ws, (m) => m.type === 'terminal:created');
+    const term = manager.create({ title: 'ws-test-term' });
+
+    const msg = await Promise.race([
+      createPromise,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000)),
+    ]);
+    expect(msg.type).toBe('terminal:created');
+    expect(msg.terminal).toBeDefined();
+    expect(msg.terminal.id).toBe(term.id);
+    expect(msg.terminal.title).toBe('ws-test-term');
+  });
+
   it('terminal kill sends terminal:removed message', async () => {
     const ws = await connectWs(server);
     clients.push(ws);

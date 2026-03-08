@@ -6,13 +6,14 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchIssues = useCallback(async () => {
+  const fetchIssues = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch(`${API_BASE}/issues`);
+      const res = await fetch(`${API_BASE}/issues`, { signal });
       if (!res.ok) throw new Error(`Failed to fetch issues (${res.status})`);
       const data: Issue[] = await res.json();
       setIssues(data);
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       console.error('Failed to fetch issues:', err);
     } finally {
       setLoading(false);
@@ -20,7 +21,9 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
   }, []);
 
   useEffect(() => {
-    fetchIssues();
+    const controller = new AbortController();
+    fetchIssues(controller.signal);
+    return () => controller.abort();
   }, [fetchIssues]);
 
   // Subscribe to real-time issue updates
