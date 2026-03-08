@@ -34,6 +34,21 @@ interface AgentGuidelines {
   requireScreenshotsForUiChanges: boolean;
 }
 
+interface ReviewInfo {
+  author: string;
+  verdict: string | null;
+  body: string;
+  createdAt: number;
+  isLatest: boolean;
+  actionItems: string[];
+}
+
+interface RecentMerge {
+  title: string;
+  changedFiles: string[];
+  mergedAt: number;
+}
+
 interface AgentInfoResponse {
   id: string;
   title: string;
@@ -42,16 +57,40 @@ interface AgentInfoResponse {
   worktreePath: string | null;
   repoPath: string;
   targetBranch: string;
-  previousReviews: Array<{
-    author: string;
-    verdict: string | null;
-    body: string;
-    createdAt: number;
-  }>;
+  isRework: boolean;
+  attempt: number;
+  changedFiles: string[];
+  previousReviews: ReviewInfo[];
+  recentMerges: RecentMerge[];
   reviewUrl: string;
   screenshotUploadUrl: string;
   screenshotUploadInstructions: string;
   guidelines: AgentGuidelines;
+}
+
+/**
+ * Extract action items from a review body.
+ * Looks for bullet points (- or *) and numbered lists (1. 2. etc.).
+ * Filters out VERDICT: lines that happen to be on bullet points.
+ */
+function extractActionItems(body: string): string[] {
+  const items: string[] = [];
+  const lines = body.split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Match bullet points (- or *) and numbered lists (1. 2. etc.)
+    const match = trimmed.match(/^(?:[-*]|\d+\.)\s+(.+)/);
+    if (match) {
+      // Skip VERDICT: lines — they're metadata, not action items
+      if (/VERDICT:\s*(APPROVED|CHANGES_REQUESTED)/i.test(match[1])) {
+        continue;
+      }
+      items.push(match[1].trim());
+    }
+  }
+
+  return items;
 }
 
 /**
@@ -80,14 +119,58 @@ export function createAgentApiRouter(
 
     const worktree = worktreeManager.get(issue.id);
     const existingPr = prManager.getByIssueId(issue.id);
-    const previousReviews = existingPr
-      ? existingPr.comments.map((c) => ({
-          author: c.author,
-          verdict: existingPr.verdict,
-          body: c.body,
-          createdAt: c.createdAt,
-        }))
+
+    // isRework: true if a PR already exists for this issue (it's been through review before)
+    const isRework = existingPr !== undefined;
+
+    // changedFiles: files the agent changed in its branch
+    const changedFiles = worktreeManager.getChangedFiles(issue.id);
+
+    // attempt: number of review cycles (count of verdict-bearing comments on the PR)
+    // Counts all comments with a VERDICT: line, regardless of author
+    const attempt = existingPr
+      ? existingPr.comments.filter((c) =>
+          /VERDICT:\s*(APPROVED|CHANGES_REQUESTED)/i.test(c.body)
+        ).length + 1
+      : 1;
+
+    // previousReviews: sorted latest-first with isLatest flag and extracted action items
+    // verdict is parsed per-comment from the body, not from the PR-level verdict
+    const previousReviews: ReviewInfo[] = existingPr
+      ? existingPr.comments
+          .map((c) => {
+            const verdictMatch = c.body.match(/VERDICT:\s*(APPROVED|CHANGES_REQUESTED)/i);
+            return {
+              author: c.author,
+              verdict: verdictMatch ? verdictMatch[1].toLowerCase() : null,
+              body: c.body,
+              createdAt: c.createdAt,
+              isLatest: false,
+              actionItems: extractActionItems(c.body),
+            };
+          })
+          .sort((a, b) => b.createdAt - a.createdAt)
       : [];
+    // Mark the latest *reviewer* comment as isLatest (not just any comment)
+    const latestReviewerIdx = previousReviews.findIndex(
+      (r) => r.author === 'hermes-reviewer'
+    );
+    if (latestReviewerIdx >= 0) {
+      previousReviews[latestReviewerIdx].isLatest = true;
+    }
+
+    // recentMerges: last 5 merged PRs with titles and changed files
+    // Excludes the current issue's own PR (it would be nonsensical to list it)
+    const recentMerges: RecentMerge[] = prManager
+      .list()
+      .filter((pr) => pr.status === 'merged' && pr.issueId !== issue.id)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 5)
+      .map((pr) => ({
+        title: pr.title,
+        changedFiles: pr.changedFiles,
+        mergedAt: pr.updatedAt,
+      }));
 
     const baseUrl = `http://localhost:${PORT}`;
 
@@ -111,7 +194,11 @@ export function createAgentApiRouter(
       worktreePath: worktree?.path || null,
       repoPath: config.repoPath,
       targetBranch: config.targetBranch,
+      isRework,
+      attempt,
+      changedFiles,
       previousReviews,
+      recentMerges,
       reviewUrl: `${baseUrl}/agent/${issue.id}/review`,
       screenshotUploadUrl,
       screenshotUploadInstructions,
