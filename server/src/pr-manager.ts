@@ -5,6 +5,7 @@ import { join } from 'path';
 import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
 import type { Store } from './store.js';
+import type { IssueManager } from './issue-manager.js';
 import { config } from './config.js';
 import { buildScreenshotSection } from './screenshot-utils.js';
 import { loadTemplate, renderTemplate } from './agents.js';
@@ -58,6 +59,7 @@ export class PRManager {
   private prs = new Map<string, PullRequest>();
   private terminalManager: TerminalManager;
   private worktreeManager: WorktreeManager;
+  private issueManager: IssueManager | null = null;
   private store: Store | null = null;
   private eventCallbacks: PREventCallback[] = [];
   private conflictFixerTerminals = new Set<string>();
@@ -85,6 +87,10 @@ export class PRManager {
 
   setStore(store: Store): void {
     this.store = store;
+  }
+
+  setIssueManager(im: IssueManager): void {
+    this.issueManager = im;
   }
 
   loadFromStore(): void {
@@ -238,12 +244,22 @@ export class PRManager {
     writeFileSync(join(reviewDir, 'context.md'), contextSections.join('\n'));
 
     // Spawn reviewer — give it the repo, branch info, and let it git diff itself
-    const reviewCommand = renderTemplate(loadTemplate('hermes-reviewer.txt'), {
+    let reviewCommand = renderTemplate(loadTemplate('hermes-reviewer.txt'), {
       sourceBranch: pr.sourceBranch,
       targetBranch: pr.targetBranch,
       repoPath: pr.repoPath,
       reviewDir,
     });
+
+    // If the issue has a specific reviewer model, add --model flag to the hermes command
+    const issue = this.issueManager?.get(pr.issueId);
+    if (issue?.reviewerModel) {
+      // Insert --model flag after 'hermes chat'
+      reviewCommand = reviewCommand.replace(
+        /^hermes chat\b/,
+        `hermes chat --model ${issue.reviewerModel}`,
+      );
+    }
 
     const terminal = this.terminalManager.create({
       title: `Review: ${pr.title}`,

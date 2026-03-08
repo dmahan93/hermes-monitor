@@ -26,6 +26,7 @@ export interface CreateIssueOptions {
   command?: string;      // override command (used with 'custom' agent)
   branch?: string;
   parentId?: string;     // create as subtask of this issue
+  reviewerModel?: string;  // model for adversarial review (null = agent default)
 }
 
 export interface UpdateIssueOptions {
@@ -35,6 +36,7 @@ export interface UpdateIssueOptions {
   branch?: string;
   submitterNotes?: string;
   screenshotBypassReason?: string;
+  reviewerModel?: string | null;  // null clears the model (use agent default)
 }
 
 export type IssueEventCallback = (event: IssueEvent, issue: Issue) => void;
@@ -166,6 +168,7 @@ export class IssueManager {
       terminalId: null,
       branch: options.branch || null,
       parentId: options.parentId || null,
+      reviewerModel: options.reviewerModel || null,
       progressMessage: null,
       progressPercent: null,
       progressUpdatedAt: null,
@@ -208,6 +211,7 @@ export class IssueManager {
     if (options.branch !== undefined) issue.branch = options.branch;
     if (options.submitterNotes !== undefined) issue.submitterNotes = options.submitterNotes;
     if (options.screenshotBypassReason !== undefined) issue.screenshotBypassReason = options.screenshotBypassReason;
+    if (options.reviewerModel !== undefined) issue.reviewerModel = options.reviewerModel;
     issue.updatedAt = Date.now();
 
     this.persist(issue);

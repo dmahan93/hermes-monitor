@@ -118,6 +118,11 @@ export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalCl
                 ⎇ {issue.branch}
               </span>
             )}
+            {issue.reviewerModel && (
+              <span className="issue-card-reviewer" title={`Reviewer: ${issue.reviewerModel}`}>
+                ⚖ {issue.reviewerModel.split('/').pop()}
+              </span>
+            )}
             {subtaskInfo && subtaskInfo.total > 0 && (
               <span className="issue-card-subtasks" title={`${subtaskInfo.done}/${subtaskInfo.total} subtasks done`}>
                 ◫ {subtaskInfo.done}/{subtaskInfo.total}

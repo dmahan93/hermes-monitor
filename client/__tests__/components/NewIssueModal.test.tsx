@@ -94,7 +94,7 @@ describe('NewIssueModal', () => {
       target: { value: 'fix/my-branch' },
     });
     fireEvent.click(screen.getByText('[CREATE]'));
-    expect(onSubmit).toHaveBeenCalledWith('Fix the bug', 'Some details', 'hermes', '', 'fix/my-branch');
+    expect(onSubmit).toHaveBeenCalledWith('Fix the bug', 'Some details', 'hermes', '', 'fix/my-branch', undefined);
   });
 
   it('calls onClose when CANCEL is clicked', () => {
@@ -112,16 +112,22 @@ describe('NewIssueModal', () => {
 
   it('shows loading placeholder and disables dropdown when agentsLoading is true', () => {
     renderModal({ agentsLoading: true, agents: [] });
-    const select = screen.getByRole('combobox');
-    expect(select).toBeDisabled();
+    const selects = screen.getAllByRole('combobox');
+    // The agent dropdown should be disabled
+    const agentSelect = selects.find((s) => s.querySelector('option[value=""]')?.textContent === 'Loading agents...');
+    expect(agentSelect).toBeTruthy();
+    expect(agentSelect).toBeDisabled();
     expect(screen.getByText('Loading agents...')).toBeInTheDocument();
   });
 
   it('shows error message when agentsError is set', () => {
     renderModal({ agentsError: 'Network error', agents: [] });
     expect(screen.getByText(/Failed to load agents: Network error/)).toBeInTheDocument();
-    // The select dropdown should not be present when there's an error
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    // The agent select dropdown should not be present when there's an error
+    // but the reviewer model select still is (it's independent)
+    const selects = screen.queryAllByRole('combobox');
+    const agentSelect = selects.find((s) => s.querySelector('option[value="hermes"]'));
+    expect(agentSelect).toBeUndefined();
   });
 
   it('disables CREATE button when agentsLoading is true even if title is entered', () => {
@@ -162,8 +168,11 @@ describe('NewIssueModal', () => {
 
   it('shows agent dropdown normally when not loading and no error', () => {
     renderModal({ agentsLoading: false, agentsError: null });
-    const select = screen.getByRole('combobox');
-    expect(select).not.toBeDisabled();
+    const selects = screen.getAllByRole('combobox');
+    // Find the agent select (has agent options like 'hermes')
+    const agentSelect = selects.find((s) => s.querySelector('option[value="hermes"]'));
+    expect(agentSelect).toBeTruthy();
+    expect(agentSelect).not.toBeDisabled();
     expect(screen.queryByText('Loading agents...')).not.toBeInTheDocument();
     expect(screen.queryByText(/Failed to load agents/)).not.toBeInTheDocument();
   });

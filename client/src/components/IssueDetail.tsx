@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { Issue, IssueStatus, PullRequest, AgentPreset } from '../types';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { useModels } from '../hooks/useModels';
 import './IssueDetail.css';
 
 interface IssueDetailProps {
@@ -52,6 +53,9 @@ export function IssueDetail({
   const [statusPending, setStatusPending] = useState(false);
   const agent = agents.find((a) => a.id === issue.agent);
   const status = STATUS_LABELS[issue.status] || STATUS_LABELS.todo;
+  const { models } = useModels();
+
+  const currentModel = models.find((m) => m.id === issue.reviewerModel);
 
   const handleAddSubtask = async () => {
     if (!subtaskTitle.trim() || !onCreateSubtask) return;
@@ -145,6 +149,22 @@ export function IssueDetail({
               <span className="issue-detail-value">
                 {agent ? `${agent.icon} ${agent.name}` : issue.agent}
               </span>
+            </div>
+            <div className="issue-detail-meta-row">
+              <span className="issue-detail-label">reviewer</span>
+              <select
+                className="issue-detail-reviewer-select"
+                value={issue.reviewerModel || ''}
+                onChange={(e) => onUpdate(issue.id, { reviewerModel: e.target.value || null } as Partial<Issue>)}
+                aria-label="Reviewer model"
+              >
+                <option value="">Same as agent (default)</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} ({m.provider})
+                  </option>
+                ))}
+              </select>
             </div>
             {parentIssue && (
               <div className="issue-detail-meta-row">

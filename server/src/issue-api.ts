@@ -10,6 +10,7 @@ import type { IssueManager, IssueStatus } from './issue-manager.js';
 import { AGENT_PRESETS, type AgentPreset } from './agents.js';
 import { getDiagnostics, readDiagnosticFile } from './diagnostics.js';
 import { config } from './config.js';
+import type { ModelInfo } from '@hermes-monitor/shared/types';
 
 const VALID_STATUSES: IssueStatus[] = ['backlog', 'todo', 'in_progress', 'review', 'done'];
 
@@ -29,6 +30,19 @@ const agentPresetsWithStatus: AgentPreset[] = AGENT_PRESETS.map((p) => {
   return { ...p, installed: checkInstalled(bin) };
 });
 
+/** Static list of known reviewer models. */
+const AVAILABLE_MODELS: ModelInfo[] = [
+  { id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet', provider: 'anthropic' },
+  { id: 'anthropic/claude-opus-4', name: 'Claude Opus', provider: 'anthropic' },
+  { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google' },
+  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'google' },
+  { id: 'openai/gpt-4.1', name: 'GPT-4.1', provider: 'openai' },
+  { id: 'openai/o3', name: 'o3', provider: 'openai' },
+  { id: 'nousresearch/hermes-3-llama-3.1-405b', name: 'Hermes 3 405B', provider: 'nousresearch' },
+  { id: 'deepseek/deepseek-r1', name: 'DeepSeek R1', provider: 'deepseek' },
+  { id: 'qwen/qwen-3-235b', name: 'Qwen 3 235B', provider: 'qwen' },
+];
+
 export function createIssueApiRouter(manager: IssueManager): Router {
   const router = Router();
   router.use(json());
@@ -36,6 +50,11 @@ export function createIssueApiRouter(manager: IssueManager): Router {
   // List available agent presets
   router.get('/agents', (_req, res) => {
     res.json(agentPresetsWithStatus);
+  });
+
+  // List available reviewer models
+  router.get('/models', (_req, res) => {
+    res.json(AVAILABLE_MODELS);
   });
 
   // List all issues
@@ -55,13 +74,13 @@ export function createIssueApiRouter(manager: IssueManager): Router {
 
   // Create issue
   router.post('/issues', (req, res) => {
-    const { title, description, agent, command, branch, parentId } = req.body || {};
+    const { title, description, agent, command, branch, parentId, reviewerModel } = req.body || {};
     if (!title || typeof title !== 'string') {
       res.status(400).json({ error: 'title is required' });
       return;
     }
     try {
-      const issue = manager.create({ title, description, agent, command, branch, parentId });
+      const issue = manager.create({ title, description, agent, command, branch, parentId, reviewerModel });
       res.status(201).json(issue);
     } catch (err: any) {
       res.status(400).json({ error: err.message });
@@ -70,8 +89,8 @@ export function createIssueApiRouter(manager: IssueManager): Router {
 
   // Update issue fields
   router.patch('/issues/:id', (req, res) => {
-    const { title, description, command, branch } = req.body || {};
-    const issue = manager.update(req.params.id, { title, description, command, branch });
+    const { title, description, command, branch, reviewerModel } = req.body || {};
+    const issue = manager.update(req.params.id, { title, description, command, branch, reviewerModel });
     if (!issue) {
       res.status(404).json({ error: 'Issue not found' });
       return;
@@ -145,7 +164,7 @@ export function createIssueApiRouter(manager: IssueManager): Router {
       res.status(404).json({ error: 'Parent issue not found' });
       return;
     }
-    const { title, description, agent, command, branch } = req.body || {};
+    const { title, description, agent, command, branch, reviewerModel } = req.body || {};
     if (!title || typeof title !== 'string') {
       res.status(400).json({ error: 'title is required' });
       return;
@@ -157,6 +176,7 @@ export function createIssueApiRouter(manager: IssueManager): Router {
         agent,
         command,
         branch,
+        reviewerModel,
         parentId: req.params.id,
       });
       res.status(201).json(issue);

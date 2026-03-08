@@ -139,7 +139,7 @@ export interface AppContextValue {
   // Handlers
   handleAddTerminal: () => void;
   handleCloseTerminal: (id: string) => void;
-  handleCreateIssue: (title: string, description: string, agent: string, command: string, branch: string) => void;
+  handleCreateIssue: (title: string, description: string, agent: string, command: string, branch: string, reviewerModel?: string) => void;
   handleStatusChange: (id: string, status: IssueStatus) => Promise<string | null>;
   handleDeleteIssue: (id: string) => Promise<void>;
   handleTerminalClick: (issueId: string) => void;
@@ -372,8 +372,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     removeTerminal(id);
   }, [removeTerminal]);
 
-  const handleCreateIssue = useCallback((title: string, description: string, agent: string, command: string, branch: string) => {
-    createIssue(title, description || undefined, agent || undefined, command || undefined, branch || undefined);
+  const handleCreateIssue = useCallback((title: string, description: string, agent: string, command: string, branch: string, reviewerModel?: string) => {
+    createIssue(title, description || undefined, agent || undefined, command || undefined, branch || undefined, reviewerModel || undefined);
   }, [createIssue]);
 
   const handleStatusChange = useCallback(async (id: string, status: IssueStatus): Promise<string | null> => {

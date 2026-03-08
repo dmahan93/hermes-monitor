@@ -102,6 +102,11 @@ export class Store {
       this.db.exec("ALTER TABLE pull_requests ADD COLUMN githubPrUrl TEXT");
     }
 
+    // Migration: add reviewerModel column to issues if it doesn't exist
+    if (!issueColumns.some((c: any) => c.name === 'reviewerModel')) {
+      this.db.exec("ALTER TABLE issues ADD COLUMN reviewerModel TEXT");
+    }
+
     // Index for efficient subtask lookups by parentId
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_issues_parentId ON issues(parentId)");
   }
@@ -110,10 +115,10 @@ export class Store {
 
   saveIssue(issue: Issue): void {
     this.db.prepare(`
-      INSERT OR REPLACE INTO issues (id, title, description, status, agent, command, terminalId, branch, parentId, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO issues (id, title, description, status, agent, command, terminalId, branch, parentId, reviewerModel, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(issue.id, issue.title, issue.description, issue.status, issue.agent, issue.command,
-           issue.terminalId, issue.branch, issue.parentId, issue.createdAt, issue.updatedAt);
+           issue.terminalId, issue.branch, issue.parentId, issue.reviewerModel || null, issue.createdAt, issue.updatedAt);
   }
 
   loadIssues(): Issue[] {
@@ -128,6 +133,7 @@ export class Store {
       terminalId: r.terminalId,
       branch: r.branch,
       parentId: r.parentId || null,
+      reviewerModel: r.reviewerModel || null,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     }));

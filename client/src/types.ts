@@ -6,6 +6,7 @@ export type {
   TerminalInfo,
   Issue,
   AgentPreset,
+  ModelInfo,
   MergeMode,
   PRStatus,
   Verdict,

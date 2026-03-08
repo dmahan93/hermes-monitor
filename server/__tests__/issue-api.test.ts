@@ -364,4 +364,55 @@ describe('Issue API — Diagnostics', () => {
     expect(res.body.diagnostics[1].exitCode).toBe(1);
     expect(res.body.diagnostics[0].timestamp).toBeGreaterThan(res.body.diagnostics[1].timestamp);
   });
+
+  // ── Reviewer Model ──
+
+  it('POST /api/issues creates issue with reviewerModel', async () => {
+    const res = await request(server, 'POST', '/api/issues', {
+      title: 'Reviewer model test',
+      reviewerModel: 'anthropic/claude-sonnet-4',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.reviewerModel).toBe('anthropic/claude-sonnet-4');
+  });
+
+  it('POST /api/issues creates issue without reviewerModel (defaults to null)', async () => {
+    const res = await request(server, 'POST', '/api/issues', { title: 'No model' });
+    expect(res.status).toBe(201);
+    expect(res.body.reviewerModel).toBeNull();
+  });
+
+  it('PATCH /api/issues/:id updates reviewerModel', async () => {
+    const created = await request(server, 'POST', '/api/issues', { title: 'Update model' });
+    const res = await request(server, 'PATCH', `/api/issues/${created.body.id}`, {
+      reviewerModel: 'google/gemini-2.5-pro',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.reviewerModel).toBe('google/gemini-2.5-pro');
+  });
+
+  it('PATCH /api/issues/:id can clear reviewerModel with null', async () => {
+    const created = await request(server, 'POST', '/api/issues', {
+      title: 'Clear model',
+      reviewerModel: 'openai/gpt-4.1',
+    });
+    expect(created.body.reviewerModel).toBe('openai/gpt-4.1');
+    const res = await request(server, 'PATCH', `/api/issues/${created.body.id}`, {
+      reviewerModel: null,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.reviewerModel).toBeNull();
+  });
+
+  it('GET /api/models returns available models', async () => {
+    const res = await request(server, 'GET', '/api/models');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThan(0);
+    // Check structure
+    const first = res.body[0];
+    expect(first).toHaveProperty('id');
+    expect(first).toHaveProperty('name');
+    expect(first).toHaveProperty('provider');
+  });
 });
