@@ -270,6 +270,19 @@ export class IssueManager {
         } catch (err) {
           console.error('Failed to create worktree:', err);
         }
+
+        // Run health check before spawning agent
+        try {
+          const health = this.worktreeManager.healthCheck(issue.id);
+          if (health.fixes.length > 0) {
+            console.log(`[health-check] Fixed: ${health.fixes.join(', ')}`);
+          }
+          if (!health.healthy) {
+            console.warn(`[health-check] Unhealthy workspace for "${issue.title}": ${health.issues.join(', ')}`);
+          }
+        } catch (err) {
+          console.error('[health-check] Failed to run health check:', err);
+        }
       }
 
       const command = issue.command
