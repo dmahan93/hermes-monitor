@@ -360,6 +360,11 @@ in a single call instead of making individual API calls for each action.
 Merges all PRs with `verdict=approved` and `status!=merged`. Handles
 conflicts by spawning fixer agents automatically.
 
+**Note:** PRs are merged sequentially. Each successful merge changes the git
+state on the target branch, so later PRs may conflict even if they would merge
+cleanly individually. The order of PRs in the internal list affects which ones
+succeed. Conflict handling (spawning fixers) covers this case automatically.
+
 **Response:**
 ```json
 {
@@ -377,13 +382,16 @@ conflicts by spawning fixer agents automatically.
 
 ### POST /api/batch/restart-crashed
 
-Restarts all issues with `status=todo` (crashed agents). Moves them to
-`in_progress` which spawns a new agent terminal.
+Restarts crashed agents — issues in `todo` status that have a non-null
+`branch` (indicating they were previously started but crashed back to todo).
+Fresh todo issues that were never started (`branch=null`) are **not** affected.
+Moves matching issues to `in_progress` which spawns a new agent terminal.
 
 **Response:**
 ```json
 {
-  "restarted": [{ "id": "uuid", "title": "..." }]
+  "restarted": [{ "id": "uuid", "title": "..." }],
+  "errors": [{ "id": "uuid", "title": "...", "error": "..." }]
 }
 ```
 
@@ -395,14 +403,17 @@ relaunches their reviews.
 **Response:**
 ```json
 {
-  "relaunched": [{ "prId": "uuid", "title": "..." }]
+  "relaunched": [{ "prId": "uuid", "title": "..." }],
+  "errors": [{ "prId": "uuid", "title": "...", "error": "..." }]
 }
 ```
 
 ### POST /api/batch/send-back-rejected
 
-For all PRs with `verdict=changes_requested`, moves their linked issue
-back to `in_progress` (only if the issue is currently in `review` status).
+For all PRs with `verdict=changes_requested` (excluding merged/closed PRs),
+moves their linked issue back to `in_progress` (only if the issue is
+currently in `review` status). Also resets the PR to `open`/`pending` so
+the dashboard correctly reflects the send-back.
 
 **Response:**
 ```json
@@ -436,9 +447,9 @@ Returns a comprehensive manager dashboard in one call.
 | `active` | Count of issues with status `in_progress` |
 | `inProgress` | List of in-progress issues with agent info |
 | `review` | List of issues in review |
-| `todo` | List of todo issues (potentially crashed agents) |
+| `todo` | List of todo issues |
 | `approvedPrs` | PRs approved but not yet merged |
-| `changesRequested` | PRs with changes requested |
+| `changesRequested` | PRs with changes requested (excludes merged/closed) |
 | `deadReviewers` | PRs in `reviewing` status with no live reviewer terminal |
 | `terminalCount` | Total number of active terminals |
 

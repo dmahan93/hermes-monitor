@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
@@ -135,8 +135,11 @@ describe('Batch API — GET /batch/status', () => {
     expect(res.body.approvedPrs[0].id).toBe('pr-1');
   });
 
-  it('lists changes_requested PRs', async () => {
+  it('lists changes_requested PRs excluding merged and closed', async () => {
     insertTestPR(prManager, { id: 'pr-1', title: 'Rejected PR', verdict: 'changes_requested', status: 'changes_requested' });
+    // These should be excluded from changesRequested
+    insertTestPR(prManager, { id: 'pr-2', title: 'Merged but was rejected', verdict: 'changes_requested', status: 'merged' });
+    insertTestPR(prManager, { id: 'pr-3', title: 'Closed but was rejected', verdict: 'changes_requested', status: 'closed' });
 
     const res = await request(server, 'GET', '/batch/status');
     expect(res.body.changesRequested).toHaveLength(1);
@@ -214,11 +217,12 @@ describe('Batch API — POST /batch/restart-crashed', () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  it('restarts todo issues by moving them to in_progress', async () => {
-    const issue1 = insertTestIssue(issueManager, { status: 'todo', title: 'Crashed 1' });
-    const issue2 = insertTestIssue(issueManager, { status: 'todo', title: 'Crashed 2' });
-    // This one shouldn't be affected
-    insertTestIssue(issueManager, { status: 'in_progress', title: 'Already running' });
+  it('restarts crashed issues (todo with non-null branch)', async () => {
+    // Crashed agents: todo status with a branch (previously started)
+    const issue1 = insertTestIssue(issueManager, { status: 'todo', title: 'Crashed 1', branch: 'issue/crashed-1' });
+    const issue2 = insertTestIssue(issueManager, { status: 'todo', title: 'Crashed 2', branch: 'issue/crashed-2' });
+    // This one shouldn't be affected — it's in_progress
+    insertTestIssue(issueManager, { status: 'in_progress', title: 'Already running', branch: 'issue/running' });
 
     const res = await request(server, 'POST', '/batch/restart-crashed');
     expect(res.status).toBe(200);
@@ -232,13 +236,41 @@ describe('Batch API — POST /batch/restart-crashed', () => {
     expect(issueManager.get(issue2.id)!.status).toBe('in_progress');
   });
 
-  it('returns empty array when no todo issues', async () => {
-    insertTestIssue(issueManager, { status: 'in_progress' });
-    insertTestIssue(issueManager, { status: 'done' });
+  it('skips fresh todo issues that were never started (branch=null)', async () => {
+    // Fresh todo issue — never started, no branch
+    insertTestIssue(issueManager, { status: 'todo', title: 'Fresh todo', branch: null });
+    // Crashed issue with a branch
+    const crashed = insertTestIssue(issueManager, { status: 'todo', title: 'Crashed', branch: 'issue/crashed' });
+
+    const res = await request(server, 'POST', '/batch/restart-crashed');
+    expect(res.status).toBe(200);
+    expect(res.body.restarted).toHaveLength(1);
+    expect(res.body.restarted[0].id).toBe(crashed.id);
+  });
+
+  it('returns empty array when no crashed issues', async () => {
+    insertTestIssue(issueManager, { status: 'in_progress', branch: 'issue/running' });
+    insertTestIssue(issueManager, { status: 'done', branch: 'issue/done' });
+    // Fresh todo (no branch) should not be restarted
+    insertTestIssue(issueManager, { status: 'todo', branch: null });
 
     const res = await request(server, 'POST', '/batch/restart-crashed');
     expect(res.status).toBe(200);
     expect(res.body.restarted).toEqual([]);
+  });
+
+  it('includes errors array for issues that fail to restart', async () => {
+    const issue = insertTestIssue(issueManager, { status: 'todo', title: 'Will fail', branch: 'issue/fail' });
+    vi.spyOn(issueManager, 'changeStatus').mockImplementationOnce(() => {
+      throw new Error('changeStatus failed');
+    });
+
+    const res = await request(server, 'POST', '/batch/restart-crashed');
+    expect(res.status).toBe(200);
+    expect(res.body.restarted).toEqual([]);
+    expect(res.body.errors).toHaveLength(1);
+    expect(res.body.errors[0].id).toBe(issue.id);
+    expect(res.body.errors[0].error).toBe('changeStatus failed');
   });
 });
 
@@ -318,6 +350,44 @@ describe('Batch API — POST /batch/relaunch-reviewers', () => {
     expect(res.status).toBe(200);
     expect(res.body.relaunched).toEqual([]);
   });
+
+  it('handles relaunchReview returning null without crashing', async () => {
+    insertTestPR(prManager, {
+      id: 'pr-vanish',
+      title: 'Vanishing PR',
+      status: 'reviewing',
+      reviewerTerminalId: null,
+    });
+
+    // Simulate relaunchReview returning null (e.g., PR deleted between filter and relaunch)
+    vi.spyOn(prManager, 'relaunchReview').mockReturnValueOnce(null as any);
+
+    const res = await request(server, 'POST', '/batch/relaunch-reviewers');
+    expect(res.status).toBe(200);
+    // Should not appear in relaunched since relaunchReview returned null
+    expect(res.body.relaunched).toEqual([]);
+    expect(res.body.errors).toEqual([]);
+  });
+
+  it('captures errors when relaunchReview throws', async () => {
+    insertTestPR(prManager, {
+      id: 'pr-throw',
+      title: 'Throws on relaunch',
+      status: 'reviewing',
+      reviewerTerminalId: null,
+    });
+
+    vi.spyOn(prManager, 'relaunchReview').mockImplementationOnce(() => {
+      throw new Error('filesystem error');
+    });
+
+    const res = await request(server, 'POST', '/batch/relaunch-reviewers');
+    expect(res.status).toBe(200);
+    expect(res.body.relaunched).toEqual([]);
+    expect(res.body.errors).toHaveLength(1);
+    expect(res.body.errors[0].prId).toBe('pr-throw');
+    expect(res.body.errors[0].error).toBe('filesystem error');
+  });
 });
 
 describe('Batch API — POST /batch/send-back-rejected', () => {
@@ -368,6 +438,28 @@ describe('Batch API — POST /batch/send-back-rejected', () => {
     expect(issueManager.get(issue.id)!.status).toBe('in_progress');
   });
 
+  it('resets PR to open/pending after sending back', async () => {
+    const issue = insertTestIssue(issueManager, {
+      id: 'issue-reset',
+      title: 'Reset Issue',
+      status: 'review',
+    });
+    const pr = insertTestPR(prManager, {
+      id: 'pr-reset-1',
+      title: 'Reset PR',
+      issueId: issue.id,
+      verdict: 'changes_requested',
+      status: 'changes_requested',
+    });
+
+    await request(server, 'POST', '/batch/send-back-rejected');
+
+    // PR should be reset to open/pending
+    const updated = prManager.get(pr.id)!;
+    expect(updated.status).toBe('open');
+    expect(updated.verdict).toBe('pending');
+  });
+
   it('skips issues not in review status', async () => {
     const issue = insertTestIssue(issueManager, {
       id: 'issue-already-ip',
@@ -392,6 +484,25 @@ describe('Batch API — POST /batch/send-back-rejected', () => {
       title: 'Orphan PR',
       issueId: 'nonexistent-issue',
       verdict: 'changes_requested',
+    });
+
+    const res = await request(server, 'POST', '/batch/send-back-rejected');
+    expect(res.status).toBe(200);
+    expect(res.body.sentBack).toEqual([]);
+  });
+
+  it('skips merged PRs even if verdict is changes_requested', async () => {
+    const issue = insertTestIssue(issueManager, {
+      id: 'issue-merged',
+      title: 'Merged Issue',
+      status: 'review',
+    });
+    insertTestPR(prManager, {
+      id: 'pr-merged-rejected',
+      title: 'Merged but was rejected',
+      issueId: issue.id,
+      verdict: 'changes_requested',
+      status: 'merged',
     });
 
     const res = await request(server, 'POST', '/batch/send-back-rejected');
@@ -469,5 +580,24 @@ describe('Batch API — POST /batch/merge-approved', () => {
     // Should end up in errors (branch doesn't exist)
     const totalResults = res.body.merged.length + res.body.conflicts.length + res.body.errors.length;
     expect(totalResults).toBeGreaterThan(0);
+  });
+
+  it('does not crash if merge() throws an unexpected error', async () => {
+    insertTestPR(prManager, {
+      id: 'pr-throws',
+      title: 'PR that throws',
+      verdict: 'approved',
+      status: 'approved',
+    });
+
+    vi.spyOn(prManager, 'merge').mockImplementationOnce(() => {
+      throw new Error('unexpected git error');
+    });
+
+    const res = await request(server, 'POST', '/batch/merge-approved');
+    expect(res.status).toBe(200);
+    expect(res.body.errors).toHaveLength(1);
+    expect(res.body.errors[0].id).toBe('pr-throws');
+    expect(res.body.errors[0].error).toBe('unexpected git error');
   });
 });
