@@ -271,9 +271,14 @@
   transition: background 0.1s, color 0.1s;
 }
 
-.hub-action-btn:hover {
+.hub-action-btn:hover:not(:disabled) {
   background: var(--chrome);
   color: var(--text);
+}
+
+.hub-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .hub-action-start {
@@ -281,7 +286,7 @@
   border-color: var(--accent);
 }
 
-.hub-action-start:hover {
+.hub-action-start:hover:not(:disabled) {
   background: var(--accent-dim);
 }
 
@@ -290,7 +295,7 @@
   border-color: var(--warn);
 }
 
-.hub-action-stop:hover {
+.hub-action-stop:hover:not(:disabled) {
   background: rgba(221, 170, 34, 0.15);
 }
 
@@ -302,7 +307,7 @@
   margin-left: auto;
 }
 
-.hub-action-remove:hover {
+.hub-action-remove:hover:not(:disabled) {
   color: var(--error);
   border-color: var(--error);
 }

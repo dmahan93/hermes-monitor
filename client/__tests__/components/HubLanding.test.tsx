@@ -438,4 +438,137 @@ describe('HubLanding', () => {
     fireEvent.click(screen.getByText('✕ Cancel'));
     expect(screen.queryByTestId('add-repo-form')).not.toBeInTheDocument();
   });
+
+  // ── Keyboard activation ──
+
+  it('navigates on Enter key press on card', async () => {
+    mockFetchRepos([makeRepo({ id: 'kb-repo' })]);
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByText('my-project')).toBeInTheDocument();
+    });
+    const card = screen.getByRole('button', { name: /my-project/i });
+    fireEvent.keyDown(card, { key: 'Enter' });
+    expect(mockNavigate).toHaveBeenCalledWith('/kb-repo');
+  });
+
+  it('navigates on Space key press on card', async () => {
+    mockFetchRepos([makeRepo({ id: 'kb-repo' })]);
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByText('my-project')).toBeInTheDocument();
+    });
+    const card = screen.getByRole('button', { name: /my-project/i });
+    fireEvent.keyDown(card, { key: ' ' });
+    expect(mockNavigate).toHaveBeenCalledWith('/kb-repo');
+  });
+
+  // ── Starting status toggle ──
+
+  it('shows Stop button for starting repo and sends stopped status', async () => {
+    const repo = makeRepo({ id: 'repo-1', status: 'starting' });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => [repo] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...repo, status: 'stopped' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ ...repo, status: 'stopped' }] } as Response);
+
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByText('■ Stop')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('■ Stop'));
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        '/api/hub/repos/repo-1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'stopped' }),
+        }),
+      );
+    });
+  });
+
+  // ── Failed mutation error display ──
+
+  it('shows error when PATCH toggle fails', async () => {
+    const repo = makeRepo({ id: 'repo-1', status: 'stopped' });
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => [repo] } as Response)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: 'Internal server error' }),
+      } as Response);
+
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByText('▶ Start')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('▶ Start'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Internal server error')).toBeInTheDocument();
+    });
+  });
+
+  it('shows error when DELETE fails', async () => {
+    const repo = makeRepo({ id: 'repo-1', status: 'stopped' });
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => [repo] } as Response)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: 'Delete failed' }),
+      } as Response);
+
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByTitle('Remove')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTitle('Remove'));
+    await waitFor(() => {
+      expect(screen.getByText('[REMOVE]')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('[REMOVE]'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Delete failed')).toBeInTheDocument();
+    });
+  });
+
+  // ── Remove disabled for running repos ──
+
+  it('disables Remove button for running repos', async () => {
+    mockFetchRepos([makeRepo({ status: 'running' })]);
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByTitle('Stop the repo before removing')).toBeInTheDocument();
+    });
+    const removeBtn = screen.getByLabelText('Remove');
+    expect(removeBtn).toBeDisabled();
+  });
+
+  it('disables Remove button for starting repos', async () => {
+    mockFetchRepos([makeRepo({ status: 'starting' })]);
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByTitle('Stop the repo before removing')).toBeInTheDocument();
+    });
+    const removeBtn = screen.getByLabelText('Remove');
+    expect(removeBtn).toBeDisabled();
+  });
+
+  it('enables Remove button for stopped repos', async () => {
+    mockFetchRepos([makeRepo({ status: 'stopped' })]);
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByTitle('Remove')).toBeInTheDocument();
+    });
+    const removeBtn = screen.getByLabelText('Remove');
+    expect(removeBtn).not.toBeDisabled();
+  });
 });
