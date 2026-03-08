@@ -26,7 +26,7 @@ adversarial code reviews — all automated.
 - ✅ Auto-resume (respawns crashed agent terminals)
 - ✅ Subtasks (parent/child issue hierarchy)
 - ✅ Planning terminals (interactive agent for backlog items)
-- ✅ Research tab (dedicated terminal)
+- Research tab (removed — to be redesigned later)
 - ✅ Git graph viewer
 
 ## Known Quality Issues (from code review 2026-03-07)

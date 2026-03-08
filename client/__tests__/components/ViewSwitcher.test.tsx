@@ -22,13 +22,12 @@ function renderWithRouter(ui: ReactElement, { route = '/test-repo/kanban' } = {}
 }
 
 describe('ViewSwitcher', () => {
-  it('renders all six buttons', () => {
+  it('renders all five buttons', () => {
     renderWithRouter(<ViewSwitcher mode="kanban" />);
     expect(screen.getByText('[KANBAN]')).toBeInTheDocument();
     expect(screen.getByText('[TERMINALS]')).toBeInTheDocument();
     expect(screen.getByText(/PRs/)).toBeInTheDocument();
     expect(screen.getByText(/MANAGER/)).toBeInTheDocument();
-    expect(screen.getByText('[RESEARCH]')).toBeInTheDocument();
     expect(screen.getByText('[CONFIG]')).toBeInTheDocument();
   });
 
@@ -65,18 +64,6 @@ describe('ViewSwitcher', () => {
     renderWithRouter(<ViewSwitcher mode="kanban" />);
     fireEvent.click(screen.getByText('[CONFIG]'));
     expect(screen.getByTestId('location').textContent).toBe('/test-repo/config');
-  });
-
-  it('highlights research when active', () => {
-    renderWithRouter(<ViewSwitcher mode="research" />, { route: '/test-repo/research' });
-    expect(screen.getByText('[RESEARCH]').className).toContain('view-switcher-active');
-    expect(screen.getByText('[KANBAN]').className).not.toContain('view-switcher-active');
-  });
-
-  it('navigates to research when clicking RESEARCH tab', () => {
-    renderWithRouter(<ViewSwitcher mode="kanban" />);
-    fireEvent.click(screen.getByText('[RESEARCH]'));
-    expect(screen.getByTestId('location').textContent).toBe('/test-repo/research');
   });
 
   it('highlights manager when active', () => {

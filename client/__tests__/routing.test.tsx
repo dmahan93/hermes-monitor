@@ -78,11 +78,6 @@ describe('Routing', () => {
     expect(screen.getByTestId('app-view')).toBeInTheDocument();
   });
 
-  it('/:repoId/research renders App', () => {
-    renderWithRoutes('/my-repo/research');
-    expect(screen.getByTestId('app-view')).toBeInTheDocument();
-  });
-
   it('/:repoId/manager renders App', () => {
     renderWithRoutes('/my-repo/manager');
     expect(screen.getByTestId('app-view')).toBeInTheDocument();

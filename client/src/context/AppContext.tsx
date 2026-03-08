@@ -175,14 +175,6 @@ export interface AppContextValue {
   // Input tracking
   awaitingInputIds: Set<string>;
 
-  // Research view
-  researchMounted: boolean;
-  setResearchTerminalId: (id: string | null) => void;
-
-  // Filtered terminals/layout (research terminal excluded)
-  gridTerminals: TerminalInfo[];
-  gridLayout: GridItem[];
-
   // Computed flags
   showTaskTerminal: boolean;
   showPlanning: boolean;
@@ -305,10 +297,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [planningIssueId, setPlanningIssueId] = useState<string | null>(null);
   const [detailEditing, setDetailEditing] = useState(false);
   const [awaitingInputIds, setAwaitingInputIds] = useState<Set<string>>(new Set());
-  const [researchMounted, setResearchMounted] = useState(false);
-  const [researchTerminalId, setResearchTerminalId] = useState<string | null>(
-    () => localStorage.getItem('hermes:researchTerminalId'),
-  );
 
   // URL-derived detail IDs
   const detailIssueId = urlIssueId;
@@ -351,11 +339,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     window.addEventListener('hermes:config-updated', handler);
     return () => window.removeEventListener('hermes:config-updated', handler);
   }, []);
-
-  // Lazy-mount ResearchView
-  useEffect(() => {
-    if (view === 'research') setResearchMounted(true);
-  }, [view]);
 
   // Track which terminals are awaiting input
   useEffect(() => {
@@ -574,18 +557,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return prs.find((p) => p.issueId === detailIssueId);
   }, [detailIssueId, prs]);
 
-  // ── Filtered terminals/layout (exclude research terminal) ──
-
-  const gridTerminals = useMemo(() => {
-    if (!researchTerminalId) return terminals;
-    return terminals.filter((t) => t.id !== researchTerminalId);
-  }, [terminals, researchTerminalId]);
-
-  const gridLayout = useMemo(() => {
-    if (!researchTerminalId) return layout;
-    return layout.filter((l) => l.i !== researchTerminalId);
-  }, [layout, researchTerminalId]);
-
   // ── Computed flags ──
 
   const showTaskTerminal = !!(view === 'kanban' && expandedIssue && expandedIssue.terminalId);
@@ -676,14 +647,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Input tracking
     awaitingInputIds,
 
-    // Research
-    researchMounted,
-    setResearchTerminalId,
-
-    // Filtered
-    gridTerminals,
-    gridLayout,
-
     // Computed
     showTaskTerminal,
     showPlanning,
@@ -716,9 +679,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     selectedPrId, setSelectedPrId,
     planningIssue,
     awaitingInputIds,
-    researchMounted,
-    researchTerminalId,
-    gridTerminals, gridLayout,
     showTaskTerminal, showPlanning,
     handleAddTerminal, handleCloseTerminal, handleCreateIssue, handleStatusChange,
     handleDeleteIssue, handleTerminalClick, handleIssueClick, handleEditIssue,

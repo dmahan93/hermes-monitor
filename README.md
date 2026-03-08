@@ -88,7 +88,7 @@ Browser (:3000)                    Server (:4000)
 │  • Terminal grid │              │  • TerminalManager (PTYs)  │
 │  • PR list/diff  │              │  • WorktreeManager (git)   │
 │  • Git graph     │              │  • PRManager (reviews)     │
-│  • Research      │              │  • Store (SQLite)          │
+│  • Manager       │              │  • Store (SQLite)          │
 └─────────────────┘               └──────────────────────────┘
 ```
 
@@ -164,7 +164,6 @@ client/src/
     DiffViewer.css      Diff viewer styles
     GitGraph.tsx        Git commit graph visualization
     GitGraph.css        Git graph styles
-    ResearchView.tsx    Research/exploration view
     ConfigView.tsx      App configuration UI
     MarkdownContent.tsx Markdown rendering utility
 ```

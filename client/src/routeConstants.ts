@@ -4,9 +4,9 @@
  * imports between context and component layers.
  */
 
-export type ViewMode = 'kanban' | 'terminals' | 'prs' | 'research' | 'config' | 'manager';
+export type ViewMode = 'kanban' | 'terminals' | 'prs' | 'config' | 'manager';
 
-export const VALID_VIEWS: readonly ViewMode[] = ['kanban', 'terminals', 'prs', 'research', 'config', 'manager'];
+export const VALID_VIEWS: readonly ViewMode[] = ['kanban', 'terminals', 'prs', 'config', 'manager'];
 
 /** Default view when no segment is present or an unknown segment is used */
 export const DEFAULT_VIEW: ViewMode = 'kanban';
