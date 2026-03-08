@@ -151,6 +151,11 @@ describe('Registry', () => {
     expect(stopped!.pid).toBeNull();
   });
 
+  it('updateStatus returns null for nonexistent ID', () => {
+    const result = registry.updateStatus('nonexistent-id', 'running', 1234);
+    expect(result).toBeNull();
+  });
+
   it('finds by path', () => {
     const entry = registry.register('/tmp/my-repo');
     const found = registry.findByPath('/tmp/my-repo');
@@ -264,6 +269,27 @@ describe('Registry API', () => {
     const res = await request(server, 'POST', '/api/hub/repos', { path: 123 });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('path is required');
+  });
+
+  it('POST /api/hub/repos returns 400 when path is whitespace-only', async () => {
+    const res = await request(server, 'POST', '/api/hub/repos', { path: '   ' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('path is required');
+  });
+
+  it('POST /api/hub/repos returns 400 when path is not absolute', async () => {
+    const res = await request(server, 'POST', '/api/hub/repos', { path: '../relative/path' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('path must be absolute');
+  });
+
+  it('POST /api/hub/repos with empty string name auto-detects from path', async () => {
+    const res = await request(server, 'POST', '/api/hub/repos', {
+      path: '/tmp/auto-name-repo',
+      name: '',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.name).toBe('auto-name-repo');
   });
 
   it('POST /api/hub/repos returns 409 for duplicate path', async () => {

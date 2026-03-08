@@ -7,9 +7,9 @@
  * Provides CRUD operations for repo entries and auto-assigns ports starting
  * from 4001.
  */
-// @ts-ignore - esm/cjs interop
+// @ts-ignore - better-sqlite3 has no ESM types yet (see https://github.com/WiseLibs/better-sqlite3/issues/1043)
 import Database from 'better-sqlite3';
-import { join, basename, resolve } from 'path';
+import { join, dirname, basename, resolve } from 'path';
 import { mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { v4 as uuidv4 } from 'uuid';
@@ -17,6 +17,7 @@ import { v4 as uuidv4 } from 'uuid';
 const HERMES_DIR = join(homedir(), '.hermes');
 const DEFAULT_DB_PATH = join(HERMES_DIR, 'hermes-hub.db');
 const BASE_PORT = 4001;
+const MAX_PORT = 65535;
 
 export type RepoStatus = 'stopped' | 'starting' | 'running' | 'error';
 
@@ -44,7 +45,7 @@ export class Registry {
     const resolvedPath = dbPath || DEFAULT_DB_PATH;
 
     // Ensure parent directory exists
-    const dir = join(resolvedPath, '..');
+    const dir = dirname(resolvedPath);
     mkdirSync(dir, { recursive: true });
 
     this.db = new Database(resolvedPath);
@@ -127,10 +128,11 @@ export class Registry {
     // If stopping, clear the pid
     const effectivePid = status === 'stopped' ? null : pidValue;
 
-    this.db.prepare(`
+    const result = this.db.prepare(`
       UPDATE repos SET status = ?, pid = ?, updatedAt = ? WHERE id = ?
     `).run(status, effectivePid, now, id);
 
+    if (result.changes === 0) return null;
     return this.get(id);
   }
 
@@ -141,15 +143,8 @@ export class Registry {
     return row ? this.rowToEntry(row) : null;
   }
 
-  /** Find the next available port (starting from 4001). */
+  /** Find the next available port (starting from 4001, up to 65535). */
   nextPort(): number {
-    const row = this.db.prepare(
-      'SELECT port FROM repos ORDER BY port DESC LIMIT 1'
-    ).get() as any;
-
-    if (!row) return BASE_PORT;
-
-    // Find the first gap, or use max + 1
     const allPorts = this.db.prepare(
       'SELECT port FROM repos ORDER BY port'
     ).all() as any[];
@@ -158,6 +153,9 @@ export class Registry {
     let candidate = BASE_PORT;
     while (usedPorts.has(candidate)) {
       candidate++;
+    }
+    if (candidate > MAX_PORT) {
+      throw new Error('No available ports in range 4001-65535');
     }
     return candidate;
   }

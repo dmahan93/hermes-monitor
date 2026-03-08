@@ -26,13 +26,19 @@ export function createRegistryApiRouter(registry: Registry): Router {
   router.post('/hub/repos', (req, res) => {
     const { path, name } = req.body || {};
 
-    if (!path || typeof path !== 'string') {
-      res.status(400).json({ error: 'path is required and must be a string' });
+    const trimmedPath = typeof path === 'string' ? path.trim() : '';
+    if (!trimmedPath) {
+      res.status(400).json({ error: 'path is required and must be a non-empty string' });
+      return;
+    }
+
+    if (!trimmedPath.startsWith('/')) {
+      res.status(400).json({ error: 'path must be absolute' });
       return;
     }
 
     try {
-      const entry = registry.register(path.trim(), name?.trim() || undefined);
+      const entry = registry.register(trimmedPath, name?.trim() || undefined);
       res.status(201).json(entry);
     } catch (err: any) {
       // Duplicate path → 409 Conflict
