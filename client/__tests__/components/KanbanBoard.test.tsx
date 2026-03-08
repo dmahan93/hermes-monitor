@@ -27,6 +27,8 @@ describe('KanbanBoard', () => {
       <KanbanBoard
         issues={[]}
         agents={mockAgents}
+        agentsLoading={false}
+        agentsError={null}
         onStatusChange={async () => null}
         onCreateIssue={() => {}}
         onDeleteIssue={() => {}}
@@ -49,6 +51,8 @@ describe('KanbanBoard', () => {
       <KanbanBoard
         issues={issues}
         agents={mockAgents}
+        agentsLoading={false}
+        agentsError={null}
         onStatusChange={async () => null}
         onCreateIssue={() => {}}
         onDeleteIssue={() => {}}
@@ -68,6 +72,8 @@ describe('KanbanBoard', () => {
       <KanbanBoard
         issues={issues}
         agents={mockAgents}
+        agentsLoading={false}
+        agentsError={null}
         onStatusChange={async () => null}
         onCreateIssue={() => {}}
         onDeleteIssue={() => {}}
@@ -82,6 +88,8 @@ describe('KanbanBoard', () => {
       <KanbanBoard
         issues={[]}
         agents={mockAgents}
+        agentsLoading={false}
+        agentsError={null}
         onStatusChange={async () => null}
         onCreateIssue={() => {}}
         onDeleteIssue={() => {}}
@@ -96,6 +104,8 @@ describe('KanbanBoard', () => {
       <KanbanBoard
         issues={[]}
         agents={mockAgents}
+        agentsLoading={false}
+        agentsError={null}
         onStatusChange={async () => null}
         onCreateIssue={() => {}}
         onDeleteIssue={() => {}}
@@ -111,6 +121,8 @@ describe('KanbanBoard', () => {
       <KanbanBoard
         issues={issues}
         agents={mockAgents}
+        agentsLoading={false}
+        agentsError={null}
         onStatusChange={async () => null}
         onCreateIssue={() => {}}
         onDeleteIssue={() => {}}

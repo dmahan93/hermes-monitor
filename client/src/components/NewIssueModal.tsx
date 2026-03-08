@@ -4,8 +4,8 @@ import './NewIssueModal.css';
 
 interface NewIssueModalProps {
   agents: AgentPreset[];
-  agentsLoading?: boolean;
-  agentsError?: string | null;
+  agentsLoading: boolean;
+  agentsError: string | null;
   onSubmit: (title: string, description: string, agent: string, command: string, branch: string) => void;
   onClose: () => void;
 }
@@ -124,7 +124,7 @@ export function NewIssueModal({ agents, agentsLoading, agentsError, onSubmit, on
             <button type="button" className="modal-btn modal-btn-cancel" onClick={onClose}>
               [CANCEL]
             </button>
-            <button type="submit" className="modal-btn modal-btn-submit" disabled={!title.trim()}>
+            <button type="submit" className="modal-btn modal-btn-submit" disabled={!title.trim() || agentsLoading || !!agentsError}>
               [CREATE]
             </button>
           </div>
