@@ -321,6 +321,71 @@ describe('useTerminals', () => {
     expect(result.current.layout).toHaveLength(1);
   });
 
+  // --- onError integration tests ---
+
+  it('calls onError when fetchTerminals fails', async () => {
+    const onError = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ error: 'Internal server error' }),
+    }) as any;
+
+    renderHook(() => useTerminals(undefined, onError));
+
+    await waitFor(() => {
+      expect(onError).toHaveBeenCalledWith('Failed to fetch terminals');
+    });
+
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when addTerminal fails', async () => {
+    const onError = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({ error: 'fail' }) }) as any;
+
+    const { result } = renderHook(() => useTerminals(undefined, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.addTerminal('Test');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to create terminal');
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when removeTerminal fails', async () => {
+    const onError = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockTerminal]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({ error: 'fail' }) }) as any;
+
+    const { result } = renderHook(() => useTerminals(undefined, onError));
+
+    await waitFor(() => {
+      expect(result.current.terminals).toHaveLength(1);
+    });
+
+    await act(async () => {
+      await result.current.removeTerminal('abc-123');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to remove terminal');
+    consoleSpy.mockRestore();
+  });
+
   it('removeTerminal tolerates 404 and still removes from state', async () => {
     globalThis.fetch = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockTerminal]) }) // initial fetch
