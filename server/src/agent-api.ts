@@ -14,6 +14,7 @@ import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager, HealthCheckResult } from './worktree-manager.js';
 import { config } from './config.js';
 import { ALLOWED_EXTENSIONS, getUploadedScreenshots, UI_EXTENSIONS } from './screenshot-utils.js';
+import { getDiagnostics } from './diagnostics.js';
 import { analyzeUiDiff } from './ui-change-analyzer.js';
 
 /** File extensions that indicate UI changes requiring screenshots (derived from screenshot-utils) */
@@ -52,6 +53,7 @@ interface RecentMerge {
 
 interface AgentInfoResponse {
   id: string;
+  reworkFeedback: string | null;
   title: string;
   description: string;
   branch: string | undefined;
@@ -63,6 +65,17 @@ interface AgentInfoResponse {
   changedFiles: string[];
   previousReviews: ReviewInfo[];
   recentMerges: RecentMerge[];
+  previousReviews: Array<{
+    author: string;
+    verdict: string | null;
+    body: string;
+    createdAt: number;
+  }>;
+  previousAttempts: Array<{
+    exitCode: number;
+    logFile: string;
+    timestamp: number;
+  }>;
   reviewUrl: string;
   screenshotUploadUrl: string;
   screenshotUploadInstructions: string;
@@ -183,6 +196,21 @@ export function createAgentApiRouter(
         mergedAt: pr.updatedAt,
       }));
 
+    // Build rework feedback: only surface when the PR verdict is changes_requested,
+    // and only use comments from the reviewer (not human comments).
+    let reworkFeedback: string | null = null;
+    if (existingPr && existingPr.verdict === 'changes_requested') {
+      const reviewerComments = existingPr.comments
+        .filter((c) => c.author === 'hermes-reviewer')
+        .sort((a, b) => b.createdAt - a.createdAt);
+      if (reviewerComments.length > 0) {
+        reworkFeedback = `REWORK REQUIRED: The reviewer requested changes.\n\n${reviewerComments[0].body}`;
+      }
+    }
+
+    // Get diagnostic entries from previous terminal exits
+    const previousAttempts = getDiagnostics(issue.id, config.diagnosticsBase);
+
     const baseUrl = `http://localhost:${PORT}`;
 
     const screenshotUploadUrl = `${baseUrl}/agent/${issue.id}/screenshots`;
@@ -199,6 +227,7 @@ export function createAgentApiRouter(
 
     const response: AgentInfoResponse = {
       id: issue.id,
+      reworkFeedback,
       title: issue.title,
       description: issue.description,
       branch: issue.branch ?? undefined,
@@ -210,6 +239,7 @@ export function createAgentApiRouter(
       changedFiles,
       previousReviews,
       recentMerges,
+      previousAttempts,
       reviewUrl: `${baseUrl}/agent/${issue.id}/review`,
       screenshotUploadUrl,
       screenshotUploadInstructions,

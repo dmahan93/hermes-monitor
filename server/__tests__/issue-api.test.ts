@@ -2,9 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
+import { mkdirSync, rmSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import { TerminalManager } from '../src/terminal-manager.js';
 import { IssueManager } from '../src/issue-manager.js';
 import { createIssueApiRouter } from '../src/issue-api.js';
+import { saveDiagnostics } from '../src/diagnostics.js';
+import { config } from '../src/config.js';
 
 async function request(server: Server, method: string, path: string, body?: any) {
   const addr = server.address() as any;
@@ -257,5 +262,106 @@ describe('Issue API', () => {
     await request(server, 'DELETE', `/api/issues/${parent.body.id}`);
     const after = await request(server, 'GET', '/api/issues');
     expect(after.body).toHaveLength(0);
+  });
+});
+
+describe('Issue API — Diagnostics', () => {
+  let terminalManager: TerminalManager;
+  let issueManager: IssueManager;
+  let server: Server;
+  let savedDiagnosticsBase: string;
+  let testDiagBase: string;
+
+  beforeEach(async () => {
+    savedDiagnosticsBase = config.diagnosticsBase;
+    testDiagBase = join(tmpdir(), `hermes-diag-api-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(testDiagBase, { recursive: true });
+    config.diagnosticsBase = testDiagBase;
+
+    terminalManager = new TerminalManager();
+    issueManager = new IssueManager(terminalManager);
+    const app = express();
+    app.use('/api', createIssueApiRouter(issueManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    config.diagnosticsBase = savedDiagnosticsBase;
+    terminalManager.killAll();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    try {
+      rmSync(testDiagBase, { recursive: true, force: true });
+    } catch { /* best effort */ }
+  });
+
+  it('GET /api/issues/:id/diagnostics returns empty when no diagnostics', async () => {
+    const issue = issueManager.create({ title: 'No diagnostics' });
+    const res = await request(server, 'GET', `/api/issues/${issue.id}/diagnostics`);
+    expect(res.status).toBe(200);
+    expect(res.body.issueId).toBe(issue.id);
+    expect(res.body.diagnostics).toEqual([]);
+  });
+
+  it('GET /api/issues/:id/diagnostics returns saved diagnostics', async () => {
+    const issue = issueManager.create({ title: 'Has diagnostics' });
+
+    // Manually save a diagnostic
+    saveDiagnostics({
+      issueId: issue.id,
+      issueTitle: issue.title,
+      branch: 'feat/test',
+      exitCode: 1,
+      scrollback: 'error: something failed\nstack trace here',
+      diagnosticsBase: testDiagBase,
+    });
+
+    const res = await request(server, 'GET', `/api/issues/${issue.id}/diagnostics`);
+    expect(res.status).toBe(200);
+    expect(res.body.issueId).toBe(issue.id);
+    expect(res.body.diagnostics).toHaveLength(1);
+    expect(res.body.diagnostics[0].exitCode).toBe(1);
+    expect(res.body.diagnostics[0].timestamp).toBeGreaterThan(0);
+    expect(res.body.diagnostics[0].content).toContain('something failed');
+    expect(res.body.diagnostics[0].content).toContain('AGENT TERMINAL EXIT DIAGNOSTIC');
+  });
+
+  it('GET /api/issues/:id/diagnostics returns 404 for unknown issue', async () => {
+    const res = await request(server, 'GET', '/api/issues/nonexistent/diagnostics');
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /api/issues/:id/diagnostics returns multiple entries newest first', async () => {
+    const issue = issueManager.create({ title: 'Multiple diags' });
+
+    saveDiagnostics({
+      issueId: issue.id,
+      issueTitle: issue.title,
+      branch: null,
+      exitCode: 1,
+      scrollback: 'first attempt',
+      diagnosticsBase: testDiagBase,
+    });
+
+    // Ensure different timestamp
+    const start = Date.now();
+    while (Date.now() === start) { /* spin */ }
+
+    saveDiagnostics({
+      issueId: issue.id,
+      issueTitle: issue.title,
+      branch: null,
+      exitCode: 2,
+      scrollback: 'second attempt',
+      diagnosticsBase: testDiagBase,
+    });
+
+    const res = await request(server, 'GET', `/api/issues/${issue.id}/diagnostics`);
+    expect(res.status).toBe(200);
+    expect(res.body.diagnostics).toHaveLength(2);
+    // Newest first
+    expect(res.body.diagnostics[0].exitCode).toBe(2);
+    expect(res.body.diagnostics[1].exitCode).toBe(1);
+    expect(res.body.diagnostics[0].timestamp).toBeGreaterThan(res.body.diagnostics[1].timestamp);
   });
 });

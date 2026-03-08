@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { TerminalManager } from '../src/terminal-manager.js';
 import { IssueManager } from '../src/issue-manager.js';
 import { WorktreeManager } from '../src/worktree-manager.js';
@@ -11,6 +12,7 @@ import { PRManager } from '../src/pr-manager.js';
 import { createAgentApiRouter } from '../src/agent-api.js';
 import { createIssueApiRouter } from '../src/issue-api.js';
 import { config } from '../src/config.js';
+import { saveDiagnostics } from '../src/diagnostics.js';
 
 async function request(server: Server, method: string, path: string, body?: any) {
   const addr = server.address() as any;
@@ -95,6 +97,251 @@ describe('Agent API (Agent Communication)', () => {
     expect(res.body.screenshotUploadInstructions).toContain('curl');
 
     config.requireScreenshotsForUiChanges = savedRequire;
+  });
+
+  it('GET /agent/:id/info includes empty previousAttempts when no diagnostics', async () => {
+    const issue = issueManager.create({ title: 'Fresh issue' });
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.previousAttempts).toEqual([]);
+  });
+
+  it('GET /agent/:id/info includes previousAttempts from diagnostics', async () => {
+    // Set up temp diagnostics dir
+    const testDiagBase = join(tmpdir(), `hermes-diag-agent-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(testDiagBase, { recursive: true });
+    const savedBase = config.diagnosticsBase;
+    config.diagnosticsBase = testDiagBase;
+
+    try {
+      const issue = issueManager.create({ title: 'Reattempt issue' });
+
+      // Save a diagnostic entry
+      saveDiagnostics({
+        issueId: issue.id,
+        issueTitle: issue.title,
+        branch: 'feat/retry',
+        exitCode: 1,
+        scrollback: 'crash output',
+        diagnosticsBase: testDiagBase,
+      });
+
+      const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+      expect(res.status).toBe(200);
+      expect(res.body.previousAttempts).toHaveLength(1);
+      expect(res.body.previousAttempts[0].exitCode).toBe(1);
+      expect(res.body.previousAttempts[0].timestamp).toBeGreaterThan(0);
+      expect(res.body.previousAttempts[0].logFile).toContain(issue.id);
+    } finally {
+      config.diagnosticsBase = savedBase;
+      try { rmSync(testDiagBase, { recursive: true, force: true }); } catch { /* */ }
+    }
+  });
+
+  it('GET /agent/:id/info returns null reworkFeedback when no reviews', async () => {
+    const issue = issueManager.create({ title: 'No reviews', description: 'Fresh issue' });
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.reworkFeedback).toBeNull();
+  });
+
+  it('GET /agent/:id/info returns reworkFeedback when reviews exist', async () => {
+    const issue = issueManager.create({ title: 'Rework issue', description: 'Needs fixes' });
+
+    // Mock the prManager to return a PR with review comments
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-1',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/test',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'changes_requested',
+      diff: '',
+      changedFiles: [],
+      verdict: 'changes_requested',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'comment-1',
+          prId: 'mock-pr-1',
+          author: 'hermes-reviewer',
+          body: 'VERDICT: CHANGES_REQUESTED\n\nMissing null check in getUserById()',
+          createdAt: Date.now(),
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+
+    // reworkFeedback should be prominent and contain the review body
+    expect(res.body.reworkFeedback).toBeTruthy();
+    expect(res.body.reworkFeedback).toContain('REWORK REQUIRED');
+    expect(res.body.reworkFeedback).toContain('Missing null check in getUserById()');
+  });
+
+  it('GET /agent/:id/info reworkFeedback uses latest review comment', async () => {
+    const issue = issueManager.create({ title: 'Multi-review', description: 'Multiple rounds' });
+
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-2',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/multi',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'changes_requested',
+      diff: '',
+      changedFiles: [],
+      verdict: 'changes_requested',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'c1',
+          prId: 'mock-pr-2',
+          author: 'hermes-reviewer',
+          body: 'First review: fix typing',
+          createdAt: 1000,
+        },
+        {
+          id: 'c2',
+          prId: 'mock-pr-2',
+          author: 'hermes-reviewer',
+          body: 'Second review: still needs error handling',
+          createdAt: 2000,
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // Should use the latest comment
+    expect(res.body.reworkFeedback).toContain('still needs error handling');
+  });
+
+  it('GET /agent/:id/info reworkFeedback ignores non-reviewer comments', async () => {
+    const issue = issueManager.create({ title: 'Human comment', description: 'Has non-reviewer comment' });
+
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-3',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/human',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'changes_requested',
+      diff: '',
+      changedFiles: [],
+      verdict: 'changes_requested',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'c1',
+          prId: 'mock-pr-3',
+          author: 'hermes-reviewer',
+          body: 'VERDICT: CHANGES_REQUESTED\n\nFix the auth logic',
+          createdAt: 1000,
+        },
+        {
+          id: 'c2',
+          prId: 'mock-pr-3',
+          author: 'human',
+          body: 'Actually, also update the docs please',
+          createdAt: 2000,
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // Should use the reviewer comment, not the human comment
+    expect(res.body.reworkFeedback).toContain('Fix the auth logic');
+    expect(res.body.reworkFeedback).not.toContain('update the docs');
+  });
+
+  it('GET /agent/:id/info reworkFeedback is null when verdict is approved', async () => {
+    const issue = issueManager.create({ title: 'Approved PR', description: 'Was approved' });
+
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-4',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/approved',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'approved',
+      diff: '',
+      changedFiles: [],
+      verdict: 'approved',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'c1',
+          prId: 'mock-pr-4',
+          author: 'hermes-reviewer',
+          body: 'VERDICT: APPROVED\n\nLooks great, ship it!',
+          createdAt: 1000,
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // Should NOT show rework feedback for approved PRs
+    expect(res.body.reworkFeedback).toBeNull();
+  });
+
+  it('GET /agent/:id/info reworkFeedback is null when only human comments exist', async () => {
+    const issue = issueManager.create({ title: 'Human only', description: 'No reviewer comments' });
+
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-5',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/human-only',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'changes_requested',
+      diff: '',
+      changedFiles: [],
+      verdict: 'changes_requested',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'c1',
+          prId: 'mock-pr-5',
+          author: 'human',
+          body: 'I think this needs more work',
+          createdAt: 1000,
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // No reviewer comments → no rework feedback
+    expect(res.body.reworkFeedback).toBeNull();
   });
 
   it('GET /agent/:id/info returns 404 for unknown issue', async () => {
