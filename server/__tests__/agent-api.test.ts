@@ -314,6 +314,70 @@ describe('Agent API — Screenshot Upload', () => {
   });
 });
 
+describe('Agent API — Backward Compatibility (/ticket/ routes)', () => {
+  let terminalManager: TerminalManager;
+  let issueManager: IssueManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let server: Server;
+
+  beforeEach(async () => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+    issueManager.setWorktreeManager(worktreeManager);
+    issueManager.setPRManager(prManager);
+
+    const app = express();
+    app.use('/api', createIssueApiRouter(issueManager));
+    const agentRouter = createAgentApiRouter(issueManager, prManager, terminalManager, worktreeManager);
+    app.use('/agent', agentRouter);
+    // Mirror the backward compat setup from index.ts
+    app.use('/ticket', agentRouter);
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    terminalManager.killAll();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('GET /ticket/:id/info works as backward compat for /agent/:id/info', async () => {
+    const issue = issueManager.create({ title: 'Compat test', description: 'Check old route' });
+    const res = await request(server, 'GET', `/ticket/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(issue.id);
+    expect(res.body.title).toBe('Compat test');
+    // Response URLs should reference the canonical /agent/ prefix
+    expect(res.body.reviewUrl).toContain('/agent/');
+    expect(res.body.screenshotUploadUrl).toContain('/agent/');
+  });
+
+  it('POST /ticket/:id/review works as backward compat for /agent/:id/review', async () => {
+    const issue = issueManager.create({ title: 'Compat review' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.status).toBe('review');
+  });
+
+  it('GET /ticket/:id/info returns 404 for unknown issue (same as /agent/)', async () => {
+    const res = await request(server, 'GET', '/ticket/nonexistent/info');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /ticket/:id/review with query params works', async () => {
+    const issue = issueManager.create({ title: 'Compat query' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const res = await request(server, 'POST', `/ticket/${issue.id}/review?no_ui_changes=true`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+});
+
 describe('Agent API — Screenshot Requirement Enforcement', () => {
   let terminalManager: TerminalManager;
   let issueManager: IssueManager;

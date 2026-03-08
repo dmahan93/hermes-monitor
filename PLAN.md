@@ -5,7 +5,7 @@
 
 ## What This Is
 
-A web dashboard for orchestrating AI coding agents. Agents get tickets via
+A web dashboard for orchestrating AI coding agents. Agents get issues via
 a kanban board, work in isolated git worktrees, submit PRs, and get
 adversarial code reviews — all automated.
 

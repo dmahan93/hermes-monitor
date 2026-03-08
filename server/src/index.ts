@@ -69,12 +69,13 @@ app.use('/api', createApiRouter(terminalManager));
 app.use('/api', createIssueApiRouter(issueManager));
 app.use('/api', createPRApiRouter(prManager, issueManager));
 app.use('/api', createGitApiRouter());
-app.use('/agent', createAgentApiRouter(issueManager, prManager, terminalManager, worktreeManager));
-
-// Backward compatibility: redirect /ticket/:id/* → /agent/:id/*
-app.use('/ticket', (req, res) => {
-  res.redirect(307, `/agent${req.url}`);
-});
+const agentRouter = createAgentApiRouter(issueManager, prManager, terminalManager, worktreeManager);
+app.use('/agent', agentRouter);
+// Backward compatibility: mount the same router at /ticket so existing agents
+// (which use curl -s without -L) still work without needing to follow redirects.
+// Response URLs (reviewUrl, screenshotUploadUrl) will reference /agent/, nudging
+// callers toward the canonical prefix.
+app.use('/ticket', agentRouter);
 
 // WebSocket
 const wss = setupWebSocket(server, terminalManager);

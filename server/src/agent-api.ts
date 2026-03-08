@@ -23,12 +23,12 @@ const MIME_TO_EXT: Record<string, string> = {
   'image/svg+xml': '.svg',
 };
 
-interface TicketGuidelines {
+interface AgentGuidelines {
   screenshots: string;
   requireScreenshotsForUiChanges: boolean;
 }
 
-interface TicketInfoResponse {
+interface AgentInfoResponse {
   id: string;
   title: string;
   description: string;
@@ -45,7 +45,7 @@ interface TicketInfoResponse {
   reviewUrl: string;
   screenshotUploadUrl: string;
   screenshotUploadInstructions: string;
-  guidelines: TicketGuidelines;
+  guidelines: AgentGuidelines;
 }
 
 /**
@@ -97,7 +97,7 @@ export function createAgentApiRouter(
       'To list existing screenshots: GET ' + screenshotUploadUrl,
     ].join('\n');
 
-    const response: TicketInfoResponse = {
+    const response: AgentInfoResponse = {
       id: issue.id,
       title: issue.title,
       description: issue.description,
@@ -119,7 +119,7 @@ export function createAgentApiRouter(
     res.json(response);
   });
 
-  // Agent uploads a screenshot for its ticket
+  // Agent uploads a screenshot for its issue
   router.post('/:id/screenshots', raw({ type: 'image/*', limit: '10mb' }), (req, res) => {
     const issue = issueManager.get(req.params.id);
     if (!issue) {
