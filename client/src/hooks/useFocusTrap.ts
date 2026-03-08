@@ -1,7 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 
 const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * Module-level stack of active focus trap containers.
@@ -19,18 +19,26 @@ const trapStack: HTMLElement[] = [];
  * - While mounted: intercepts Tab / Shift+Tab so focus cycles within the
  *   container instead of escaping to elements behind an overlay.
  *   When multiple traps are active, only the topmost trap handles Tab.
- * - On unmount: restores focus to the previously focused element.
+ *   Also redirects focus back into the container if it escapes (e.g., when
+ *   an element becomes disabled and the browser moves focus to document.body).
+ * - On unmount: restores focus to the previously focused element (if it's
+ *   still in the DOM).
+ *
+ * @param containerRef - Ref to the container element that bounds the focus trap.
+ * @param enabled - Whether the trap is active. Defaults to true. Use false to
+ *   disable trapping without violating the Rules of Hooks (e.g., in DiffViewer
+ *   inline mode or ImageWithZoom when not zoomed).
  */
-export function useFocusTrap(containerRef: RefObject<HTMLElement | null>) {
+export function useFocusTrap(
+  containerRef: RefObject<HTMLElement | null>,
+  enabled = true,
+) {
   // Persist the previously-focused element across renders without causing
   // re-renders (useRef, not useState).
   const previousFocusRef = useRef<Element | null>(null);
 
-  // The containerRef is intentionally in the dependency array to support
-  // conditional activation patterns (e.g., DiffViewer passing a stable nullRef
-  // when inactive). Callers must ensure the ref object identity is stable when
-  // the trap should remain active — use useRef, not inline object literals.
   useEffect(() => {
+    if (!enabled) return;
     const container = containerRef.current;
     if (!container) return;
 
@@ -68,6 +76,21 @@ export function useFocusTrap(containerRef: RefObject<HTMLElement | null>) {
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
 
+      // Check if the currently focused element is one of the tracked focusable
+      // elements inside the container. If not, focus has either escaped the
+      // container entirely (e.g., a button became disabled and the browser moved
+      // activeElement to document.body) or is on a non-tab-reachable element
+      // inside the container (e.g., the container itself with tabIndex="-1").
+      // In either case, redirect focus to the appropriate boundary element.
+      const focusableArray = Array.from(focusable);
+      const activeIndex = focusableArray.indexOf(document.activeElement as HTMLElement);
+
+      if (activeIndex === -1) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+        return;
+      }
+
       if (e.shiftKey) {
         // Shift+Tab: if on first element, wrap to last
         if (document.activeElement === first) {
@@ -95,11 +118,15 @@ export function useFocusTrap(containerRef: RefObject<HTMLElement | null>) {
         trapStack.splice(idx, 1);
       }
 
-      // Restore focus to the element that was focused before the trap
+      // Restore focus to the element that was focused before the trap,
+      // but only if it's still in the DOM. If it was removed (e.g., the
+      // trigger element was in a list that re-rendered), .focus() on a
+      // detached element is a silent no-op — avoid that and let focus
+      // fall to document.body naturally.
       const prev = previousFocusRef.current;
-      if (prev && prev instanceof HTMLElement) {
+      if (prev && prev instanceof HTMLElement && document.body.contains(prev)) {
         prev.focus();
       }
     };
-  }, [containerRef]);
+  }, [containerRef, enabled]);
 }

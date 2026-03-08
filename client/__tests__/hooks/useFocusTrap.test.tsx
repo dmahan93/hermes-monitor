@@ -3,13 +3,10 @@ import { render, fireEvent, act } from '@testing-library/react';
 import { useRef, useState } from 'react';
 import { useFocusTrap } from '../../src/hooks/useFocusTrap';
 
-/** Stable null ref for inactive traps — avoids object allocation churn. */
-const NULL_REF: React.RefObject<HTMLElement | null> = { current: null };
-
 /**
  * Helper component that renders a focus-trappable container with the given
  * inner content. Accepts an optional `active` prop to conditionally disable
- * the trap (mirrors how DiffViewer uses it).
+ * the trap via the hook's `enabled` parameter.
  */
 function TrapHarness({
   children,
@@ -19,7 +16,7 @@ function TrapHarness({
   active?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useFocusTrap(active ? ref : NULL_REF);
+  useFocusTrap(ref, active);
   return <div ref={ref}>{children}</div>;
 }
 
@@ -165,6 +162,33 @@ describe('useFocusTrap', () => {
     document.body.removeChild(outer);
   });
 
+  it('does not restore focus to a detached element on unmount', async () => {
+    // Create an external button and focus it before the trap mounts
+    const outer = document.createElement('button');
+    outer.textContent = 'Outside';
+    document.body.appendChild(outer);
+    outer.focus();
+    expect(document.activeElement).toBe(outer);
+
+    const { getByTestId, unmount } = render(
+      <TrapHarness>
+        <button data-testid="btn-a">A</button>
+      </TrapHarness>,
+    );
+
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(getByTestId('btn-a'));
+    });
+
+    // Remove the outer button from the DOM before unmounting the trap
+    document.body.removeChild(outer);
+
+    // Unmount the trap — focus should NOT try to restore to the detached element
+    // It should fall to document.body naturally
+    unmount();
+    expect(document.activeElement).not.toBe(outer);
+  });
+
   it('handles a container with no focusable elements gracefully', async () => {
     const { container } = render(
       <TrapHarness>
@@ -180,7 +204,7 @@ describe('useFocusTrap', () => {
     expect(container.textContent).toContain('No focusable content here');
   });
 
-  it('does not trap focus when active is false (container ref is null)', async () => {
+  it('does not trap focus when active is false (enabled=false)', async () => {
     const outer = document.createElement('button');
     outer.textContent = 'Outside';
     document.body.appendChild(outer);
@@ -193,7 +217,6 @@ describe('useFocusTrap', () => {
     );
 
     // Focus should remain on the outer button since the trap is inactive
-    // (requestAnimationFrame won't trigger auto-focus because container is null)
     await new Promise((r) => setTimeout(r, 50));
     expect(document.activeElement).toBe(outer);
 
@@ -219,6 +242,28 @@ describe('useFocusTrap', () => {
     expect(document.activeElement).toBe(getByTestId('btn-b'));
 
     // Tab should wrap to btn-a (not to disabled or tabindex=-1)
+    const event = pressTab();
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(getByTestId('btn-a'));
+  });
+
+  it('excludes input[type="hidden"] from focusable elements', async () => {
+    const { getByTestId } = render(
+      <TrapHarness>
+        <button data-testid="btn-a">A</button>
+        <input type="hidden" name="csrf" value="token123" data-testid="hidden-input" />
+        <button data-testid="btn-b">B</button>
+      </TrapHarness>,
+    );
+
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(getByTestId('btn-a'));
+    });
+
+    // Focus the last visible focusable element
+    getByTestId('btn-b').focus();
+
+    // Tab should wrap to btn-a, skipping the hidden input
     const event = pressTab();
     expect(event.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(getByTestId('btn-a'));
@@ -318,6 +363,76 @@ describe('useFocusTrap', () => {
     event = pressTab(true);
     expect(event.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(getByTestId('btn-add'));
+  });
+
+  it('redirects focus back into container when activeElement is outside (e.g., disabled button moved focus to body)', async () => {
+    // In real browsers, when a focused element becomes disabled, focus moves
+    // to document.body. This test simulates that by creating an external
+    // element, focusing it, and verifying the trap redirects on Tab.
+    const outer = document.createElement('button');
+    outer.textContent = 'Outside';
+    document.body.appendChild(outer);
+
+    const { getByTestId } = render(
+      <TrapHarness>
+        <button data-testid="btn-a">A</button>
+        <button data-testid="btn-b">B</button>
+      </TrapHarness>,
+    );
+
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(getByTestId('btn-a'));
+    });
+
+    // Simulate focus escaping the container (e.g., a button became disabled
+    // and the browser moved focus to an element outside the trap)
+    outer.focus();
+    expect(document.activeElement).toBe(outer);
+
+    // Tab should redirect focus back into the container (to the first element)
+    const event = pressTab();
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(getByTestId('btn-a'));
+
+    // Shift+Tab should redirect to the last element
+    outer.focus();
+    const event2 = pressTab(true);
+    expect(event2.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(getByTestId('btn-b'));
+
+    document.body.removeChild(outer);
+  });
+
+  it('redirects focus when activeElement is a non-focusable element inside container (e.g., tabIndex=-1 container)', async () => {
+    // Simulates a container that has tabIndex=-1 and is itself focused
+    // (like ImageWithZoom's overlay div)
+    function TabIndexHarness() {
+      const ref = useRef<HTMLDivElement>(null);
+      useFocusTrap(ref);
+      return (
+        <div ref={ref} tabIndex={-1} data-testid="container">
+          <button data-testid="btn-close">Close</button>
+        </div>
+      );
+    }
+
+    const { getByTestId } = render(<TabIndexHarness />);
+
+    // Manually focus the container (like overlayRef.current?.focus())
+    getByTestId('container').focus();
+    expect(document.activeElement).toBe(getByTestId('container'));
+
+    // Tab should redirect to the first focusable element (btn-close),
+    // not escape the container
+    const event = pressTab();
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(getByTestId('btn-close'));
+
+    // Refocus the container and Shift+Tab should go to last (also btn-close)
+    getByTestId('container').focus();
+    const event2 = pressTab(true);
+    expect(event2.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(getByTestId('btn-close'));
   });
 
   it('only the topmost trap handles Tab when multiple traps are stacked', async () => {
