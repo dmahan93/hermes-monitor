@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { Registry } from '../src/manager/registry.js';
-import { Spawner } from '../src/manager/spawner.js';
+import { Spawner, SpawnerError } from '../src/manager/spawner.js';
 import { createSpawnerApiRouter } from '../src/manager/spawner-api.js';
 
 /**
@@ -104,6 +104,7 @@ describe('Spawner', () => {
       logDir,
       healthCheckIntervalMs: 100, // Fast for testing
       stopTimeoutMs: 2000,
+      maxRestartAttempts: 3,
     });
 
     // Set MARKER_DIR so the fake bin knows where to write markers
@@ -111,8 +112,8 @@ describe('Spawner', () => {
   });
 
   afterEach(async () => {
-    await spawner.stopAll();
     spawner.stopHealthCheck();
+    await spawner.stopAll();
     registry.close();
     delete process.env.MARKER_DIR;
     rmSync(tmpDir, { recursive: true, force: true });
@@ -156,19 +157,37 @@ describe('Spawner', () => {
     expect(result.pid).not.toBe(firstPid);
   });
 
-  it('throws when spawning for nonexistent repo', async () => {
-    await expect(spawner.spawnInstance('nonexistent')).rejects.toThrow('Repo not found');
+  it('throws SpawnerError NOT_FOUND when spawning for nonexistent repo', async () => {
+    try {
+      await spawner.spawnInstance('nonexistent');
+      expect.fail('Should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(SpawnerError);
+      expect((err as SpawnerError).code).toBe('NOT_FOUND');
+    }
   });
 
-  it('throws when instance is already running', async () => {
+  it('throws SpawnerError ALREADY_RUNNING when instance is already running', async () => {
     const repo = registry.register('/tmp/test-repo-d');
     await spawner.spawnInstance(repo.id);
 
-    await expect(spawner.spawnInstance(repo.id)).rejects.toThrow('already running');
+    try {
+      await spawner.spawnInstance(repo.id);
+      expect.fail('Should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(SpawnerError);
+      expect((err as SpawnerError).code).toBe('ALREADY_RUNNING');
+    }
   });
 
-  it('throws when stopping nonexistent repo', async () => {
-    await expect(spawner.stopInstance('nonexistent')).rejects.toThrow('Repo not found');
+  it('throws SpawnerError NOT_FOUND when stopping nonexistent repo', async () => {
+    try {
+      await spawner.stopInstance('nonexistent');
+      expect.fail('Should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(SpawnerError);
+      expect((err as SpawnerError).code).toBe('NOT_FOUND');
+    }
   });
 
   it('stopInstance on non-running repo just sets status to stopped', async () => {
@@ -179,7 +198,7 @@ describe('Spawner', () => {
     expect(result.pid).toBeNull();
   });
 
-  it('startAll starts all registered repos', async () => {
+  it('startAll starts all registered repos in parallel', async () => {
     registry.register('/tmp/test-repo-f');
     registry.register('/tmp/test-repo-g');
 
@@ -216,6 +235,18 @@ describe('Spawner', () => {
     expect(repos[1].status).toBe('stopped');
     expect(repos[0].pid).toBeNull();
     expect(repos[1].pid).toBeNull();
+  });
+
+  it('startAll resets stopped flag after stopAll', async () => {
+    const repo = registry.register('/tmp/test-repo-reset');
+    await spawner.spawnInstance(repo.id);
+    await spawner.stopAll();
+
+    // startAll should reset the stopped flag and work again
+    await spawner.startAll();
+    const current = registry.get(repo.id)!;
+    expect(current.status).toBe('running');
+    expect(spawner.isRunning(repo.id)).toBe(true);
   });
 
   it('creates log directory and writes logs', async () => {
@@ -264,6 +295,24 @@ describe('Spawner', () => {
     await crashSpawner.stopAll();
   });
 
+  it('clears stale PID when setting status to starting', async () => {
+    const repo = registry.register('/tmp/test-repo-stale-pid');
+    // Manually set a PID as if from a previous run
+    registry.updateStatus(repo.id, 'running', 99999);
+    expect(registry.get(repo.id)!.pid).toBe(99999);
+
+    // Simulate a crash
+    registry.updateStatus(repo.id, 'error', null);
+
+    // Spawn should clear the stale PID when setting 'starting'
+    await spawner.spawnInstance(repo.id);
+    const current = registry.get(repo.id)!;
+    expect(current.status).toBe('running');
+    // PID should be the real new PID, not the stale 99999
+    expect(current.pid).not.toBe(99999);
+    expect(current.pid).toBeGreaterThan(0);
+  });
+
   it('health check restarts crashed instances', async () => {
     const repo = registry.register('/tmp/test-repo-health');
 
@@ -282,6 +331,93 @@ describe('Spawner', () => {
     const current = registry.get(repo.id)!;
     expect(current.status).toBe('running');
     expect(current.pid).toBeGreaterThan(0);
+  });
+
+  // ── Concurrency tests ──
+
+  it('prevents concurrent spawnInstance calls for the same repo', async () => {
+    const repo = registry.register('/tmp/test-repo-concurrent');
+
+    // Fire two spawns concurrently
+    const results = await Promise.allSettled([
+      spawner.spawnInstance(repo.id),
+      spawner.spawnInstance(repo.id),
+    ]);
+
+    // One should succeed, one should fail with SPAWN_IN_PROGRESS or ALREADY_RUNNING
+    const fulfilled = results.filter(r => r.status === 'fulfilled');
+    const rejected = results.filter(r => r.status === 'rejected');
+
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(1);
+    const err = (rejected[0] as PromiseRejectedResult).reason;
+    expect(err).toBeInstanceOf(SpawnerError);
+    expect(['SPAWN_IN_PROGRESS', 'ALREADY_RUNNING']).toContain(err.code);
+  });
+
+  it('crash-loop backoff tracks restart attempts', async () => {
+    const crashRoot = createCrashingBin(join(tmpDir, 'crash-backoff'));
+    const backoffSpawner = new Spawner(registry, {
+      hermesRoot: crashRoot,
+      logDir,
+      healthCheckIntervalMs: 50,
+      stopTimeoutMs: 2000,
+      maxRestartAttempts: 2,
+    });
+
+    const repo = registry.register('/tmp/test-repo-backoff');
+    await backoffSpawner.spawnInstance(repo.id);
+
+    // Wait for crash → error status
+    await waitFor(() => {
+      const current = registry.get(repo.id);
+      return current?.status === 'error';
+    });
+
+    // Should have restart state after crash
+    const state = backoffSpawner.getRestartState(repo.id);
+    expect(state).toBeDefined();
+    expect(state!.attempts).toBe(1);
+    expect(state!.nextAllowedAt).toBeGreaterThan(0);
+
+    await backoffSpawner.stopAll();
+  });
+
+  it('explicit stop clears restart backoff state', async () => {
+    const crashRoot = createCrashingBin(join(tmpDir, 'crash-clear'));
+    const clearSpawner = new Spawner(registry, {
+      hermesRoot: crashRoot,
+      logDir,
+      healthCheckIntervalMs: 50,
+      stopTimeoutMs: 2000,
+    });
+
+    const repo = registry.register('/tmp/test-repo-clear-backoff');
+    await clearSpawner.spawnInstance(repo.id);
+
+    // Wait for crash
+    await waitFor(() => {
+      const current = registry.get(repo.id);
+      return current?.status === 'error';
+    });
+
+    // Backoff state should exist
+    expect(clearSpawner.getRestartState(repo.id)).toBeDefined();
+
+    // Explicit stop should clear it
+    await clearSpawner.stopInstance(repo.id);
+    expect(clearSpawner.getRestartState(repo.id)).toBeUndefined();
+
+    await clearSpawner.stopAll();
+  });
+
+  it('SpawnerError has correct name and code', () => {
+    const err = new SpawnerError('test error', 'NOT_FOUND');
+    expect(err.name).toBe('SpawnerError');
+    expect(err.code).toBe('NOT_FOUND');
+    expect(err.message).toBe('test error');
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(SpawnerError);
   });
 });
 
@@ -318,8 +454,8 @@ describe('Spawner API', () => {
   });
 
   afterEach(async () => {
-    await spawner.stopAll();
     spawner.stopHealthCheck();
+    await spawner.stopAll();
     registry.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     delete process.env.MARKER_DIR;
@@ -339,6 +475,7 @@ describe('Spawner API', () => {
     const res = await request(server, 'POST', '/api/hub/repos/nonexistent/start');
     expect(res.status).toBe(404);
     expect(res.body.error).toContain('not found');
+    expect(res.body.code).toBe('NOT_FOUND');
   });
 
   it('POST /api/hub/repos/:id/start returns 409 when already running', async () => {
@@ -348,6 +485,7 @@ describe('Spawner API', () => {
     const res = await request(server, 'POST', `/api/hub/repos/${repo.id}/start`);
     expect(res.status).toBe(409);
     expect(res.body.error).toContain('already running');
+    expect(res.body.code).toBe('ALREADY_RUNNING');
   });
 
   it('POST /api/hub/repos/:id/stop stops an instance', async () => {
@@ -364,6 +502,7 @@ describe('Spawner API', () => {
     const res = await request(server, 'POST', '/api/hub/repos/nonexistent/stop');
     expect(res.status).toBe(404);
     expect(res.body.error).toContain('not found');
+    expect(res.body.code).toBe('NOT_FOUND');
   });
 
   it('POST /api/hub/repos/:id/restart restarts an instance', async () => {
@@ -382,5 +521,20 @@ describe('Spawner API', () => {
     const res = await request(server, 'POST', '/api/hub/repos/nonexistent/restart');
     expect(res.status).toBe(404);
     expect(res.body.error).toContain('not found');
+    expect(res.body.code).toBe('NOT_FOUND');
+  });
+
+  it('concurrent start requests return 409 for the second', async () => {
+    const repo = registry.register('/tmp/test-api-concurrent');
+
+    // Fire two starts concurrently via the API
+    const [res1, res2] = await Promise.all([
+      request(server, 'POST', `/api/hub/repos/${repo.id}/start`),
+      request(server, 'POST', `/api/hub/repos/${repo.id}/start`),
+    ]);
+
+    // One should succeed (200), one should get 409
+    const statuses = [res1.status, res2.status].sort();
+    expect(statuses).toEqual([200, 409]);
   });
 });

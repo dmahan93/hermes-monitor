@@ -205,22 +205,24 @@ prManager.onEvent((event, pr) => {
 });
 
 // Cleanup on shutdown
-const shutdown = async () => {
+// NOTE: Node.js signal handlers are fire-and-forget — the runtime does NOT
+// await returned promises. We use a synchronous handler that chains .finally()
+// to ensure child processes are cleaned up before exit.
+const shutdown = () => {
   console.log('\nShutting down...');
   clearInterval(pruneInterval);
   issueManager.clearResumeTimers();
   prManager.clearAllPendingTimers();
   terminalManager.killAll();
-  // Stop all spawned repo instances before closing
-  try {
-    await spawner.stopAll();
-  } catch (err) {
-    console.error('[spawner] Error stopping instances:', err);
-  }
-  store.close();
-  registry.close();
-  server.close();
-  process.exit(0);
+  // Stop all spawned repo instances, then close everything
+  spawner.stopAll()
+    .catch((err) => console.error('[spawner] Error stopping instances:', err))
+    .finally(() => {
+      store.close();
+      registry.close();
+      server.close();
+      process.exit(0);
+    });
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

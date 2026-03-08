@@ -8,7 +8,25 @@
  *   POST /hub/repos/:id/restart — restart an instance
  */
 import { Router, json } from 'express';
-import type { Spawner } from './spawner.js';
+import { type Spawner, SpawnerError } from './spawner.js';
+
+/** Map SpawnerError codes to HTTP status codes. */
+const ERROR_STATUS_MAP: Record<string, number> = {
+  NOT_FOUND: 404,
+  ALREADY_RUNNING: 409,
+  SPAWN_IN_PROGRESS: 409,
+  INTERNAL: 500,
+};
+
+/** Classify an error and send the appropriate HTTP response. */
+function sendError(res: any, err: any): void {
+  if (err instanceof SpawnerError) {
+    const status = ERROR_STATUS_MAP[err.code] || 500;
+    res.status(status).json({ error: err.message, code: err.code });
+    return;
+  }
+  res.status(500).json({ error: err.message || 'Internal error' });
+}
 
 export function createSpawnerApiRouter(spawner: Spawner): Router {
   const router = Router();
@@ -20,15 +38,7 @@ export function createSpawnerApiRouter(spawner: Spawner): Router {
       const entry = await spawner.spawnInstance(req.params.id);
       res.json(entry);
     } catch (err: any) {
-      if (err.message?.includes('not found')) {
-        res.status(404).json({ error: err.message });
-        return;
-      }
-      if (err.message?.includes('already running')) {
-        res.status(409).json({ error: err.message });
-        return;
-      }
-      res.status(500).json({ error: err.message || 'Failed to start instance' });
+      sendError(res, err);
     }
   });
 
@@ -38,11 +48,7 @@ export function createSpawnerApiRouter(spawner: Spawner): Router {
       const entry = await spawner.stopInstance(req.params.id);
       res.json(entry);
     } catch (err: any) {
-      if (err.message?.includes('not found')) {
-        res.status(404).json({ error: err.message });
-        return;
-      }
-      res.status(500).json({ error: err.message || 'Failed to stop instance' });
+      sendError(res, err);
     }
   });
 
@@ -52,11 +58,7 @@ export function createSpawnerApiRouter(spawner: Spawner): Router {
       const entry = await spawner.restartInstance(req.params.id);
       res.json(entry);
     } catch (err: any) {
-      if (err.message?.includes('not found')) {
-        res.status(404).json({ error: err.message });
-        return;
-      }
-      res.status(500).json({ error: err.message || 'Failed to restart instance' });
+      sendError(res, err);
     }
   });
 
