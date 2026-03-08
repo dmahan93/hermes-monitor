@@ -27,11 +27,6 @@
   text-transform: uppercase;
 }
 
-.header-count {
-  color: var(--text-muted);
-  font-size: 0.917rem;
-}
-
 .header-right {
   display: flex;
   align-items: center;
@@ -91,10 +86,4 @@
   box-shadow: 0 0 4px var(--error);
 }
 
-/* Header awaiting input badge */
-.header-awaiting-input {
-  font-family: 'VT323', monospace;
-  font-size: 0.917rem;
-  color: var(--warn);
-  animation: awaiting-pulse 1.5s ease-in-out infinite;
-}
+
