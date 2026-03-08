@@ -217,19 +217,30 @@ export function createAgentApiRouter(
 
     const { message, percent } = req.body || {};
 
-    // Validate types (both fields are optional)
+    // Require at least one field — reject empty body {}
+    if (message === undefined && percent === undefined) {
+      res.status(400).json({ error: 'At least one of message or percent is required' });
+      return;
+    }
+
+    // Validate types
     if (message !== undefined && typeof message !== 'string') {
       res.status(400).json({ error: 'message must be a string' });
       return;
     }
-    if (percent !== undefined && (typeof percent !== 'number' || percent < 0 || percent > 100)) {
+    if (percent !== undefined && (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0 || percent > 100)) {
       res.status(400).json({ error: 'percent must be a number between 0 and 100' });
       return;
     }
 
+    // Truncate long messages to prevent broadcast bloat
+    const truncatedMessage = (message !== undefined && message.length > 200)
+      ? message.slice(0, 200)
+      : message;
+
     const updated = issueManager.updateProgress(
       issue.id,
-      message !== undefined ? message : undefined,
+      truncatedMessage !== undefined ? truncatedMessage : undefined,
       percent !== undefined ? percent : undefined,
     );
 

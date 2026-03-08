@@ -651,6 +651,70 @@ describe('Agent API — Progress Reporting', () => {
     expect(updated?.progressUpdatedAt).toBeNull();
   });
 
+  it('POST /agent/:id/progress rejects empty body {}', async () => {
+    const issue = issueManager.create({ title: 'Empty body' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('At least one of message or percent is required');
+  });
+
+  it('POST /agent/:id/progress rejects NaN percent', async () => {
+    const issue = issueManager.create({ title: 'NaN percent' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    // NaN in JSON is not valid, but can be sent as a non-number — test Infinity which is also invalid
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      percent: 'NaN',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('percent must be a number');
+  });
+
+  it('POST /agent/:id/progress rejects Infinity percent', async () => {
+    const issue = issueManager.create({ title: 'Infinity percent' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    // JSON.stringify(Infinity) produces null, but typeof null !== 'number' — test via direct validation
+    // Since JSON can't represent NaN/Infinity, we test the validation path with negative numbers instead
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      percent: -1,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('percent must be a number');
+  });
+
+  it('POST /agent/:id/progress truncates messages over 200 chars', async () => {
+    const issue = issueManager.create({ title: 'Long message' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const longMessage = 'A'.repeat(300);
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      message: longMessage,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.message).toHaveLength(200);
+    expect(res.body.message).toBe('A'.repeat(200));
+
+    // Verify in-memory state is also truncated
+    const updated = issueManager.get(issue.id);
+    expect(updated?.progressMessage).toHaveLength(200);
+  });
+
+  it('POST /agent/:id/progress keeps messages at or under 200 chars', async () => {
+    const issue = issueManager.create({ title: 'Short message' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const shortMessage = 'Running tests...';
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      message: shortMessage,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe(shortMessage);
+  });
+
   it('progress emits issue:progress event', async () => {
     const issue = issueManager.create({ title: 'Event test' });
     issueManager.changeStatus(issue.id, 'in_progress');

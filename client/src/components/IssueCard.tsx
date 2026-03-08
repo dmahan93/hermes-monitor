@@ -77,9 +77,11 @@ export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalCl
               ↑ {parentTitle}
             </div>
           )}
-          {issue.status === 'in_progress' && issue.progressMessage && (
+          {issue.status === 'in_progress' && (issue.progressMessage || issue.progressPercent != null) && (
             <div className="issue-card-progress">
-              <div className="issue-card-progress-message">{issue.progressMessage}</div>
+              {issue.progressMessage && (
+                <div className="issue-card-progress-message">{issue.progressMessage}</div>
+              )}
               {issue.progressPercent != null && (
                 <div className="issue-card-progress-bar-container">
                   <div
