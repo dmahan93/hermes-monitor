@@ -10,6 +10,7 @@ import { GitGraph } from './components/GitGraph';
 import { DiffViewer } from './components/DiffViewer';
 import { ConfigView } from './components/ConfigView';
 import { ResearchView } from './components/ResearchView';
+import { ManagerView } from './components/ManagerView';
 import { ViewSwitcher } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
 import { ErrorToast } from './components/ErrorToast';
@@ -57,7 +58,12 @@ function AppContent() {
         onAdd={view === 'terminals' ? handleAddTerminal : undefined}
         connected={connected}
       >
-        <ViewSwitcher mode={view} onChange={setView} prCount={prs.length} />
+        <ViewSwitcher
+          mode={view}
+          onChange={setView}
+          prCount={prs.length}
+          activeAgentCount={issues.filter((i) => i.status === 'in_progress' || i.status === 'review').length}
+        />
       </Header>
       <div className="app-body">
         {/* Git Graph Left Sidebar */}
@@ -210,6 +216,23 @@ function AppContent() {
               />
             </div>
           )}
+
+          {/* Manager view */}
+          <div className={`view-panel ${view === 'manager' ? 'view-active' : 'view-hidden'}`}>
+            <ManagerView
+              issues={issues}
+              prs={prs}
+              agents={agents}
+              onStatusChange={handleStatusChange}
+              onMerge={mergePR}
+              onRelaunchReview={relaunchReview}
+              onViewTerminal={(issueId) => { setView('terminals'); handleTermViewSelect({ kind: 'agent', issueId }); }}
+              onViewPR={() => setView('prs')}
+              send={send}
+              subscribe={subscribe}
+              reconnectCount={reconnectCount}
+            />
+          </div>
 
           {/* Config view */}
           <div className={`view-panel ${view === 'config' ? 'view-active' : 'view-hidden'}`}>
