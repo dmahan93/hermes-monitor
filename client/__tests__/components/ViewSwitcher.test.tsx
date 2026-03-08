@@ -1,10 +1,29 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { useState, type ReactElement } from 'react';
 import { ViewSwitcher } from '../../src/components/ViewSwitcher';
+
+/** Track location changes to verify navigation */
+function LocationDisplay() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
+
+/** Wrap ViewSwitcher in a MemoryRouter with a /:repoId/* route so useParams/useNavigate work */
+function renderWithRouter(ui: ReactElement, { route = '/test-repo/kanban' } = {}) {
+  return render(
+    <MemoryRouter initialEntries={[route]}>
+      <Routes>
+        <Route path="/:repoId/*" element={<>{ui}<LocationDisplay /></>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
 
 describe('ViewSwitcher', () => {
   it('renders all six buttons', () => {
-    render(<ViewSwitcher mode="kanban" onChange={() => {}} />);
+    renderWithRouter(<ViewSwitcher mode="kanban" />);
     expect(screen.getByText('[KANBAN]')).toBeInTheDocument();
     expect(screen.getByText('[TERMINALS]')).toBeInTheDocument();
     expect(screen.getByText(/PRs/)).toBeInTheDocument();
@@ -14,76 +33,71 @@ describe('ViewSwitcher', () => {
   });
 
   it('highlights active mode with view-switcher-active class', () => {
-    render(<ViewSwitcher mode="kanban" onChange={() => {}} />);
+    renderWithRouter(<ViewSwitcher mode="kanban" />);
     expect(screen.getByText('[KANBAN]').className).toContain('view-switcher-active');
     expect(screen.getByText('[TERMINALS]').className).not.toContain('view-switcher-active');
   });
 
-  it('calls onChange when clicking inactive mode', () => {
-    const onChange = vi.fn();
-    render(<ViewSwitcher mode="kanban" onChange={onChange} />);
+  it('navigates to the clicked view', () => {
+    renderWithRouter(<ViewSwitcher mode="kanban" />);
     fireEvent.click(screen.getByText('[TERMINALS]'));
-    expect(onChange).toHaveBeenCalledWith('terminals');
+    expect(screen.getByTestId('location').textContent).toBe('/test-repo/terminals');
   });
 
   it('shows PR count when provided', () => {
-    render(<ViewSwitcher mode="kanban" onChange={() => {}} prCount={3} />);
+    renderWithRouter(<ViewSwitcher mode="kanban" prCount={3} />);
     expect(screen.getByText('[PRs 3]')).toBeInTheDocument();
   });
 
-  it('calls onChange with prs when clicking PRs tab', () => {
-    const onChange = vi.fn();
-    render(<ViewSwitcher mode="kanban" onChange={onChange} />);
+  it('navigates to prs when clicking PRs tab', () => {
+    renderWithRouter(<ViewSwitcher mode="kanban" />);
     fireEvent.click(screen.getByText(/PRs/));
-    expect(onChange).toHaveBeenCalledWith('prs');
+    expect(screen.getByTestId('location').textContent).toBe('/test-repo/prs');
   });
 
   it('highlights config when active', () => {
-    render(<ViewSwitcher mode="config" onChange={() => {}} />);
+    renderWithRouter(<ViewSwitcher mode="config" />, { route: '/test-repo/config' });
     expect(screen.getByText('[CONFIG]').className).toContain('view-switcher-active');
     expect(screen.getByText('[KANBAN]').className).not.toContain('view-switcher-active');
   });
 
-  it('calls onChange with config when clicking CONFIG tab', () => {
-    const onChange = vi.fn();
-    render(<ViewSwitcher mode="kanban" onChange={onChange} />);
+  it('navigates to config when clicking CONFIG tab', () => {
+    renderWithRouter(<ViewSwitcher mode="kanban" />);
     fireEvent.click(screen.getByText('[CONFIG]'));
-    expect(onChange).toHaveBeenCalledWith('config');
+    expect(screen.getByTestId('location').textContent).toBe('/test-repo/config');
   });
 
   it('highlights research when active', () => {
-    render(<ViewSwitcher mode="research" onChange={() => {}} />);
+    renderWithRouter(<ViewSwitcher mode="research" />, { route: '/test-repo/research' });
     expect(screen.getByText('[RESEARCH]').className).toContain('view-switcher-active');
     expect(screen.getByText('[KANBAN]').className).not.toContain('view-switcher-active');
   });
 
-  it('calls onChange with research when clicking RESEARCH tab', () => {
-    const onChange = vi.fn();
-    render(<ViewSwitcher mode="kanban" onChange={onChange} />);
+  it('navigates to research when clicking RESEARCH tab', () => {
+    renderWithRouter(<ViewSwitcher mode="kanban" />);
     fireEvent.click(screen.getByText('[RESEARCH]'));
-    expect(onChange).toHaveBeenCalledWith('research');
+    expect(screen.getByTestId('location').textContent).toBe('/test-repo/research');
   });
 
   it('highlights manager when active', () => {
-    render(<ViewSwitcher mode="manager" onChange={() => {}} />);
+    renderWithRouter(<ViewSwitcher mode="manager" />, { route: '/test-repo/manager' });
     expect(screen.getByText(/MANAGER/).className).toContain('view-switcher-active');
     expect(screen.getByText('[KANBAN]').className).not.toContain('view-switcher-active');
   });
 
-  it('calls onChange with manager when clicking MANAGER tab', () => {
-    const onChange = vi.fn();
-    render(<ViewSwitcher mode="kanban" onChange={onChange} />);
+  it('navigates to manager when clicking MANAGER tab', () => {
+    renderWithRouter(<ViewSwitcher mode="kanban" />);
     fireEvent.click(screen.getByText(/MANAGER/));
-    expect(onChange).toHaveBeenCalledWith('manager');
+    expect(screen.getByTestId('location').textContent).toBe('/test-repo/manager');
   });
 
   it('shows active agent count when provided', () => {
-    render(<ViewSwitcher mode="kanban" onChange={() => {}} activeAgentCount={5} />);
+    renderWithRouter(<ViewSwitcher mode="kanban" activeAgentCount={5} />);
     expect(screen.getByText(/MANAGER 5/)).toBeInTheDocument();
   });
 
   it('does not show agent count when zero', () => {
-    render(<ViewSwitcher mode="kanban" onChange={() => {}} activeAgentCount={0} />);
+    renderWithRouter(<ViewSwitcher mode="kanban" activeAgentCount={0} />);
     // Should just show [MANAGER] without a count
     expect(screen.getByText(/MANAGER/)).toBeInTheDocument();
     expect(screen.queryByText(/MANAGER 0/)).not.toBeInTheDocument();

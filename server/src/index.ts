@@ -1,6 +1,7 @@
 import express, { static as serveStatic } from 'express';
 import { createServer } from 'http';
-import { mkdirSync } from 'fs';
+import { mkdirSync, existsSync } from 'fs';
+import { resolve, join } from 'path';
 import { TerminalManager } from './terminal-manager.js';
 import { IssueManager } from './issue-manager.js';
 import { WorktreeManager } from './worktree-manager.js';
@@ -153,6 +154,19 @@ app.use('/agent', agentRouter);
 // Response URLs (reviewUrl, screenshotUploadUrl) will reference /agent/, nudging
 // callers toward the canonical prefix.
 app.use('/ticket', agentRouter);
+
+// ── SPA fallback for production builds ──
+// In dev, Vite's dev server handles client-side routing automatically.
+// In production, the Express server serves the built client and needs a
+// catch-all to serve index.html for any client-side route so that
+// refreshing on /my-repo/kanban doesn't 404.
+const clientDistPath = resolve(__dirname, '../../client/dist');
+if (existsSync(clientDistPath)) {
+  app.use(serveStatic(clientDistPath));
+  app.get('*', (_req, res) => {
+    res.sendFile(join(clientDistPath, 'index.html'));
+  });
+}
 
 // WebSocket
 const wss = setupWebSocket(server, terminalManager);

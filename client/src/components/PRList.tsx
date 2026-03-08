@@ -9,6 +9,8 @@ interface PRListProps {
   prs: PullRequest[];
   issues: Issue[];
   mergeMode?: MergeMode;
+  selectedPrId?: string | null;
+  onSelectPr?: (prId: string | null) => void;
   onComment: (prId: string, body: string) => void;
   onVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => void;
   onMerge: (prId: string) => Promise<{ error?: string; status?: string; prUrl?: string }>;
@@ -52,10 +54,20 @@ export function filterPRs(prs: PullRequest[], view: PRView): PullRequest[] {
   }
 }
 
-export function PRList({ prs = [], issues, mergeMode = 'local', onComment, onVerdict, onMerge, onConfirmMerge, onFixConflicts, onRelaunchReview, onClosePR, onCloseAllStale, onMoveToInProgress }: PRListProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+export function PRList({ prs = [], issues, mergeMode = 'local', selectedPrId: externalSelectedId, onSelectPr, onComment, onVerdict, onMerge, onConfirmMerge, onFixConflicts, onRelaunchReview, onClosePR, onCloseAllStale, onMoveToInProgress }: PRListProps) {
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<PRView>('open');
   const [closingAll, setClosingAll] = useState(false);
+
+  // Use URL-driven selectedPrId if provided, otherwise fall back to internal state
+  const selectedId = externalSelectedId !== undefined ? externalSelectedId : internalSelectedId;
+  const handleSelectPr = (id: string | null) => {
+    if (onSelectPr) {
+      onSelectPr(id);
+    } else {
+      setInternalSelectedId(id);
+    }
+  };
 
   const counts = useMemo(() => {
     const result = {} as Record<PRView, number>;
@@ -100,7 +112,7 @@ export function PRList({ prs = [], issues, mergeMode = 'local', onComment, onVer
         pr={selectedPR}
         issueStatus={selectedIssue?.status}
         mergeMode={mergeMode}
-        onBack={() => setSelectedId(null)}
+        onBack={() => handleSelectPr(null)}
         onComment={onComment}
         onVerdict={onVerdict}
         onMerge={onMerge}
@@ -157,7 +169,7 @@ export function PRList({ prs = [], issues, mergeMode = 'local', onComment, onVer
             <button
               key={pr.id}
               className="pr-list-item"
-              onClick={() => setSelectedId(pr.id)}
+              onClick={() => handleSelectPr(pr.id)}
             >
               <span className={`pr-list-icon status-${pr.status}`}>
                 {STATUS_ICONS[pr.status] || '○'}

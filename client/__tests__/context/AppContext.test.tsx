@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import type { Issue, PullRequest } from '../../src/types';
 
 // ── Shared mock state (mutated between tests) ──
@@ -160,9 +161,21 @@ function makePR(overrides: Partial<PullRequest> = {}): PullRequest {
 // Must be imported after vi.mock calls so vitest can intercept
 import { AppProvider, useApp } from '../../src/context/AppContext';
 
-function wrapper({ children }: { children: ReactNode }) {
-  return <AppProvider>{children}</AppProvider>;
+/** Wrap AppProvider in MemoryRouter with /:repoId/* route */
+function createWrapper(initialRoute = '/test-repo/kanban') {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <MemoryRouter initialEntries={[initialRoute]}>
+        <Routes>
+          <Route path="/:repoId/*" element={<AppProvider>{children}</AppProvider>} />
+        </Routes>
+      </MemoryRouter>
+    );
+  };
 }
+
+// Default wrapper for most tests
+const wrapper = createWrapper();
 
 // ── Tests ──
 
@@ -618,9 +631,8 @@ describe('AppContext', () => {
 
       const { result } = renderHook(() => useApp(), { wrapper });
 
-      // Switch to kanban view and expand an issue
+      // Already on kanban (initial route), expand an issue
       act(() => {
-        result.current.setView('kanban');
         result.current.setExpandedIssueId('issue-1');
       });
 
@@ -631,10 +643,11 @@ describe('AppContext', () => {
       const issue = makeIssue({ id: 'issue-1', terminalId: 'term-1' });
       mockIssuesReturn = createMockIssuesReturn([issue]);
 
-      const { result } = renderHook(() => useApp(), { wrapper });
+      // Start on terminals view
+      const terminalsWrapper = createWrapper('/test-repo/terminals');
+      const { result } = renderHook(() => useApp(), { wrapper: terminalsWrapper });
 
       act(() => {
-        result.current.setView('terminals');
         result.current.setExpandedIssueId('issue-1');
       });
 
@@ -647,8 +660,8 @@ describe('AppContext', () => {
 
       const { result } = renderHook(() => useApp(), { wrapper });
 
+      // Already on kanban, open planning
       act(() => {
-        result.current.setView('kanban');
         result.current.setPlanningIssueId('issue-1');
       });
 
@@ -688,22 +701,48 @@ describe('AppContext', () => {
 
       const { result } = renderHook(() => useApp(), { wrapper });
 
-      // Open detail with editing
+      // Open detail with editing (navigates to /test-repo/issues/issue-1)
       act(() => {
         result.current.setDetailIssueId('issue-1');
         result.current.setDetailEditing(true);
       });
 
-      expect(result.current.detailIssue).not.toBeNull();
+      expect(result.current.detailIssueId).toBe('issue-1');
       expect(result.current.detailEditing).toBe(true);
 
-      // Close detail
+      // Close detail (navigates back to view URL)
       act(() => {
         result.current.closeDetail();
       });
 
-      expect(result.current.detailIssue).toBeNull();
+      expect(result.current.detailIssueId).toBeNull();
       expect(result.current.detailEditing).toBe(false);
+    });
+
+    it('returns to the originating view, not the default', () => {
+      const issue = makeIssue({ id: 'issue-1' });
+      mockIssuesReturn = createMockIssuesReturn([issue]);
+
+      // Start on terminals view
+      const terminalsWrapper = createWrapper('/test-repo/terminals');
+      const { result } = renderHook(() => useApp(), { wrapper: terminalsWrapper });
+
+      expect(result.current.view).toBe('terminals');
+
+      // Open issue detail (URL changes to /test-repo/issues/issue-1)
+      act(() => {
+        result.current.setDetailIssueId('issue-1');
+      });
+
+      expect(result.current.detailIssueId).toBe('issue-1');
+
+      // Close detail — should return to terminals, not kanban
+      act(() => {
+        result.current.closeDetail();
+      });
+
+      expect(result.current.detailIssueId).toBeNull();
+      expect(result.current.view).toBe('terminals');
     });
   });
 
@@ -715,12 +754,19 @@ describe('AppContext', () => {
       expect(result.current.view).toBe('kanban');
     });
 
-    it('setView changes the current view', () => {
+    it('setView changes the current view via navigation', () => {
       const { result } = renderHook(() => useApp(), { wrapper });
 
       act(() => {
         result.current.setView('terminals');
       });
+
+      expect(result.current.view).toBe('terminals');
+    });
+
+    it('view is derived from the URL', () => {
+      const terminalsWrapper = createWrapper('/test-repo/terminals');
+      const { result } = renderHook(() => useApp(), { wrapper: terminalsWrapper });
 
       expect(result.current.view).toBe('terminals');
     });
@@ -735,6 +781,73 @@ describe('AppContext', () => {
       });
 
       expect(result.current.researchMounted).toBe(true);
+    });
+  });
+
+  // ── 9. URL-driven issue detail ──
+
+  describe('URL-driven issue detail', () => {
+    it('opens issue detail from URL', () => {
+      const issue = makeIssue({ id: 'issue-1' });
+      mockIssuesReturn = createMockIssuesReturn([issue]);
+
+      const issueWrapper = createWrapper('/test-repo/issues/issue-1');
+      const { result } = renderHook(() => useApp(), { wrapper: issueWrapper });
+
+      expect(result.current.detailIssueId).toBe('issue-1');
+      expect(result.current.detailIssue).not.toBeNull();
+      expect(result.current.detailIssue!.id).toBe('issue-1');
+    });
+
+    it('returns null detailIssue when URL issue not found', () => {
+      mockIssuesReturn = createMockIssuesReturn([]);
+
+      const issueWrapper = createWrapper('/test-repo/issues/nonexistent');
+      const { result } = renderHook(() => useApp(), { wrapper: issueWrapper });
+
+      expect(result.current.detailIssueId).toBe('nonexistent');
+      expect(result.current.detailIssue).toBeNull();
+    });
+  });
+
+  // ── 10. URL-driven PR detail ──
+
+  describe('URL-driven PR detail', () => {
+    it('opens PR detail from URL', () => {
+      const prWrapper = createWrapper('/test-repo/prs/pr-1');
+      const { result } = renderHook(() => useApp(), { wrapper: prWrapper });
+
+      expect(result.current.selectedPrId).toBe('pr-1');
+      expect(result.current.view).toBe('prs');
+    });
+
+    it('clears selectedPrId when navigating back to /prs', () => {
+      const prWrapper = createWrapper('/test-repo/prs/pr-1');
+      const { result } = renderHook(() => useApp(), { wrapper: prWrapper });
+
+      expect(result.current.selectedPrId).toBe('pr-1');
+
+      act(() => {
+        result.current.setSelectedPrId(null);
+      });
+
+      expect(result.current.selectedPrId).toBeNull();
+      expect(result.current.view).toBe('prs');
+    });
+  });
+
+  // ── 11. repoId from URL ──
+
+  describe('repoId', () => {
+    it('provides repoId from URL params', () => {
+      const { result } = renderHook(() => useApp(), { wrapper });
+      expect(result.current.repoId).toBe('test-repo');
+    });
+
+    it('uses the repoId from the matched route segment', () => {
+      const customWrapper = createWrapper('/my-custom-repo/kanban');
+      const { result } = renderHook(() => useApp(), { wrapper: customWrapper });
+      expect(result.current.repoId).toBe('my-custom-repo');
     });
   });
 });
