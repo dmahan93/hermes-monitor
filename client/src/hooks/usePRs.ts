@@ -77,16 +77,31 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
     }
   }, []);
 
-  const mergePR = useCallback(async (prId: string): Promise<{ error?: string }> => {
+  const mergePR = useCallback(async (prId: string): Promise<{ error?: string; status?: string; prUrl?: string }> => {
     try {
       const res = await fetch(`${API_BASE}/prs/${prId}/merge`, { method: 'POST' });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         return { error: data?.error || 'Merge failed' };
       }
-      return {};
+      const data = await res.json().catch(() => ({}));
+      return { status: data.status, prUrl: data.prUrl };
     } catch (err) {
       console.error('Failed to merge PR:', err);
+      return { error: 'Network error' };
+    }
+  }, []);
+
+  const confirmMerge = useCallback(async (prId: string): Promise<{ error?: string }> => {
+    try {
+      const res = await fetch(`${API_BASE}/prs/${prId}/confirm-merge`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        return { error: data?.error || 'Confirm merge failed' };
+      }
+      return {};
+    } catch (err) {
+      console.error('Failed to confirm merge:', err);
       return { error: 'Network error' };
     }
   }, []);
@@ -115,5 +130,5 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
     }
   }, []);
 
-  return { prs, loading, addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: fetchPRs };
+  return { prs, loading, addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, refetch: fetchPRs };
 }

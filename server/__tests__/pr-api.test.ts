@@ -9,7 +9,7 @@ import { WorktreeManager } from '../src/worktree-manager.js';
 import { PRManager, type PullRequest } from '../src/pr-manager.js';
 import { IssueManager } from '../src/issue-manager.js';
 import { createPRApiRouter } from '../src/pr-api.js';
-import { config } from '../src/config.js';
+import { config, updateConfig } from '../src/config.js';
 
 async function request(server: Server, method: string, path: string, body?: any) {
   const addr = server.address() as any;
@@ -781,5 +781,202 @@ describe('PRManager.handleReviewerExit — auto-relaunch', () => {
     // PR should still be closed, no new terminal
     const updated = prManager.get(prId)!;
     expect(updated.status).toBe('closed');
+  });
+});
+
+describe('PR API — Confirm Merge endpoint', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let issueManager: IssueManager;
+  let server: Server;
+
+  beforeEach(async () => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+
+    const app = express();
+    app.use('/api', createPRApiRouter(prManager, issueManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    terminalManager.killAll();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('POST /api/prs/:id/confirm-merge marks PR as merged', async () => {
+    insertTestPR(prManager, {
+      id: 'confirm-pr-1',
+      status: 'approved',
+      verdict: 'approved',
+      githubPrUrl: 'https://github.com/test/repo/pull/1',
+    });
+
+    const res = await request(server, 'POST', '/api/prs/confirm-pr-1/confirm-merge');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('merged');
+  });
+
+  it('POST /api/prs/:id/confirm-merge returns 404 for unknown PR', async () => {
+    const res = await request(server, 'POST', '/api/prs/nonexistent/confirm-merge');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('PR not found');
+  });
+
+  it('POST /api/prs/:id/confirm-merge returns 400 for already merged PR', async () => {
+    insertTestPR(prManager, { id: 'confirm-pr-2', status: 'merged' });
+
+    const res = await request(server, 'POST', '/api/prs/confirm-pr-2/confirm-merge');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('already merged');
+  });
+
+  it('POST /api/prs/:id/confirm-merge returns 400 for closed PR', async () => {
+    insertTestPR(prManager, { id: 'confirm-pr-3', status: 'closed' });
+
+    const res = await request(server, 'POST', '/api/prs/confirm-pr-3/confirm-merge');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('closed');
+  });
+
+  it('POST /api/prs/:id/confirm-merge emits pr:updated event', async () => {
+    insertTestPR(prManager, {
+      id: 'confirm-pr-4',
+      status: 'approved',
+      verdict: 'approved',
+    });
+
+    const events: string[] = [];
+    prManager.onEvent((event) => events.push(event));
+
+    await request(server, 'POST', '/api/prs/confirm-pr-4/confirm-merge');
+    expect(events).toContain('pr:updated');
+  });
+});
+
+describe('PR API — mergeMode config', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let issueManager: IssueManager;
+  let server: Server;
+  let originalMergeMode: string;
+
+  beforeEach(async () => {
+    originalMergeMode = config.mergeMode;
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+
+    const app = express();
+    app.use('/api', createPRApiRouter(prManager, issueManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    // Restore original mergeMode
+    updateConfig({ mergeMode: originalMergeMode as any });
+    terminalManager.killAll();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('PATCH /api/config updates mergeMode to github', async () => {
+    const res = await request(server, 'PATCH', '/api/config', { mergeMode: 'github' });
+    expect(res.status).toBe(200);
+    expect(res.body.mergeMode).toBe('github');
+    expect(config.mergeMode).toBe('github');
+  });
+
+  it('PATCH /api/config updates mergeMode to both', async () => {
+    const res = await request(server, 'PATCH', '/api/config', { mergeMode: 'both' });
+    expect(res.status).toBe(200);
+    expect(res.body.mergeMode).toBe('both');
+    expect(config.mergeMode).toBe('both');
+  });
+
+  it('PATCH /api/config ignores invalid mergeMode', async () => {
+    updateConfig({ mergeMode: 'local' });
+    const res = await request(server, 'PATCH', '/api/config', { mergeMode: 'invalid' });
+    expect(res.status).toBe(200);
+    expect(res.body.mergeMode).toBe('local'); // unchanged
+  });
+
+  it('GET /api/config includes mergeMode', async () => {
+    updateConfig({ mergeMode: 'github' });
+    const res = await request(server, 'GET', '/api/config');
+    expect(res.status).toBe(200);
+    expect(res.body.mergeMode).toBe('github');
+  });
+});
+
+describe('PRManager.confirmMerge', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+
+  beforeEach(() => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+  });
+
+  afterEach(() => {
+    terminalManager.killAll();
+  });
+
+  it('marks an approved PR as merged', () => {
+    insertTestPR(prManager, { id: 'cm-1', status: 'approved', verdict: 'approved' });
+    const result = prManager.confirmMerge('cm-1');
+    expect(result.error).toBeUndefined();
+    expect(result.pr).toBeDefined();
+    expect(result.pr!.status).toBe('merged');
+  });
+
+  it('marks a reviewing PR as merged', () => {
+    insertTestPR(prManager, { id: 'cm-2', status: 'reviewing', verdict: 'pending' });
+    const result = prManager.confirmMerge('cm-2');
+    expect(result.error).toBeUndefined();
+    expect(result.pr!.status).toBe('merged');
+  });
+
+  it('returns error for already merged PR', () => {
+    insertTestPR(prManager, { id: 'cm-3', status: 'merged', verdict: 'approved' });
+    const result = prManager.confirmMerge('cm-3');
+    expect(result.error).toContain('already merged');
+  });
+
+  it('returns error for closed PR', () => {
+    insertTestPR(prManager, { id: 'cm-4', status: 'closed', verdict: 'pending' });
+    const result = prManager.confirmMerge('cm-4');
+    expect(result.error).toContain('closed');
+  });
+
+  it('returns error for nonexistent PR', () => {
+    const result = prManager.confirmMerge('nonexistent');
+    expect(result.error).toBe('PR not found');
+  });
+
+  it('emits pr:updated event on successful confirm', () => {
+    insertTestPR(prManager, { id: 'cm-5', status: 'approved', verdict: 'approved' });
+    const events: string[] = [];
+    prManager.onEvent((event) => events.push(event));
+
+    prManager.confirmMerge('cm-5');
+    expect(events).toContain('pr:updated');
+  });
+
+  it('does not emit event for merged/closed PRs', () => {
+    insertTestPR(prManager, { id: 'cm-6', status: 'merged', verdict: 'approved' });
+    const events: string[] = [];
+    prManager.onEvent((event) => events.push(event));
+
+    prManager.confirmMerge('cm-6');
+    expect(events).toHaveLength(0);
   });
 });

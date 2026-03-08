@@ -31,7 +31,8 @@ const defaultProps = () => ({
   onBack: vi.fn(),
   onComment: vi.fn(),
   onVerdict: vi.fn(),
-  onMerge: vi.fn<[string], Promise<{ error?: string }>>().mockResolvedValue({}),
+  onMerge: vi.fn<[string], Promise<{ error?: string; status?: string; prUrl?: string }>>().mockResolvedValue({}),
+  onConfirmMerge: vi.fn<[string], Promise<{ error?: string }>>().mockResolvedValue({}),
   onFixConflicts: vi.fn(),
   onRelaunchReview: vi.fn(),
   onMoveToInProgress: vi.fn<[string], Promise<void>>().mockResolvedValue(undefined),
@@ -372,6 +373,110 @@ describe('PRDetail — Merge confirmation', () => {
     fireEvent.click(screen.getByText(/MERGE/));
     expect(window.confirm).toHaveBeenCalledWith(
       expect.stringContaining('production'),
+    );
+  });
+});
+
+describe('PRDetail — GitHub merge mode', () => {
+  let originalFetch: typeof globalThis.fetch;
+  let originalConfirm: typeof window.confirm;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    originalConfirm = window.confirm;
+    globalThis.fetch = vi.fn((url: string | URL | Request) => {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+      if (urlStr.includes('/merge-check')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ canMerge: true, hasConflicts: false }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ screenshots: [] }),
+      } as Response);
+    }) as any;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    window.confirm = originalConfirm;
+  });
+
+  it('shows "Create GitHub PR" button when mergeMode is github', async () => {
+    const props = defaultProps();
+    props.pr = makePR({ verdict: 'approved' });
+    render(<PRDetail {...props} mergeMode="github" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Create GitHub PR/)).toBeInTheDocument();
+    });
+  });
+
+  it('shows regular MERGE button when mergeMode is local', async () => {
+    const props = defaultProps();
+    props.pr = makePR({ verdict: 'approved' });
+    render(<PRDetail {...props} mergeMode="local" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/MERGE/)).toBeInTheDocument();
+      expect(screen.queryByText(/Create GitHub PR/)).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows "View GitHub PR" link and "CONFIRM MERGED" button when github mode and PR URL exists', async () => {
+    const props = defaultProps();
+    props.pr = makePR({ verdict: 'approved', githubPrUrl: 'https://github.com/test/repo/pull/1' });
+    render(<PRDetail {...props} mergeMode="github" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/View GitHub PR/)).toBeInTheDocument();
+      expect(screen.getByText(/CONFIRM MERGED/)).toBeInTheDocument();
+    });
+  });
+
+  it('does not show CONFIRM MERGED button when mergeMode is local', async () => {
+    const props = defaultProps();
+    props.pr = makePR({ verdict: 'approved', githubPrUrl: 'https://github.com/test/repo/pull/1' });
+    render(<PRDetail {...props} mergeMode="local" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/MERGE/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/CONFIRM MERGED/)).not.toBeInTheDocument();
+  });
+
+  it('calls onConfirmMerge when CONFIRM MERGED is clicked and confirmed', async () => {
+    window.confirm = vi.fn(() => true);
+    const props = defaultProps();
+    props.pr = makePR({ verdict: 'approved', githubPrUrl: 'https://github.com/test/repo/pull/1' });
+    render(<PRDetail {...props} mergeMode="github" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/CONFIRM MERGED/)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/CONFIRM MERGED/));
+
+    await waitFor(() => {
+      expect(props.onConfirmMerge).toHaveBeenCalledWith('pr-1');
+    });
+  });
+
+  it('shows confirmation dialog for GitHub PR creation', async () => {
+    window.confirm = vi.fn(() => true);
+    const props = defaultProps();
+    props.pr = makePR({ verdict: 'approved' });
+    render(<PRDetail {...props} mergeMode="github" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Create GitHub PR/)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/Create GitHub PR/));
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('Create GitHub PR'),
     );
   });
 });

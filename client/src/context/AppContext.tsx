@@ -21,6 +21,7 @@ import type {
 } from '../types';
 import type { ViewMode } from '../components/ViewSwitcher';
 import { type AgentListSelection, selectionKey } from '../components/AgentTerminalList';
+import { API_BASE } from '../config';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useTerminals } from '../hooks/useTerminals';
 import { useIssues } from '../hooks/useIssues';
@@ -53,9 +54,11 @@ export interface AppContextValue {
   prs: PullRequest[];
   addComment: (prId: string, body: string) => Promise<void>;
   setVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => Promise<void>;
-  mergePR: (prId: string) => Promise<{ error?: string }>;
+  mergePR: (prId: string) => Promise<{ error?: string; status?: string; prUrl?: string }>;
+  confirmMerge: (prId: string) => Promise<{ error?: string }>;
   fixConflicts: (prId: string) => Promise<void>;
   relaunchReview: (prId: string) => Promise<void>;
+  mergeMode: 'local' | 'github' | 'both';
 
   // Agents
   agents: AgentPreset[];
@@ -178,9 +181,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { errors, addError, removeError } = useErrorToast();
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals(subscribe, addError);
   const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning, createSubtask } = useIssues(subscribe, addError);
-  const { prs = [], addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe, addError);
+  const { prs = [], addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe, addError);
   const { agents, loading: agentsLoading, error: agentsError } = useAgents();
   const gitGraph = useGitGraph();
+  const [mergeMode, setMergeMode] = useState<'local' | 'github' | 'both'>('local');
 
   // ── Local state ──
   const [gitPanelOpen, setGitPanelOpen] = useState(() => {
@@ -205,6 +209,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     localStorage.setItem('hermes:gitPanelOpen', String(gitPanelOpen));
   }, [gitPanelOpen]);
+
+  // Fetch mergeMode from config on mount
+  useEffect(() => {
+    fetch(`${API_BASE}/config`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.mergeMode && ['local', 'github', 'both'].includes(data.mergeMode)) {
+          setMergeMode(data.mergeMode);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Lazy-mount ResearchView
   useEffect(() => {
@@ -474,8 +490,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addComment,
     setVerdict,
     mergePR,
+    confirmMerge,
     fixConflicts,
     relaunchReview,
+    mergeMode,
 
     // Agents
     agents,
@@ -554,7 +572,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     connected, reconnectCount, send, subscribe,
     terminals, layout, loading, updateLayout,
     issues, updateIssue, createSubtask,
-    prs, addComment, setVerdict, mergePR, fixConflicts, relaunchReview,
+    prs, addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, mergeMode,
     agents, agentsLoading, agentsError,
     gitGraph,
     view,

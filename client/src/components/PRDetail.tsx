@@ -5,13 +5,17 @@ import type { PullRequest, IssueStatus, Screenshot } from '../types';
 import './PRDetail.css';
 import { API_BASE } from '../config';
 
+type MergeMode = 'local' | 'github' | 'both';
+
 interface PRDetailProps {
   pr: PullRequest;
   issueStatus?: IssueStatus;
+  mergeMode?: MergeMode;
   onBack: () => void;
   onComment: (prId: string, body: string) => void;
   onVerdict: (prId: string, verdict: 'approved' | 'changes_requested') => void;
-  onMerge: (prId: string) => Promise<{ error?: string }>;
+  onMerge: (prId: string) => Promise<{ error?: string; status?: string; prUrl?: string }>;
+  onConfirmMerge: (prId: string) => Promise<{ error?: string }>;
   onFixConflicts: (prId: string) => void;
   onRelaunchReview: (prId: string) => void;
   onMoveToInProgress: (issueId: string) => Promise<void>;
@@ -26,12 +30,13 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   closed: { label: 'CLOSED', className: 'status-closed' },
 };
 
-export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerge, onFixConflicts, onRelaunchReview, onMoveToInProgress }: PRDetailProps) {
+export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComment, onVerdict, onMerge, onConfirmMerge, onFixConflicts, onRelaunchReview, onMoveToInProgress }: PRDetailProps) {
   const [comment, setComment] = useState('');
   const [mergeCheck, setMergeCheck] = useState<{ checking: boolean; canMerge: boolean; hasConflicts: boolean }>({
     checking: true, canMerge: false, hasConflicts: false,
   });
   const [mergeError, setMergeError] = useState<string | null>(null);
+  const [githubPrCreated, setGithubPrCreated] = useState(false);
   const [screenshots, setScreenshots] = useState<Screenshot[]>(pr.screenshots || []);
   const status = STATUS_LABELS[pr.status] || STATUS_LABELS.open;
 
@@ -178,17 +183,53 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
                 [🔧 FIX CONFLICTS]
               </button>
             ) : pr.verdict === 'approved' ? (
-              <button
-                className="pr-action-btn pr-merge-btn"
-                onClick={async () => {
-                  if (!window.confirm(`Merge "${pr.title}" into ${pr.targetBranch}?`)) return;
-                  setMergeError(null);
-                  const result = await onMerge(pr.id);
-                  if (result.error) setMergeError(result.error);
-                }}
-              >
-                [⎇ MERGE]
-              </button>
+              <>
+                {(mergeMode === 'github' && pr.githubPrUrl) ? (
+                  <>
+                    <a
+                      href={pr.githubPrUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="pr-action-btn pr-merge-btn"
+                    >
+                      [🐙 View GitHub PR ↗]
+                    </a>
+                    <button
+                      className="pr-action-btn pr-confirm-merge-btn"
+                      onClick={async () => {
+                        if (!window.confirm(`Confirm that "${pr.title}" was merged on GitHub?`)) return;
+                        setMergeError(null);
+                        const result = await onConfirmMerge(pr.id);
+                        if (result.error) setMergeError(result.error);
+                      }}
+                    >
+                      [✓ CONFIRM MERGED]
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="pr-action-btn pr-merge-btn"
+                    onClick={async () => {
+                      const confirmMsg = mergeMode === 'github'
+                        ? `Create GitHub PR for "${pr.title}"?`
+                        : `Merge "${pr.title}" into ${pr.targetBranch}?`;
+                      if (!window.confirm(confirmMsg)) return;
+                      setMergeError(null);
+                      const result = await onMerge(pr.id);
+                      if (result.error) {
+                        setMergeError(result.error);
+                      } else if (result.status === 'github_pr_created') {
+                        setGithubPrCreated(true);
+                      }
+                    }}
+                  >
+                    {mergeMode === 'github' ? '[🐙 Create GitHub PR]' : '[⎇ MERGE]'}
+                  </button>
+                )}
+                {githubPrCreated && !pr.githubPrUrl && (
+                  <span className="pr-github-created">✓ GitHub PR created</span>
+                )}
+              </>
             ) : null}
           </>
         )}

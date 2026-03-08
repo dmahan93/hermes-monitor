@@ -8,7 +8,7 @@ import type { Store } from './store.js';
 import { config } from './config.js';
 import { buildScreenshotSection } from './screenshot-utils.js';
 import { loadTemplate, renderTemplate } from './agents.js';
-import { pushMerge, closeGitHubPR, deleteRemoteBranch } from './github.js';
+import { pushBranch, pushMerge, createGitHubPR, closeGitHubPR, deleteRemoteBranch } from './github.js';
 
 // Auto-relaunch constants
 const MAX_REVIEWER_RELAUNCH = 2;        // max retries before giving up
@@ -740,6 +740,73 @@ export class PRManager {
       })();
     }
 
+    return { pr };
+  }
+
+  /**
+   * Push branch and create a GitHub PR without merging locally.
+   * Used when mergeMode is 'github' or 'both'.
+   */
+  async createGitHubPRForMerge(prId: string): Promise<{ pr?: PullRequest; prUrl?: string; error?: string }> {
+    const pr = this.prs.get(prId);
+    if (!pr) return { error: 'PR not found' };
+
+    // Push the branch to the remote
+    const pushResult = await pushBranch(pr.sourceBranch, pr.repoPath);
+    if (!pushResult.success) {
+      return { error: `Failed to push branch: ${pushResult.error}` };
+    }
+
+    // Create the GitHub PR
+    const ghResult = await createGitHubPR(
+      pr.title,
+      pr.description || pr.submitterNotes || '',
+      pr.sourceBranch,
+      pr.targetBranch,
+      pr.repoPath,
+    );
+    if (!ghResult.success || !ghResult.prUrl) {
+      return { error: `Failed to create GitHub PR: ${ghResult.error}` };
+    }
+
+    // Store the GitHub PR URL
+    pr.githubPrUrl = ghResult.prUrl;
+    pr.updatedAt = Date.now();
+    this.persist(pr);
+    this.emit('pr:updated', pr);
+
+    return { pr, prUrl: ghResult.prUrl };
+  }
+
+  /**
+   * Confirm that a PR was merged on GitHub — mark it as merged and move to done.
+   * Used when mergeMode is 'github' and the user confirms the merge happened on GH.
+   */
+  confirmMerge(prId: string): { pr?: PullRequest; error?: string } {
+    const pr = this.prs.get(prId);
+    if (!pr) return { error: 'PR not found' };
+
+    if (pr.status === 'merged') return { error: 'PR is already merged' };
+    if (pr.status === 'closed') return { error: 'PR is closed' };
+
+    // Remove worktree
+    this.worktreeManager.remove(pr.issueId, false);
+    try {
+      execSync('git worktree prune', { cwd: pr.repoPath, stdio: 'pipe' });
+    } catch {}
+
+    pr.status = 'merged';
+    pr.updatedAt = Date.now();
+
+    // Clean up the local branch
+    try {
+      execSync(`git branch -d ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
+    } catch {
+      try { execSync(`git branch -D ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' }); } catch {}
+    }
+
+    this.persist(pr);
+    this.emit('pr:updated', pr);
     return { pr };
   }
 

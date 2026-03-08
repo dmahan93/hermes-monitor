@@ -343,4 +343,65 @@ describe('usePRs', () => {
     expect(onError).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
+
+  it('confirmMerge calls POST with correct URL', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) }) as any; // POST confirm-merge
+
+    const { result } = renderHook(() => usePRs(mockSubscribe));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    let confirmResult: { error?: string } = {};
+    await act(async () => {
+      confirmResult = await result.current.confirmMerge('pr-1');
+    });
+
+    expect(confirmResult.error).toBeUndefined();
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/prs/pr-1/confirm-merge`, { method: 'POST' });
+  });
+
+  it('confirmMerge returns error on failure', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'PR is already merged' }) }) as any;
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result } = renderHook(() => usePRs(mockSubscribe));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    let confirmResult: { error?: string } = {};
+    await act(async () => {
+      confirmResult = await result.current.confirmMerge('pr-1');
+    });
+
+    expect(confirmResult.error).toBe('PR is already merged');
+    consoleSpy.mockRestore();
+  });
+
+  it('mergePR returns status and prUrl from github mode response', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ status: 'github_pr_created', prUrl: 'https://github.com/test/repo/pull/1' }) }) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    let mergeResult: { error?: string; status?: string; prUrl?: string } = {};
+    await act(async () => {
+      mergeResult = await result.current.mergePR('pr-1');
+    });
+
+    expect(mergeResult.status).toBe('github_pr_created');
+    expect(mergeResult.prUrl).toBe('https://github.com/test/repo/pull/1');
+  });
 });

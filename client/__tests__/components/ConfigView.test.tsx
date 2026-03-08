@@ -12,6 +12,7 @@ const mockConfig = {
   requireScreenshotsForUiChanges: true,
   githubEnabled: false,
   githubRemote: 'origin',
+  mergeMode: 'local',
 };
 
 beforeEach(() => {
@@ -56,6 +57,22 @@ describe('ConfigView', () => {
     await waitFor(() => {
       const link = screen.getByText(/GitHub Repository/);
       expect(link).toHaveAttribute('target', '_blank');
+    });
+  });
+
+  it('renders Merge Mode dropdown', async () => {
+    render(<ConfigView />);
+    await waitFor(() => {
+      expect(screen.getByText('Merge Mode')).toBeInTheDocument();
+    });
+  });
+
+  it('shows all merge mode options', async () => {
+    render(<ConfigView />);
+    await waitFor(() => {
+      expect(screen.getByText(/Local — merge locally/)).toBeInTheDocument();
+      expect(screen.getByText(/GitHub — push branch/)).toBeInTheDocument();
+      expect(screen.getByText(/Both — merge locally AND/)).toBeInTheDocument();
     });
   });
 });
