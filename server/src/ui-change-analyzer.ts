@@ -30,38 +30,72 @@ const JSX_EXTENSIONS = new Set(['.tsx', '.jsx']);
 /**
  * Check if a diff line (stripped of the leading +/-) is a CSS comment line.
  * Covers: full-line comments, comment openers/closers, and mid-block comment lines.
+ *
+ * Conservative: does NOT match universal selector patterns or IE hacks:
+ * - `* { ... }` (universal selector)
+ * - `* > .child`, `* ~ div`, `* + p` (universal selector with combinators)
+ * - `*zoom: 1;` (IE CSS hacks — no space after `*`)
+ *
+ * Only matches `* text` as a comment continuation when the text after `* ` does not
+ * start with CSS combinator or selector syntax (`{`, `>`, `~`, `+`, `,`).
  */
 function isCssCommentLine(line: string): boolean {
   const trimmed = line.trim();
   if (trimmed === '') return true; // blank lines are neutral
-  // /* ... */ on one line, or just /* or */ or * continuation
-  if (trimmed.startsWith('/*') || trimmed.startsWith('*/') || trimmed.startsWith('*')) return true;
+  // Comment opener `/* ... */`, `/* ...`, or closer `*/`
+  if (trimmed.startsWith('/*') || trimmed.startsWith('*/')) return true;
+  // Block comment continuation: `* text` — must NOT be universal selector patterns
+  // Reject: `* {`, `* >`, `* ~`, `* +`, `* ,` (all CSS selector syntax)
+  if (trimmed.startsWith('* ')) {
+    // Check what follows `* ` — if it's CSS selector/combinator syntax, it's NOT a comment
+    const afterStar = trimmed.slice(2).trimStart();
+    if (afterStar.length > 0 && /^[{>~+,]/.test(afterStar)) return false;
+    return true;
+  }
+  // Single-line comment
   if (trimmed.startsWith('//')) return true;
   return false;
 }
 
 /**
  * Check if a diff line (stripped of the leading +/-) is a JS/TS import statement.
+ *
+ * Conservative for multi-line imports: only matches continuation lines that have
+ * a trailing comma (e.g. `  useState,`). Lines without trailing commas (like `Button`,
+ * `return`, `div`) are NOT matched, since they could be JSX/code tokens.
  */
 function isImportLine(line: string): boolean {
   const trimmed = line.trim();
   if (trimmed === '') return true; // blank lines are neutral
-  return trimmed.startsWith('import ') || trimmed.startsWith('import{')
-    || trimmed.startsWith("from '") || trimmed.startsWith('from "')
-    // Multi-line imports: lines that are just `} from '...'` or continuation
-    || /^\}\s*from\s+['"]/.test(trimmed)
-    // Lines that are part of a multi-line import: just identifiers with commas
-    || /^[A-Za-z_$,\s{}]+$/.test(trimmed);
+  // Single-line imports
+  if (trimmed.startsWith('import ') || trimmed.startsWith('import{')) return true;
+  if (trimmed.startsWith("from '") || trimmed.startsWith('from "')) return true;
+  // Multi-line import closing: `} from '...'`
+  if (/^\}\s*from\s+['"]/.test(trimmed)) return true;
+  // Multi-line import continuation: identifier(s) with trailing comma
+  // e.g. `  useState,` or `  type FC,` — requires trailing comma to avoid
+  // false positives on standalone identifiers like `Button`, `return`, `div`
+  if (/^[A-Za-z_$\s{}]+,\s*$/.test(trimmed)) return true;
+  return false;
 }
 
 /**
  * Check if a diff line (stripped of the leading +/-) is a JS/TS/JSX comment.
+ *
+ * Same conservative `*` handling as isCssCommentLine: only matches
+ * `* text` (comment continuation) when not followed by CSS/JS syntax characters.
  */
 function isJsCommentLine(line: string): boolean {
   const trimmed = line.trim();
   if (trimmed === '') return true;
   if (trimmed.startsWith('//')) return true;
-  if (trimmed.startsWith('/*') || trimmed.startsWith('*/') || trimmed.startsWith('*')) return true;
+  if (trimmed.startsWith('/*') || trimmed.startsWith('*/')) return true;
+  // Block comment continuation: `* text` — reject if followed by syntax chars
+  if (trimmed.startsWith('* ')) {
+    const afterStar = trimmed.slice(2).trimStart();
+    if (afterStar.length > 0 && /^[{>~+,]/.test(afterStar)) return false;
+    return true;
+  }
   return false;
 }
 
@@ -89,8 +123,12 @@ function parseDiffChangedLines(diff: string): Array<{ file: string; added: strin
       removed = [];
       continue;
     }
-    // Skip diff metadata lines
-    if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('@@')
+    // Skip diff metadata lines — use specific patterns to avoid dropping content
+    // lines that happen to start with `---` or `+++` (e.g. CSS custom properties
+    // like `--primary-color: blue;` produce diff lines starting with `---`)
+    if (/^--- [ab]\//.test(line) || line === '--- /dev/null'
+        || /^\+\+\+ [ab]\//.test(line) || line === '+++ /dev/null'
+        || line.startsWith('@@ ')
         || line.startsWith('index ') || line.startsWith('new file')
         || line.startsWith('deleted file') || line.startsWith('rename')
         || line.startsWith('similarity') || line.startsWith('old mode')
@@ -131,8 +169,8 @@ function analyzeFileChanges(
   // CSS/SCSS/LESS files
   if (CSS_EXTENSIONS.has(ext)) {
     // Check: whitespace-only changes
-    const addedContent = added.map(l => l.replace(/\s+/g, '').trim()).filter(l => l !== '');
-    const removedContent = removed.map(l => l.replace(/\s+/g, '').trim()).filter(l => l !== '');
+    const addedContent = added.map(l => l.replace(/\s+/g, '')).filter(l => l !== '');
+    const removedContent = removed.map(l => l.replace(/\s+/g, '')).filter(l => l !== '');
 
     if (addedContent.length === 0 && removedContent.length === 0) {
       return { nonVisual: true, reason: 'whitespace/formatting-only changes' };
@@ -174,8 +212,8 @@ function analyzeFileChanges(
     }
 
     // Check: whitespace-only
-    const addedContent = added.map(l => l.replace(/\s+/g, '').trim()).filter(l => l !== '');
-    const removedContent = removed.map(l => l.replace(/\s+/g, '').trim()).filter(l => l !== '');
+    const addedContent = added.map(l => l.replace(/\s+/g, '')).filter(l => l !== '');
+    const removedContent = removed.map(l => l.replace(/\s+/g, '')).filter(l => l !== '');
     if (addedContent.length === 0 && removedContent.length === 0) {
       return { nonVisual: true, reason: 'whitespace/formatting-only changes' };
     }
@@ -191,10 +229,16 @@ function analyzeFileChanges(
 
   // HTML/Vue/Svelte — harder to analyze, be conservative
   // Check whitespace-only as a baseline
-  const addedContent = added.map(l => l.replace(/\s+/g, '').trim()).filter(l => l !== '');
-  const removedContent = removed.map(l => l.replace(/\s+/g, '').trim()).filter(l => l !== '');
+  const addedContent = added.map(l => l.replace(/\s+/g, '')).filter(l => l !== '');
+  const removedContent = removed.map(l => l.replace(/\s+/g, '')).filter(l => l !== '');
 
   if (addedContent.length === 0 && removedContent.length === 0) {
+    return { nonVisual: true, reason: 'whitespace/formatting-only changes' };
+  }
+
+  // Check: whitespace normalization (same content after stripping whitespace)
+  if (addedContent.length === removedContent.length
+    && addedContent.every((line, i) => line === removedContent[i])) {
     return { nonVisual: true, reason: 'whitespace/formatting-only changes' };
   }
 

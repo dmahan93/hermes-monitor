@@ -292,6 +292,7 @@ export class IssueManager {
           title: issue.title,
           description: issue.description,
           submitterNotes: issue.submitterNotes,
+          screenshotBypassReason: issue.screenshotBypassReason,
         });
         if (pr) {
           // Spawn adversarial reviewer
@@ -300,7 +301,7 @@ export class IssueManager {
       } else {
         // PR already exists (e.g. review → in_progress → review cycle)
         // Relaunch the review to pick up new changes + updated submitter notes
-        this.prManager.relaunchReview(existingPr.id, issue.submitterNotes);
+        this.prManager.relaunchReview(existingPr.id, issue.submitterNotes, issue.screenshotBypassReason);
       }
     }
 

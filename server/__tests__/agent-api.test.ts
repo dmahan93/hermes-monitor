@@ -546,10 +546,6 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
   });
 
   it('auto-bypasses screenshot requirement for comment-only CSS changes', async () => {
-    // Mock getChangedFiles to return a CSS file
-    const { issue } = setupIssueWithChangedFiles('CSS comment change', ['styles.css']);
-
-    // Mock getDiffForFiles to return a comment-only diff
     const commentDiff = [
       'diff --git a/styles.css b/styles.css',
       '--- a/styles.css',
@@ -558,7 +554,7 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
       '-/* old comment */',
       '+/* new comment */',
     ].join('\n');
-    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(commentDiff);
+    const { issue } = setupIssueWithChangedFiles('CSS comment change', ['styles.css'], commentDiff);
 
     const res = await request(server, 'POST', `/agent/${issue.id}/review`);
     expect(res.status).toBe(200);
@@ -569,8 +565,6 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
   });
 
   it('auto-bypasses screenshot requirement for whitespace-only CSS changes', async () => {
-    const { issue } = setupIssueWithChangedFiles('CSS whitespace', ['styles.css']);
-
     const whitespaceDiff = [
       'diff --git a/styles.css b/styles.css',
       '--- a/styles.css',
@@ -579,7 +573,7 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
       '-.foo{color:red;}',
       '+.foo { color: red; }',
     ].join('\n');
-    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(whitespaceDiff);
+    const { issue } = setupIssueWithChangedFiles('CSS whitespace', ['styles.css'], whitespaceDiff);
 
     const res = await request(server, 'POST', `/agent/${issue.id}/review`);
     expect(res.status).toBe(200);
@@ -589,8 +583,6 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
   });
 
   it('auto-bypasses screenshot requirement for import-only TSX changes', async () => {
-    const { issue } = setupIssueWithChangedFiles('TSX import change', ['App.tsx']);
-
     const importDiff = [
       'diff --git a/App.tsx b/App.tsx',
       '--- a/App.tsx',
@@ -599,7 +591,7 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
       "-import { Button } from './old-path';",
       "+import { Button } from './new-path';",
     ].join('\n');
-    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(importDiff);
+    const { issue } = setupIssueWithChangedFiles('TSX import change', ['App.tsx'], importDiff);
 
     const res = await request(server, 'POST', `/agent/${issue.id}/review`);
     expect(res.status).toBe(200);
@@ -609,8 +601,6 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
   });
 
   it('still rejects when CSS has actual visual changes', async () => {
-    const { issue } = setupIssueWithChangedFiles('CSS visual change', ['styles.css']);
-
     const visualDiff = [
       'diff --git a/styles.css b/styles.css',
       '--- a/styles.css',
@@ -621,16 +611,14 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
       '+  background: black;',
       ' }',
     ].join('\n');
-    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(visualDiff);
+    const { issue } = setupIssueWithChangedFiles('CSS visual change', ['styles.css'], visualDiff);
 
     const res = await request(server, 'POST', `/agent/${issue.id}/review`);
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Screenshots required for UI changes');
   });
 
-  it('stores bypass reason in submitter notes for auto-bypass', async () => {
-    const { issue } = setupIssueWithChangedFiles('Auto-bypass notes', ['styles.css']);
-
+  it('stores bypass reason as structured field for auto-bypass', async () => {
     const commentDiff = [
       'diff --git a/styles.css b/styles.css',
       '--- a/styles.css',
@@ -639,12 +627,11 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
       '-/* old */',
       '+/* new */',
     ].join('\n');
-    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(commentDiff);
+    const { issue } = setupIssueWithChangedFiles('Auto-bypass notes', ['styles.css'], commentDiff);
 
     await request(server, 'POST', `/agent/${issue.id}/review`);
     const updated = issueManager.get(issue.id);
-    expect(updated?.submitterNotes).toContain('[Screenshot bypass:');
-    expect(updated?.submitterNotes).toContain('comment');
+    expect(updated?.screenshotBypassReason).toContain('comment');
   });
 
   it('allows agent to provide a reason with noUiChanges bypass', async () => {
@@ -659,9 +646,9 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
     expect(res.body.screenshotBypass).toBeDefined();
     expect(res.body.screenshotBypass.reason).toBe('CSS class rename only, no visual impact');
 
-    // Check the reason is in submitter notes
+    // Check the reason is stored as a structured field
     const updated = issueManager.get(issue.id);
-    expect(updated?.submitterNotes).toContain('CSS class rename only');
+    expect(updated?.screenshotBypassReason).toBe('CSS class rename only, no visual impact');
   });
 
   it('uses default reason when noUiChanges is set without reason', async () => {
@@ -683,8 +670,6 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
   });
 
   it('error message suggests reason parameter', async () => {
-    const { issue } = setupIssueWithChangedFiles('Error msg check', ['styles.css']);
-
     const visualDiff = [
       'diff --git a/styles.css b/styles.css',
       '--- a/styles.css',
@@ -693,10 +678,36 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
       '-  color: red;',
       '+  color: blue;',
     ].join('\n');
-    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(visualDiff);
+    const { issue } = setupIssueWithChangedFiles('Error msg check', ['styles.css'], visualDiff);
 
     const res = await request(server, 'POST', `/agent/${issue.id}/review`);
     expect(res.status).toBe(400);
     expect(res.body.message).toContain('"reason"');
+  });
+
+  it('requires screenshots when getDiffForFiles returns undefined (conservative fallback)', async () => {
+    const { issue } = setupIssueWithChangedFiles('Diff unavailable', ['styles.css']);
+    // Override to return undefined — simulates git error or missing worktree
+    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(undefined as any);
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Screenshots required for UI changes');
+  });
+
+  it('handles bypass reason with special characters (brackets, quotes)', async () => {
+    const { issue } = setupIssueWithChangedFiles('Special chars bypass', ['App.tsx']);
+
+    const specialReason = 'CSS [grid] layout "rename" — no visual impact';
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`, {
+      noUiChanges: true,
+      reason: specialReason,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.screenshotBypass.reason).toBe(specialReason);
+
+    // Verify it's stored correctly on the issue
+    const updated = issueManager.get(issue.id);
+    expect(updated?.screenshotBypassReason).toBe(specialReason);
   });
 });

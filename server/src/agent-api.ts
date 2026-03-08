@@ -56,6 +56,15 @@ interface AgentInfoResponse {
 }
 
 /**
+ * Record a screenshot bypass reason on the issue.
+ * Single source of truth — the reason is stored as a structured field
+ * and flows to the PR via issue-manager → pr-manager.
+ */
+function recordBypass(issueManager: IssueManager, issueId: string, reason: string): void {
+  issueManager.update(issueId, { screenshotBypassReason: reason });
+}
+
+/**
  * Agent-facing API — these endpoints are called BY the agent during task execution.
  * GET  /:id/info   — agent gets its task context
  * POST /:id/review — agent signals it's done, moves issue to review
@@ -240,12 +249,7 @@ export function createAgentApiRouter(
         // Agent self-certified: log the reason if provided
         const reason = bypassReason || 'agent self-certified no visual changes';
         screenshotBypass = { bypassed: true, reason };
-
-        // Append bypass reason to submitter notes so the reviewer sees it
-        const existingNotes = issue.submitterNotes || '';
-        const bypassNote = `[Screenshot bypass: ${reason}]`;
-        const combinedNotes = existingNotes ? `${existingNotes}\n\n${bypassNote}` : bypassNote;
-        issueManager.update(issue.id, { submitterNotes: combinedNotes, screenshotBypassReason: reason });
+        recordBypass(issueManager, issue.id, reason);
       } else {
         // Check if changed files include UI files
         const changedFiles = worktreeManager.getChangedFiles(issue.id);
@@ -270,12 +274,7 @@ export function createAgentApiRouter(
             if (analysis.allNonVisual) {
               // Auto-bypass: all UI changes are non-visual (comments, whitespace, imports, renames)
               screenshotBypass = { bypassed: true, reason: analysis.reason };
-
-              // Log the auto-bypass reason in submitter notes
-              const existingNotes = issue.submitterNotes || '';
-              const bypassNote = `[Screenshot bypass: ${analysis.reason}]`;
-              const combinedNotes = existingNotes ? `${existingNotes}\n\n${bypassNote}` : bypassNote;
-              issueManager.update(issue.id, { submitterNotes: combinedNotes, screenshotBypassReason: analysis.reason });
+              recordBypass(issueManager, issue.id, analysis.reason);
             } else {
               // Visual changes detected — screenshots required
               res.status(400).json({

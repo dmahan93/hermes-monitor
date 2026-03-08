@@ -71,6 +71,7 @@ export interface PullRequest {
   title: string;
   description: string;
   submitterNotes: string;
+  screenshotBypassReason?: string;  // why screenshots were bypassed (auto-detected or agent-provided)
   sourceBranch: string;
   targetBranch: string;
   repoPath: string;
