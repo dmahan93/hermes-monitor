@@ -52,6 +52,30 @@ The server manages the repo at `HERMES_REPO_PATH` (defaults to parent of
 | `--build` | | | Serve pre-built client (no HMR) |
 | `--help` | `-h` | | Show help |
 
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `hermes-monitor version` | Show version, git commit hash, and available updates |
+| `hermes-monitor update` | Pull latest code, install dependencies, and rebuild |
+
+### Updating
+
+hermes-monitor can update itself since it runs from a cloned git repo:
+
+```bash
+hermes-monitor update    # pull latest, npm install, rebuild
+```
+
+You can also check your current version:
+
+```bash
+hermes-monitor version   # shows version, commit hash, update availability
+```
+
+On startup, hermes-monitor automatically checks for updates in the background
+(cached for 1 hour) and shows a one-line notice if updates are available.
+
 ## Architecture
 
 ```
