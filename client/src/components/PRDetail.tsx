@@ -16,6 +16,7 @@ interface PRDetailProps {
   onConfirmMerge: (prId: string) => Promise<{ error?: string }>;
   onFixConflicts: (prId: string) => void;
   onRelaunchReview: (prId: string) => void;
+  onClosePR: (prId: string) => Promise<{ error?: string }>;
   onMoveToInProgress: (issueId: string) => Promise<void>;
 }
 
@@ -28,12 +29,13 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   closed: { label: 'CLOSED', className: 'status-closed' },
 };
 
-export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComment, onVerdict, onMerge, onConfirmMerge, onFixConflicts, onRelaunchReview, onMoveToInProgress }: PRDetailProps) {
+export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComment, onVerdict, onMerge, onConfirmMerge, onFixConflicts, onRelaunchReview, onClosePR, onMoveToInProgress }: PRDetailProps) {
   const [comment, setComment] = useState('');
   const [mergeCheck, setMergeCheck] = useState<{ checking: boolean; canMerge: boolean; hasConflicts: boolean }>({
     checking: true, canMerge: false, hasConflicts: false,
   });
   const [mergeError, setMergeError] = useState<string | null>(null);
+  const [closeError, setCloseError] = useState<string | null>(null);
   const [githubPrCreated, setGithubPrCreated] = useState(false);
   const [screenshots, setScreenshots] = useState<Screenshot[]>(pr.screenshots || []);
   const status = STATUS_LABELS[pr.status] || STATUS_LABELS.open;
@@ -171,6 +173,17 @@ export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComme
                 [← BACK TO IN PROGRESS]
               </button>
             )}
+            <button
+              className="pr-action-btn pr-close-btn"
+              onClick={async () => {
+                if (!window.confirm('Close this PR? It will be marked as closed.')) return;
+                setCloseError(null);
+                const result = await onClosePR(pr.id);
+                if (result.error) setCloseError(result.error);
+              }}
+            >
+              [× CLOSE]
+            </button>
             {mergeCheck.checking ? (
               <span className="pr-merge-checking">checking merge…</span>
             ) : mergeCheck.hasConflicts ? (
@@ -244,6 +257,11 @@ export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComme
                 [🔧 FIX CONFLICTS]
               </button>
             )}
+          </div>
+        )}
+        {closeError && (
+          <div className="pr-merge-error">
+            {closeError}
           </div>
         )}
       </div>

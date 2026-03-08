@@ -859,6 +859,45 @@ export class PRManager {
   }
 
   /**
+   * Close a PR — mark it as closed. Kills any active reviewer/fixer terminal.
+   * Cannot close a PR that is already merged.
+   */
+  close(prId: string): PullRequest | null {
+    const pr = this.prs.get(prId);
+    if (!pr) return null;
+    if (pr.status === 'merged') return null;
+
+    // Kill active reviewer/fixer terminal if any
+    if (pr.reviewerTerminalId) {
+      this.cancelPendingRemoval(pr.reviewerTerminalId);
+      this.conflictFixerTerminals.delete(pr.reviewerTerminalId);
+      this.intentionallyKilledTerminals.add(pr.reviewerTerminalId);
+      this.terminalManager.kill(pr.reviewerTerminalId);
+      pr.reviewerTerminalId = null;
+    }
+
+    // Cancel any pending auto-relaunch
+    const pendingRelaunch = this.reviewerRelaunchTimers.get(prId);
+    if (pendingRelaunch) {
+      clearTimeout(pendingRelaunch);
+      this.reviewerRelaunchTimers.delete(prId);
+    }
+    this.reviewerRelaunchAttempts.delete(prId);
+
+    // Clean up worktree to avoid resource leaks (mirrors merge/confirmMerge behavior)
+    this.worktreeManager.remove(pr.issueId, false);
+    try {
+      execSync('git worktree prune', { cwd: pr.repoPath, stdio: 'pipe' });
+    } catch {}
+
+    pr.status = 'closed';
+    pr.updatedAt = Date.now();
+    this.persist(pr);
+    this.emit('pr:updated', pr);
+    return pr;
+  }
+
+  /**
    * Reset a PR back to open/pending state.
    * Returns the updated PR on success, or null if the PR doesn't exist
    * or is in a terminal state (merged/closed) and cannot be reset.

@@ -35,6 +35,7 @@ const defaultProps = () => ({
   onConfirmMerge: vi.fn<[string], Promise<{ error?: string }>>().mockResolvedValue({}),
   onFixConflicts: vi.fn(),
   onRelaunchReview: vi.fn(),
+  onClosePR: vi.fn<[string], Promise<{ error?: string }>>().mockResolvedValue({}),
   onMoveToInProgress: vi.fn<[string], Promise<void>>().mockResolvedValue(undefined),
 });
 
@@ -504,5 +505,90 @@ describe('PRDetail — GitHub merge mode', () => {
     expect(window.confirm).toHaveBeenCalledWith(
       expect.stringContaining('create a GitHub PR'),
     );
+  });
+});
+
+describe('PRDetail — Close PR button', () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ screenshots: [] }),
+    }) as any;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders close button for open PRs', () => {
+    const props = defaultProps();
+    props.pr = makePR({ status: 'open' as PRStatus });
+    render(<PRDetail {...props} />);
+    expect(screen.getByText(/× CLOSE/)).toBeInTheDocument();
+  });
+
+  it('renders close button for reviewing PRs', () => {
+    const props = defaultProps();
+    props.pr = makePR({ status: 'reviewing' as PRStatus });
+    render(<PRDetail {...props} />);
+    expect(screen.getByText(/× CLOSE/)).toBeInTheDocument();
+  });
+
+  it('renders close button for approved PRs', () => {
+    const props = defaultProps();
+    props.pr = makePR({ status: 'approved' as PRStatus, verdict: 'approved' });
+    render(<PRDetail {...props} />);
+    expect(screen.getByText(/× CLOSE/)).toBeInTheDocument();
+  });
+
+  it('renders close button for changes_requested PRs', () => {
+    const props = defaultProps();
+    props.pr = makePR({ status: 'changes_requested' as PRStatus, verdict: 'changes_requested' });
+    render(<PRDetail {...props} />);
+    expect(screen.getByText(/× CLOSE/)).toBeInTheDocument();
+  });
+
+  it('does not render close button for merged PRs', () => {
+    const props = defaultProps();
+    props.pr = makePR({ status: 'merged' as PRStatus });
+    render(<PRDetail {...props} />);
+    expect(screen.queryByText(/× CLOSE/)).not.toBeInTheDocument();
+  });
+
+  it('does not render close button for closed PRs', () => {
+    const props = defaultProps();
+    props.pr = makePR({ status: 'closed' as PRStatus });
+    render(<PRDetail {...props} />);
+    expect(screen.queryByText(/× CLOSE/)).not.toBeInTheDocument();
+  });
+
+  it('shows confirmation dialog when close button is clicked', async () => {
+    window.confirm = vi.fn(() => false);
+    const props = defaultProps();
+    render(<PRDetail {...props} />);
+    fireEvent.click(screen.getByText(/× CLOSE/));
+    expect(window.confirm).toHaveBeenCalledWith('Close this PR? It will be marked as closed.');
+    expect(props.onClosePR).not.toHaveBeenCalled();
+  });
+
+  it('calls onClosePR when confirmed', async () => {
+    window.confirm = vi.fn(() => true);
+    const props = defaultProps();
+    render(<PRDetail {...props} />);
+    fireEvent.click(screen.getByText(/× CLOSE/));
+    await waitFor(() => {
+      expect(props.onClosePR).toHaveBeenCalledWith('pr-1');
+    });
+  });
+
+  it('displays close error when onClosePR returns error', async () => {
+    window.confirm = vi.fn(() => true);
+    const props = defaultProps();
+    props.onClosePR = vi.fn().mockResolvedValue({ error: 'Cannot close a merged PR' });
+    render(<PRDetail {...props} />);
+    fireEvent.click(screen.getByText(/× CLOSE/));
+    await waitFor(() => {
+      expect(screen.getByText('Cannot close a merged PR')).toBeInTheDocument();
+    });
   });
 });
