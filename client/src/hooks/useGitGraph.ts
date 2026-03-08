@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { API_BASE } from '../config';
+import type { ServerMessage } from '../types';
 
 export interface GitCommit {
   hash: string;
@@ -46,10 +47,23 @@ interface GitDiffResponse {
   diff: string;
 }
 
-export function useGitGraph() {
+/** Polling interval for background git log refresh (ms). */
+const POLL_INTERVAL_MS = 30_000;
+
+export interface UseGitGraphOptions {
+  /** WS subscribe function for event-driven refreshes. */
+  subscribe?: (handler: (msg: ServerMessage) => void) => () => void;
+  /** Whether the git panel is currently visible/active. */
+  active?: boolean;
+}
+
+export function useGitGraph(options?: UseGitGraphOptions) {
+  const { subscribe, active = true } = options ?? {};
+
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const [graph, setGraph] = useState<GraphNode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Selected commit state
@@ -91,10 +105,14 @@ export function useGitGraph() {
     };
   }, []);
 
-  const fetchLog = useCallback(async () => {
+  const fetchLog = useCallback(async (background = false) => {
     const signal = newAbort(logAbortRef);
     try {
-      setLoading(true);
+      if (background) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       const res = await fetch(`${API_BASE}/git/log?limit=80`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: GitLogResponse = await res.json();
@@ -103,14 +121,57 @@ export function useGitGraph() {
       setError(null);
     } catch (err: any) {
       if (err.name === 'AbortError') return;
-      setError(err.message);
+      if (!background) {
+        setError(err.message);
+      }
     } finally {
-      setLoading(false);
+      if (background) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, []);
 
+  // Initial fetch
   useEffect(() => {
     fetchLog();
+  }, [fetchLog]);
+
+  // Polling: refetch every 30s when the panel is active
+  useEffect(() => {
+    if (!active) return;
+
+    const id = setInterval(() => {
+      fetchLog(true);
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(id);
+  }, [active, fetchLog]);
+
+  // WS-triggered refresh: refetch on pr:updated (merged) and issue:updated
+  useEffect(() => {
+    if (!subscribe) return;
+
+    const unsub = subscribe((msg) => {
+      if (msg.type === 'pr:updated' && msg.pr.status === 'merged') {
+        // Short delay so the git operations have time to complete
+        setTimeout(() => fetchLog(true), 500);
+      } else if (msg.type === 'issue:updated') {
+        // Status transitions may involve branch/merge operations
+        const status = msg.issue.status;
+        if (status === 'done' || status === 'in_progress') {
+          setTimeout(() => fetchLog(true), 500);
+        }
+      }
+    });
+
+    return unsub;
+  }, [subscribe, fetchLog]);
+
+  // Manual refresh callback (background, no full loading state)
+  const refresh = useCallback(() => {
+    fetchLog(true);
   }, [fetchLog]);
 
   const selectCommit = useCallback(async (sha: string | null) => {
@@ -164,6 +225,7 @@ export function useGitGraph() {
     commits,
     graph,
     loading,
+    refreshing,
     error,
     selectedSha,
     files,
@@ -176,10 +238,11 @@ export function useGitGraph() {
     viewDiff,
     closeDiff,
     refetch: fetchLog,
+    refresh,
   }), [
-    commits, graph, loading, error,
+    commits, graph, loading, refreshing, error,
     selectedSha, files, filesLoading, selectCommit,
     diffFile, diffContent, diffLoading, diffSha,
-    viewDiff, closeDiff, fetchLog,
+    viewDiff, closeDiff, fetchLog, refresh,
   ]);
 }

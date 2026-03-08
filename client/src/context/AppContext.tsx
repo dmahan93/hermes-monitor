@@ -71,6 +71,7 @@ export interface AppContextValue {
     commits: GitCommit[];
     graph: GraphNode[];
     loading: boolean;
+    refreshing: boolean;
     error: string | null;
     selectedSha: string | null;
     files: GitFileChange[];
@@ -82,6 +83,7 @@ export interface AppContextValue {
     diffSha: string | null;
     viewDiff: (sha: string, filePath: string) => Promise<void>;
     closeDiff: () => void;
+    refresh: () => void;
   };
 
   // View routing
@@ -184,14 +186,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning, createSubtask } = useIssues(subscribe, addError);
   const { prs = [], addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe, addError);
   const { agents, loading: agentsLoading, error: agentsError } = useAgents();
-  const gitGraph = useGitGraph();
-  const [mergeMode, setMergeMode] = useState<MergeMode>('local');
-
-  // ── Local state ──
   const [gitPanelOpen, setGitPanelOpen] = useState(() => {
     const stored = localStorage.getItem('hermes:gitPanelOpen');
     return stored !== null ? stored === 'true' : true;
   });
+  const gitGraph = useGitGraph({ subscribe, active: gitPanelOpen });
+  const [mergeMode, setMergeMode] = useState<MergeMode>('local');
   const [view, setView] = useState<ViewMode>('kanban');
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [termViewSelection, setTermViewSelection] = useState<AgentListSelection | null>(null);
