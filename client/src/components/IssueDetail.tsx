@@ -45,6 +45,7 @@ export function IssueDetail({
   const [subtaskError, setSubtaskError] = useState<string | null>(null);
   const [subtaskSaving, setSubtaskSaving] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusPending, setStatusPending] = useState(false);
   const agent = agents.find((a) => a.id === issue.agent);
   const status = STATUS_LABELS[issue.status] || STATUS_LABELS.todo;
 
@@ -81,9 +82,14 @@ export function IssueDetail({
 
   const handleStatusChange = async (newStatus: IssueStatus) => {
     setStatusError(null);
-    const error = await onStatusChange(issue.id, newStatus);
-    if (error) {
-      setStatusError(error);
+    setStatusPending(true);
+    try {
+      const error = await onStatusChange(issue.id, newStatus);
+      if (error) {
+        setStatusError(error);
+      }
+    } finally {
+      setStatusPending(false);
     }
   };
 
@@ -275,23 +281,19 @@ export function IssueDetail({
             <div className="issue-detail-status-error">{statusError}</div>
           )}
           <div className="issue-detail-footer-actions">
-            <div className="issue-detail-status-actions">
-              {issue.status !== 'backlog' && (
-                <button className="modal-btn" onClick={() => handleStatusChange('backlog')}>→ BACKLOG</button>
-              )}
-              {issue.status !== 'todo' && (
-                <button className="modal-btn" onClick={() => handleStatusChange('todo')}>→ TODO</button>
-              )}
-              {issue.status !== 'in_progress' && (
-                <button className="modal-btn" onClick={() => handleStatusChange('in_progress')}>→ IN PROGRESS</button>
-              )}
-              {issue.status !== 'review' && (
-                <button className="modal-btn" onClick={() => handleStatusChange('review')}>→ REVIEW</button>
-              )}
-              {issue.status !== 'done' && (
-                <button className="modal-btn" onClick={() => handleStatusChange('done')}>→ DONE</button>
-              )}
-            </div>
+            <select
+              className={`issue-detail-status-select ${status.className}`}
+              value={issue.status}
+              onChange={(e) => handleStatusChange(e.target.value as IssueStatus)}
+              disabled={statusPending}
+              aria-label="Change status"
+            >
+              <option value="backlog">BACKLOG</option>
+              <option value="todo">TODO</option>
+              <option value="in_progress">IN PROGRESS</option>
+              <option value="review">REVIEW</option>
+              <option value="done">DONE</option>
+            </select>
             <button className="modal-btn issue-detail-delete-btn" onClick={() => { onDelete(issue.id); onClose(); }} aria-label="Delete issue">
               [DELETE]
             </button>
