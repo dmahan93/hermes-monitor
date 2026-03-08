@@ -59,6 +59,8 @@ export interface AppContextValue {
 
   // Agents
   agents: AgentPreset[];
+  agentsLoading: boolean;
+  agentsError: string | null;
 
   // Git Graph
   gitGraph: {
@@ -177,7 +179,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals(subscribe, addError);
   const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning, createSubtask } = useIssues(subscribe, addError);
   const { prs = [], addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe, addError);
-  const agents = useAgents();
+  const { agents, loading: agentsLoading, error: agentsError } = useAgents();
   const gitGraph = useGitGraph();
 
   // ── Local state ──
@@ -477,6 +479,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Agents
     agents,
+    agentsLoading,
+    agentsError,
 
     // Git Graph
     gitGraph,
@@ -551,7 +555,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     terminals, layout, loading, updateLayout,
     issues, updateIssue, createSubtask,
     prs, addComment, setVerdict, mergePR, fixConflicts, relaunchReview,
-    agents,
+    agents, agentsLoading, agentsError,
     gitGraph,
     view,
     gitPanelOpen,

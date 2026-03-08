@@ -4,68 +4,49 @@ import { Header } from '../../src/components/Header';
 
 describe('Header', () => {
   it('renders title', () => {
-    render(<Header connected={true} terminalCount={0} />);
+    render(<Header connected={true} />);
     expect(screen.getByText('HERMES MONITOR')).toBeInTheDocument();
   });
 
   it('add button calls onAdd when provided', () => {
     const onAdd = vi.fn();
-    render(<Header onAdd={onAdd} connected={true} terminalCount={0} />);
+    render(<Header onAdd={onAdd} connected={true} />);
     fireEvent.click(screen.getByText('[+ ADD TERMINAL]'));
     expect(onAdd).toHaveBeenCalledOnce();
   });
 
   it('hides add button when onAdd not provided', () => {
-    render(<Header connected={true} terminalCount={0} />);
+    render(<Header connected={true} />);
     expect(screen.queryByText('[+ ADD TERMINAL]')).not.toBeInTheDocument();
   });
 
-  it('shows terminal count', () => {
-    render(<Header connected={true} terminalCount={3} />);
-    expect(screen.getByText(/3 terminals/)).toBeInTheDocument();
-  });
-
-  it('shows singular for 1 terminal', () => {
-    render(<Header connected={true} terminalCount={1} />);
-    expect(screen.getByText(/1 terminal/)).toBeInTheDocument();
-  });
-
   it('shows connected status', () => {
-    render(<Header connected={true} terminalCount={0} />);
+    render(<Header connected={true} />);
     expect(screen.getByText('connected')).toBeInTheDocument();
   });
 
   it('shows disconnected status', () => {
-    render(<Header connected={false} terminalCount={0} />);
+    render(<Header connected={false} />);
     expect(screen.getByText('disconnected')).toBeInTheDocument();
-  });
-
-  it('shows issue count when provided', () => {
-    render(<Header connected={true} terminalCount={0} issueCount={5} />);
-    expect(screen.getByText(/5 issues/)).toBeInTheDocument();
   });
 
   it('renders children', () => {
     render(
-      <Header connected={true} terminalCount={0}>
+      <Header connected={true}>
         <span data-testid="child">child content</span>
       </Header>
     );
     expect(screen.getByTestId('child')).toBeInTheDocument();
   });
 
-  it('does not show awaiting input badge when count is 0', () => {
-    render(<Header connected={true} terminalCount={2} awaitingInputCount={0} />);
-    expect(screen.queryByText(/awaiting input/)).not.toBeInTheDocument();
+  it('does not display terminal or issue counts', () => {
+    render(<Header connected={true} />);
+    expect(screen.queryByText(/terminal/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/issue/)).not.toBeInTheDocument();
   });
 
-  it('shows awaiting input badge when count is positive', () => {
-    render(<Header connected={true} terminalCount={2} awaitingInputCount={2} />);
-    expect(screen.getByText(/2 awaiting input/)).toBeInTheDocument();
-  });
-
-  it('does not show awaiting input badge when not provided', () => {
-    render(<Header connected={true} terminalCount={2} />);
+  it('does not display awaiting input badge', () => {
+    render(<Header connected={true} />);
     expect(screen.queryByText(/awaiting input/)).not.toBeInTheDocument();
   });
 });

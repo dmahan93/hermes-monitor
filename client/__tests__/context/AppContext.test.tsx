@@ -110,7 +110,7 @@ function createMockGitGraphReturn() {
 }
 
 function createMockAgentsReturn() {
-  return [];
+  return { agents: [], loading: false, error: null };
 }
 
 // ── Test fixtures ──

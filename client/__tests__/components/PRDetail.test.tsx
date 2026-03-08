@@ -277,7 +277,7 @@ describe('PRDetail — Screenshots section', () => {
     render(<PRDetail {...props} />);
 
     await waitFor(() => {
-      expect(globalThis.fetch).toHaveBeenCalledWith(`${API_BASE}/prs/custom-pr-id/screenshots`);
+      expect(globalThis.fetch).toHaveBeenCalledWith(`${API_BASE}/prs/custom-pr-id/screenshots`, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     });
   });
 });

@@ -136,6 +136,10 @@
   font-family: 'JetBrains Mono', monospace;
 }
 
+.pr-fix-btn-inline {
+  margin-left: 8px;
+}
+
 .pr-action-btn:disabled {
   color: var(--text-muted);
   cursor: not-allowed;
