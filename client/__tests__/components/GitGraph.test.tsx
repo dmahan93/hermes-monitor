@@ -31,12 +31,14 @@ const defaultProps = {
   commits: [] as GitCommit[],
   graph: [] as GraphNode[],
   loading: false,
+  refreshing: false,
   error: null,
   selectedSha: null,
   files: [],
   filesLoading: false,
   onSelectCommit: vi.fn(),
   onFileClick: vi.fn(),
+  onRefresh: vi.fn(),
 };
 
 describe('GitGraph', () => {
@@ -71,8 +73,10 @@ describe('GitGraph', () => {
   it('handles empty commit list', () => {
     render(<GitGraph {...defaultProps} />);
     expect(screen.getByText('GIT GRAPH')).toBeInTheDocument();
-    // No commit elements rendered
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    // Only the refresh button — no commit row buttons
+    const buttons = screen.queryAllByRole('button');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAttribute('aria-label', 'Refresh git graph');
   });
 
   it('clicking a commit calls onSelectCommit', () => {
@@ -513,5 +517,121 @@ describe('GitGraph', () => {
 
     // statusIcon(unknown) = '?'
     expect(screen.getByText('?')).toBeInTheDocument();
+  });
+
+  // ── Refresh button tests ──
+
+  it('renders refresh button in header when onRefresh is provided', () => {
+    const commits = [makeCommit('abc1234567890', 'Commit')];
+    const graph = [makeNode('abc1234567890')];
+
+    render(<GitGraph {...defaultProps} commits={commits} graph={graph} />);
+
+    const refreshBtn = screen.getByRole('button', { name: 'Refresh git graph' });
+    expect(refreshBtn).toBeInTheDocument();
+    expect(refreshBtn).toHaveTextContent('↻');
+  });
+
+  it('does not render refresh button when onRefresh is not provided', () => {
+    const commits = [makeCommit('abc1234567890', 'Commit')];
+    const graph = [makeNode('abc1234567890')];
+
+    render(
+      <GitGraph
+        {...defaultProps}
+        commits={commits}
+        graph={graph}
+        onRefresh={undefined}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Refresh git graph' })).not.toBeInTheDocument();
+  });
+
+  it('calls onRefresh when refresh button is clicked', () => {
+    const onRefresh = vi.fn();
+    const commits = [makeCommit('abc1234567890', 'Commit')];
+    const graph = [makeNode('abc1234567890')];
+
+    render(
+      <GitGraph
+        {...defaultProps}
+        commits={commits}
+        graph={graph}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh git graph' }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('refresh button has spinning class when refreshing', () => {
+    const commits = [makeCommit('abc1234567890', 'Commit')];
+    const graph = [makeNode('abc1234567890')];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} refreshing={true} />,
+    );
+
+    const refreshBtn = container.querySelector('.git-graph-refresh-spinning');
+    expect(refreshBtn).toBeInTheDocument();
+  });
+
+  it('refresh button is disabled when refreshing', () => {
+    const commits = [makeCommit('abc1234567890', 'Commit')];
+    const graph = [makeNode('abc1234567890')];
+
+    render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} refreshing={true} />,
+    );
+
+    const refreshBtn = screen.getByRole('button', { name: 'Refresh git graph' });
+    expect(refreshBtn).toBeDisabled();
+  });
+
+  it('refresh button does not have spinning class when not refreshing', () => {
+    const commits = [makeCommit('abc1234567890', 'Commit')];
+    const graph = [makeNode('abc1234567890')];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} refreshing={false} />,
+    );
+
+    expect(container.querySelector('.git-graph-refresh-spinning')).not.toBeInTheDocument();
+  });
+
+  it('renders refresh button in error state header', () => {
+    render(<GitGraph {...defaultProps} error="Failed to load" />);
+
+    const refreshBtn = screen.getByRole('button', { name: 'Refresh git graph' });
+    expect(refreshBtn).toBeInTheDocument();
+  });
+
+  it('clicking refresh in error state calls onRefresh', () => {
+    const onRefresh = vi.fn();
+
+    render(<GitGraph {...defaultProps} error="Failed to load" onRefresh={onRefresh} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh git graph' }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('error-state refresh button has spinning class when refreshing', () => {
+    const { container } = render(
+      <GitGraph {...defaultProps} error="Failed to load" refreshing={true} />,
+    );
+
+    const refreshBtn = container.querySelector('.git-graph-refresh-spinning');
+    expect(refreshBtn).toBeInTheDocument();
+  });
+
+  it('error-state refresh button is disabled when refreshing', () => {
+    render(
+      <GitGraph {...defaultProps} error="Failed to load" refreshing={true} />,
+    );
+
+    const refreshBtn = screen.getByRole('button', { name: 'Refresh git graph' });
+    expect(refreshBtn).toBeDisabled();
   });
 });

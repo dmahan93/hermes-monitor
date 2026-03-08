@@ -73,12 +73,14 @@ function AppContent() {
               commits={gitGraph.commits}
               graph={gitGraph.graph}
               loading={gitGraph.loading}
+              refreshing={gitGraph.refreshing}
               error={gitGraph.error}
               selectedSha={gitGraph.selectedSha}
               files={gitGraph.files}
               filesLoading={gitGraph.filesLoading}
               onSelectCommit={gitGraph.selectCommit}
               onFileClick={gitGraph.viewDiff}
+              onRefresh={gitGraph.refresh}
             />
           ) : (
             <button

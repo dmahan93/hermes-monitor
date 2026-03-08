@@ -6,12 +6,14 @@ interface GitGraphProps {
   commits: GitCommit[];
   graph: GraphNode[];
   loading: boolean;
+  refreshing?: boolean;
   error: string | null;
   selectedSha: string | null;
   files: GitFileChange[];
   filesLoading: boolean;
   onSelectCommit: (sha: string | null) => void;
   onFileClick: (sha: string, path: string) => void;
+  onRefresh?: () => void;
 }
 
 const LANE_COLORS = [
@@ -171,12 +173,14 @@ export function GitGraph({
   commits,
   graph,
   loading,
+  refreshing,
   error,
   selectedSha,
   files,
   filesLoading,
   onSelectCommit,
   onFileClick,
+  onRefresh,
 }: GitGraphProps) {
   const maxCols = useMemo(
     () =>
@@ -202,7 +206,20 @@ export function GitGraph({
   if (error) {
     return (
       <div className="git-graph-panel">
-        <div className="git-graph-header">GIT</div>
+        <div className="git-graph-header">
+          <span>GIT</span>
+          {onRefresh && (
+            <button
+              className={`git-graph-refresh ${refreshing ? 'git-graph-refresh-spinning' : ''}`}
+              onClick={onRefresh}
+              disabled={refreshing}
+              title="Refresh git graph"
+              aria-label="Refresh git graph"
+            >
+              ↻
+            </button>
+          )}
+        </div>
         <div className="git-graph-error">{error}</div>
       </div>
     );
@@ -210,7 +227,20 @@ export function GitGraph({
 
   return (
     <div className="git-graph-panel">
-      <div className="git-graph-header">GIT GRAPH</div>
+      <div className="git-graph-header">
+        <span>GIT GRAPH</span>
+        {onRefresh && (
+          <button
+            className={`git-graph-refresh ${refreshing ? 'git-graph-refresh-spinning' : ''}`}
+            onClick={onRefresh}
+            disabled={refreshing}
+            title="Refresh git graph"
+            aria-label="Refresh git graph"
+          >
+            ↻
+          </button>
+        )}
+      </div>
       <div className="git-graph-list">
         {commits.map((commit, idx) => {
           const node = graph[idx];
