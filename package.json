@@ -20,9 +20,19 @@
     "test:server": "npm run test -w server",
     "test:client": "npm run test -w client",
     "test:e2e": "npm run test -w e2e",
-    "setup:worktree": "bash scripts/setup-worktree.sh"
+    "setup:worktree": "bash scripts/setup-worktree.sh",
+    "prepare": "husky",
+    "lint": "echo \"No eslint configured yet \u2014 add eslint.config.js\"",
+    "typecheck": "tsc --noEmit -p server/tsconfig.json && tsc --noEmit -p client/tsconfig.json"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.3.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "npx tsc --noEmit --pretty || true"
+    ]
   }
 }

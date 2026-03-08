@@ -1,0 +1,7 @@
+# Guard against agents setting core.bare=true (breaks all git operations)
+if [ "$(git config core.bare)" = "true" ]; then
+  git config core.bare false
+  echo "⚠️  Fixed core.bare=true (an agent set this incorrectly)"
+fi
+
+npx lint-staged

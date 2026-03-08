@@ -1,0 +1,2 @@
+# Reset core.bare after checkout (agents sometimes set this)
+git config core.bare false
