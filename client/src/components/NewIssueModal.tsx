@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AgentPreset } from '../types';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import './NewIssueModal.css';
 
 interface NewIssueModalProps {
@@ -11,6 +12,9 @@ interface NewIssueModalProps {
 }
 
 export function NewIssueModal({ agents, agentsLoading, agentsError, onSubmit, onClose }: NewIssueModalProps) {
+  const modalRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(modalRef);
+
   // Close on Escape key
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -43,9 +47,9 @@ export function NewIssueModal({ agents, agentsLoading, agentsError, onSubmit, on
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" ref={modalRef} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="new-issue-modal-title">
         <div className="modal-header">
-          <span className="modal-title">NEW ISSUE <span className="modal-title-hint">→ backlog</span></span>
+          <span className="modal-title" id="new-issue-modal-title">NEW ISSUE <span className="modal-title-hint">→ backlog</span></span>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <form className="modal-body" onSubmit={handleSubmit}>

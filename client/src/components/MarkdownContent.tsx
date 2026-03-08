@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import './MarkdownContent.css';
 
 interface MarkdownContentProps {
@@ -72,6 +73,9 @@ export function ImageWithZoom({ src, alt, showCaption }: { src: string; alt: str
   const overlayRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLImageElement>(null);
 
+  // Trap focus within the zoomed overlay so Tab doesn't cycle behind it
+  useFocusTrap(overlayRef, zoomed);
+
   const closeZoom = useCallback(() => {
     setZoomed(false);
     // Return focus to the triggering image
@@ -121,6 +125,7 @@ export function ImageWithZoom({ src, alt, showCaption }: { src: string; alt: str
           className="pr-screenshot-overlay"
           onClick={closeZoom}
           role="dialog"
+          aria-modal="true"
           aria-label={`Zoomed screenshot: ${alt || 'screenshot'}`}
           tabIndex={-1}
         >
