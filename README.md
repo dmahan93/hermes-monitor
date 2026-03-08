@@ -19,6 +19,7 @@ hermes-monitor                          # start in current repo
 hermes-monitor --repo ~/projects/myapp  # explicit repo path
 hermes-monitor --port 5000              # custom client port
 hermes-monitor --build                  # pre-built client (faster startup)
+hermes-monitor --server-port 8000       # custom server API port
 hermes-monitor --build --no-browser     # production mode, no browser
 ```
 
@@ -44,6 +45,7 @@ The server manages the repo at `HERMES_REPO_PATH` (defaults to parent of
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--port` | `-p` | `3000` | Client port (browser UI) |
+| `--server-port` | | `4000` | Server API port |
 | `--repo` | `-r` | cwd | Target git repo path |
 | `--no-browser` | | | Don't auto-open browser |
 | `--build` | | | Serve pre-built client (no HMR) |

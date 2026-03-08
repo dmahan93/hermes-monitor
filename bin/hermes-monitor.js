@@ -5,6 +5,8 @@
 const { spawn, execSync } = require('child_process');
 const { existsSync } = require('fs');
 const { resolve, join } = require('path');
+const http = require('http');
+const { parseArgs, ParseError, HELP_TEXT } = require('./lib/parse-args');
 
 // Resolve hermes-monitor root directory (one level up from bin/)
 const ROOT = resolve(__dirname, '..');
@@ -12,76 +14,19 @@ const ROOT = resolve(__dirname, '..');
 // ────────────────────────────────────────────────────────────
 // Argument parsing
 // ────────────────────────────────────────────────────────────
-const argv = process.argv.slice(2);
-const opts = {
-  port: 3000,
-  repo: process.cwd(),
-  browser: true,
-  build: false,
-  help: false,
-};
-
-function requireArg(flag, i) {
-  if (i >= argv.length || argv[i].startsWith('--')) {
-    console.error(`Error: ${flag} requires a value`);
+let opts;
+try {
+  opts = parseArgs(process.argv.slice(2));
+} catch (err) {
+  if (err instanceof ParseError) {
+    console.error(`Error: ${err.message}`);
     process.exit(1);
   }
-  return argv[i];
-}
-
-for (let i = 0; i < argv.length; i++) {
-  const arg = argv[i];
-  switch (arg) {
-    case '--port':
-    case '-p':
-      opts.port = parseInt(requireArg(arg, ++i), 10);
-      if (isNaN(opts.port) || opts.port < 1 || opts.port > 65535) {
-        console.error('Error: --port must be a valid port number (1-65535)');
-        process.exit(1);
-      }
-      break;
-    case '--repo':
-    case '-r':
-      opts.repo = resolve(requireArg(arg, ++i));
-      break;
-    case '--no-browser':
-      opts.browser = false;
-      break;
-    case '--build':
-      opts.build = true;
-      break;
-    case '--help':
-    case '-h':
-      opts.help = true;
-      break;
-    default:
-      console.error(`Unknown option: ${arg}`);
-      console.error("Run 'hermes-monitor --help' for usage");
-      process.exit(1);
-  }
+  throw err;
 }
 
 if (opts.help) {
-  const help = `
-hermes-monitor — start the Hermes Monitor dashboard
-
-Usage:
-  hermes-monitor [options]
-
-Options:
-  --port, -p <port>   Client port (default: 3000)
-  --repo, -r <path>   Target git repo (default: current directory)
-  --no-browser        Don't auto-open browser
-  --build             Serve pre-built client (faster startup, no HMR)
-  --help, -h          Show this help
-
-Examples:
-  hermes-monitor                          # start in current repo
-  hermes-monitor --repo ~/projects/myapp  # explicit repo
-  hermes-monitor --port 5000              # custom port
-  hermes-monitor --build --no-browser     # production mode, no browser
-`;
-  console.log(help.trimEnd());
+  console.log(HELP_TEXT.trimEnd());
   process.exit(0);
 }
 
@@ -90,6 +35,13 @@ Examples:
 // ────────────────────────────────────────────────────────────
 if (!existsSync(opts.repo)) {
   console.error(`Error: repo path does not exist: ${opts.repo}`);
+  process.exit(1);
+}
+
+try {
+  execSync('git rev-parse --git-dir', { cwd: opts.repo, stdio: 'pipe' });
+} catch {
+  console.error(`Error: ${opts.repo} is not a git repository`);
   process.exit(1);
 }
 
@@ -135,9 +87,10 @@ if (!existsSync(viteBin)) {
 }
 
 // ────────────────────────────────────────────────────────────
-// Environment — server always on :4000, client port configurable
+// Environment
 // ────────────────────────────────────────────────────────────
-const SERVER_PORT = 4000;
+const SERVER_PORT = opts.serverPort;
+const CLIENT_PORT = opts.port;
 const env = {
   ...process.env,
   HERMES_REPO_PATH: opts.repo,
@@ -152,7 +105,7 @@ console.log('');
 console.log('  hermes-monitor');
 console.log('');
 console.log(`  repo:    ${opts.repo}`);
-console.log(`  client:  http://localhost:${opts.port}`);
+console.log(`  client:  http://localhost:${CLIENT_PORT}`);
 console.log(`  server:  http://localhost:${SERVER_PORT}`);
 console.log(`  mode:    ${mode}`);
 console.log('');
@@ -176,8 +129,8 @@ children.push(serverProc);
 
 // Client process — vite dev or vite preview
 const clientArgs = opts.build
-  ? ['preview', '--port', String(opts.port)]
-  : ['--port', String(opts.port)];
+  ? ['preview', '--port', String(CLIENT_PORT)]
+  : ['--port', String(CLIENT_PORT)];
 
 const clientProc = spawn(viteBin, clientArgs, {
   cwd: join(ROOT, 'client'),
@@ -187,32 +140,64 @@ const clientProc = spawn(viteBin, clientArgs, {
 children.push(clientProc);
 
 // ────────────────────────────────────────────────────────────
-// Auto-open browser after a short delay
+// Auto-open browser when server is ready
 // ────────────────────────────────────────────────────────────
 if (opts.browser) {
-  const url = `http://localhost:${opts.port}`;
-  const timer = setTimeout(() => {
+  const url = `http://localhost:${CLIENT_PORT}`;
+  const MAX_WAIT = 30000; // 30s max
+  const POLL_INTERVAL = 500; // check every 500ms
+  const startTime = Date.now();
+
+  function pollServer() {
+    if (shuttingDown) return;
+    if (Date.now() - startTime > MAX_WAIT) return; // give up silently
+
+    const req = http.get(`http://localhost:${SERVER_PORT}/api/health`, (res) => {
+      res.resume(); // drain response
+      if (res.statusCode >= 200 && res.statusCode < 500) {
+        openBrowser(url);
+      } else {
+        const t = setTimeout(pollServer, POLL_INTERVAL);
+        t.unref();
+      }
+    });
+    req.on('error', () => {
+      const t = setTimeout(pollServer, POLL_INTERVAL);
+      t.unref();
+    });
+    req.setTimeout(2000, () => {
+      req.destroy();
+      const t = setTimeout(pollServer, POLL_INTERVAL);
+      t.unref();
+    });
+  }
+
+  function openBrowser(targetUrl) {
     try {
       const { platform } = process;
       if (platform === 'darwin') {
-        spawn('open', [url], { stdio: 'ignore', detached: true }).unref();
+        spawn('open', [targetUrl], { stdio: 'ignore', detached: true }).unref();
       } else if (platform === 'win32') {
-        spawn('cmd', ['/c', 'start', url], { stdio: 'ignore', detached: true }).unref();
+        spawn('cmd', ['/c', 'start', targetUrl], { stdio: 'ignore', detached: true }).unref();
       } else {
         // Linux — try xdg-open, fall back silently
-        spawn('xdg-open', [url], { stdio: 'ignore', detached: true }).unref();
+        spawn('xdg-open', [targetUrl], { stdio: 'ignore', detached: true }).unref();
       }
     } catch {
       // Silently ignore if browser can't be opened
     }
-  }, 3000);
-  timer.unref();
+  }
+
+  // Start polling after a brief initial delay for the server to begin starting
+  const initialTimer = setTimeout(pollServer, 1000);
+  initialTimer.unref();
 }
 
 // ────────────────────────────────────────────────────────────
 // Graceful shutdown — kill server + client on SIGINT/SIGTERM
 // ────────────────────────────────────────────────────────────
 let shuttingDown = false;
+let worstExitCode = 0;
 
 function shutdown() {
   if (shuttingDown) return;
@@ -234,7 +219,7 @@ function shutdown() {
         // Already dead
       }
     }
-    process.exit(0);
+    process.exit(worstExitCode);
   }, 3000);
   forceTimer.unref();
 }
@@ -242,13 +227,26 @@ function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-// Exit when all children have exited
+// Track child exits — if one crashes unexpectedly, shut down the other
 let exitCount = 0;
 for (const child of children) {
-  child.on('exit', (code) => {
+  child.on('exit', (code, signal) => {
     exitCount++;
+
+    // Track the worst (first non-zero) exit code
+    if (code != null && code !== 0 && worstExitCode === 0) {
+      worstExitCode = code;
+    }
+
+    // If a child exits unexpectedly (not during shutdown), tear down everything
+    if (!shuttingDown && code !== 0) {
+      shutdown();
+      return;
+    }
+
+    // All children done — exit with the worst code
     if (exitCount >= children.length) {
-      process.exit(code || 0);
+      process.exit(worstExitCode);
     }
   });
 }
