@@ -310,6 +310,11 @@ export function buildGraphLanes(commits: GitCommit[]): GraphNode[] {
     // Close this lane (commit consumed)
     lanes[col] = null;
 
+    // Track lanes newly created for additional parents — these should NOT
+    // get pass-through lines because the lane starts at this commit (no
+    // line coming from above).
+    const newLanes = new Set<number>();
+
     // Place parents into lanes
     const parents = commit.parents;
     if (parents.length > 0) {
@@ -348,6 +353,7 @@ export function buildGraphLanes(commits: GitCommit[]): GraphNode[] {
           } else {
             lanes[newCol] = parent;
           }
+          newLanes.add(newCol);
           graphLines.push({
             fromCol: col,
             toCol: newCol,
@@ -357,9 +363,10 @@ export function buildGraphLanes(commits: GitCommit[]): GraphNode[] {
       }
     }
 
-    // Pass-through lines for other active lanes
+    // Pass-through lines for other active lanes (skip the commit's own
+    // lane and any lanes that were just created for additional parents)
     for (let i = 0; i < lanes.length; i++) {
-      if (lanes[i] !== null && i !== col) {
+      if (lanes[i] !== null && i !== col && !newLanes.has(i)) {
         graphLines.push({ fromCol: i, toCol: i, type: 'straight' });
       }
     }
