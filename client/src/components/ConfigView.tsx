@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { MergeMode } from '../types';
 import { API_BASE } from '../config';
 import './ConfigView.css';
 
 const GITHUB_URL = 'https://github.com/dmahan93/hermes-monitor';
-
-type MergeMode = 'local' | 'github' | 'both';
 
 interface AppConfig {
   repoPath: string;
@@ -72,6 +71,9 @@ export function ConfigView() {
           remoteIsDirtyRef.current = false;
         }
         setSaveStatus('saved');
+        // Notify AppContext (and any other listeners) about config changes
+        // so they can update their local state without a page reload.
+        window.dispatchEvent(new CustomEvent('hermes:config-updated', { detail: data }));
         setTimeout(() => setSaveStatus('idle'), 2000);
       } else {
         setSaveStatus('error');

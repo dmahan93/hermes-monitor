@@ -327,7 +327,7 @@ Merge the PR branch. Behavior depends on `mergeMode` config:
 |------|----------|
 | `local` (default) | Merge locally, move issue to `done`. If `githubEnabled`, push merge + close GH PR. |
 | `github` | Push branch + create GitHub PR. Issue stays in `review`. Returns `{ status: 'github_pr_created', prUrl: '...' }`. |
-| `both` | Merge locally AND create GitHub PR. Issue moves to `done`. |
+| `both` | Create GitHub PR first, then merge locally. Issue moves to `done`. GH PR creation is best-effort — local merge proceeds even if it fails. |
 
 ### POST /api/prs/:id/confirm-merge
 
@@ -336,6 +336,7 @@ Confirm that a PR was merged on GitHub. Used when `mergeMode` is `github` to mar
 - Marks PR status as `merged`
 - Moves the linked issue to `done`
 - Cleans up the local branch and worktree
+- Deletes the remote branch (if `githubEnabled`)
 
 **Response:** The updated `PullRequest` object.
 

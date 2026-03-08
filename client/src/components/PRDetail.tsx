@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
 import { DiffViewer } from './DiffViewer';
 import { MarkdownContent, ImageWithZoom } from './MarkdownContent';
-import type { PullRequest, IssueStatus, Screenshot } from '../types';
+import type { PullRequest, IssueStatus, Screenshot, MergeMode } from '../types';
 import './PRDetail.css';
 import { API_BASE } from '../config';
-
-type MergeMode = 'local' | 'github' | 'both';
 
 interface PRDetailProps {
   pr: PullRequest;
@@ -212,6 +210,8 @@ export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComme
                     onClick={async () => {
                       const confirmMsg = mergeMode === 'github'
                         ? `Create GitHub PR for "${pr.title}"?`
+                        : mergeMode === 'both'
+                        ? `Merge "${pr.title}" into ${pr.targetBranch} and create a GitHub PR?`
                         : `Merge "${pr.title}" into ${pr.targetBranch}?`;
                       if (!window.confirm(confirmMsg)) return;
                       setMergeError(null);
@@ -223,7 +223,7 @@ export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComme
                       }
                     }}
                   >
-                    {mergeMode === 'github' ? '[🐙 Create GitHub PR]' : '[⎇ MERGE]'}
+                    {mergeMode === 'github' ? '[🐙 Create GitHub PR]' : mergeMode === 'both' ? '[⎇ MERGE + GH PR]' : '[⎇ MERGE]'}
                   </button>
                 )}
                 {githubPrCreated && !pr.githubPrUrl && (

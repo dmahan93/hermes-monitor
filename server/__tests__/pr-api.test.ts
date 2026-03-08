@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
@@ -10,6 +10,7 @@ import { PRManager, type PullRequest } from '../src/pr-manager.js';
 import { IssueManager } from '../src/issue-manager.js';
 import { createPRApiRouter } from '../src/pr-api.js';
 import { config, updateConfig } from '../src/config.js';
+import * as github from '../src/github.js';
 
 async function request(server: Server, method: string, path: string, body?: any) {
   const addr = server.address() as any;
@@ -978,5 +979,285 @@ describe('PRManager.confirmMerge', () => {
 
     prManager.confirmMerge('cm-6');
     expect(events).toHaveLength(0);
+  });
+});
+
+describe('PRManager.createGitHubPRForMerge', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+
+  beforeEach(() => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+  });
+
+  afterEach(() => {
+    terminalManager.killAll();
+    vi.restoreAllMocks();
+  });
+
+  it('returns error when PR not found', async () => {
+    const result = await prManager.createGitHubPRForMerge('nonexistent');
+    expect(result.error).toBe('PR not found');
+  });
+
+  it('returns error when pushBranch fails', async () => {
+    insertTestPR(prManager, { id: 'ghpr-1', status: 'approved' });
+    vi.spyOn(github, 'pushBranch').mockResolvedValue({ success: false, error: 'push rejected' });
+
+    const result = await prManager.createGitHubPRForMerge('ghpr-1');
+    expect(result.error).toContain('push rejected');
+  });
+
+  it('returns error when createGitHubPR fails', async () => {
+    insertTestPR(prManager, { id: 'ghpr-2', status: 'approved' });
+    vi.spyOn(github, 'pushBranch').mockResolvedValue({ success: true });
+    vi.spyOn(github, 'createGitHubPR').mockResolvedValue({ success: false, error: 'gh CLI not found' });
+
+    const result = await prManager.createGitHubPRForMerge('ghpr-2');
+    expect(result.error).toContain('gh CLI not found');
+  });
+
+  it('stores GitHub PR URL via setGithubPrUrl (validates URL)', async () => {
+    insertTestPR(prManager, { id: 'ghpr-3', status: 'approved' });
+    vi.spyOn(github, 'pushBranch').mockResolvedValue({ success: true });
+    vi.spyOn(github, 'createGitHubPR').mockResolvedValue({
+      success: true,
+      prUrl: 'https://github.com/test/repo/pull/42',
+    });
+
+    const result = await prManager.createGitHubPRForMerge('ghpr-3');
+    expect(result.error).toBeUndefined();
+    expect(result.pr).toBeDefined();
+    expect(result.pr!.githubPrUrl).toBe('https://github.com/test/repo/pull/42');
+    expect(result.prUrl).toBe('https://github.com/test/repo/pull/42');
+  });
+
+  it('rejects non-GitHub URLs (defense-in-depth validation)', async () => {
+    insertTestPR(prManager, { id: 'ghpr-4', status: 'approved' });
+    vi.spyOn(github, 'pushBranch').mockResolvedValue({ success: true });
+    vi.spyOn(github, 'createGitHubPR').mockResolvedValue({
+      success: true,
+      prUrl: 'javascript:alert(1)',
+    });
+
+    const result = await prManager.createGitHubPRForMerge('ghpr-4');
+    expect(result.error).toContain('invalid PR URL');
+    // URL should NOT be stored on the PR
+    const pr = prManager.get('ghpr-4');
+    expect(pr!.githubPrUrl).toBeUndefined();
+  });
+
+  it('emits pr:updated event on success', async () => {
+    insertTestPR(prManager, { id: 'ghpr-5', status: 'approved' });
+    vi.spyOn(github, 'pushBranch').mockResolvedValue({ success: true });
+    vi.spyOn(github, 'createGitHubPR').mockResolvedValue({
+      success: true,
+      prUrl: 'https://github.com/test/repo/pull/5',
+    });
+
+    const events: string[] = [];
+    prManager.onEvent((event) => events.push(event));
+
+    await prManager.createGitHubPRForMerge('ghpr-5');
+    expect(events).toContain('pr:updated');
+  });
+});
+
+describe('PR API — GitHub merge mode endpoint', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let issueManager: IssueManager;
+  let server: Server;
+  let originalMergeMode: string;
+
+  beforeEach(async () => {
+    originalMergeMode = config.mergeMode;
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+
+    const app = express();
+    app.use('/api', createPRApiRouter(prManager, issueManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    updateConfig({ mergeMode: originalMergeMode as any });
+    terminalManager.killAll();
+    vi.restoreAllMocks();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('POST /api/prs/:id/merge in github mode creates GH PR and returns github_pr_created', async () => {
+    updateConfig({ mergeMode: 'github' });
+    insertTestPR(prManager, { id: 'gh-merge-1', status: 'approved', verdict: 'approved' });
+    vi.spyOn(github, 'pushBranch').mockResolvedValue({ success: true });
+    vi.spyOn(github, 'createGitHubPR').mockResolvedValue({
+      success: true,
+      prUrl: 'https://github.com/test/repo/pull/10',
+    });
+
+    const res = await request(server, 'POST', '/api/prs/gh-merge-1/merge');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('github_pr_created');
+    expect(res.body.prUrl).toBe('https://github.com/test/repo/pull/10');
+  });
+
+  it('POST /api/prs/:id/merge in github mode does NOT move issue to done', async () => {
+    updateConfig({ mergeMode: 'github' });
+    const issue = issueManager.create({ title: 'Test Issue' });
+    // Manually set status to 'review' for testing
+    (issue as any).status = 'review';
+    insertTestPR(prManager, {
+      id: 'gh-merge-2',
+      issueId: issue.id,
+      status: 'approved',
+      verdict: 'approved',
+    });
+    vi.spyOn(github, 'pushBranch').mockResolvedValue({ success: true });
+    vi.spyOn(github, 'createGitHubPR').mockResolvedValue({
+      success: true,
+      prUrl: 'https://github.com/test/repo/pull/11',
+    });
+
+    await request(server, 'POST', `/api/prs/gh-merge-2/merge`);
+    // Issue should still be in review, NOT done
+    const updatedIssue = issueManager.get(issue.id);
+    expect(updatedIssue!.status).toBe('review');
+  });
+
+  it('POST /api/prs/:id/merge in github mode returns 500 if GH PR creation fails', async () => {
+    updateConfig({ mergeMode: 'github' });
+    insertTestPR(prManager, { id: 'gh-merge-3', status: 'approved' });
+    vi.spyOn(github, 'pushBranch').mockResolvedValue({ success: false, error: 'no remote' });
+
+    const res = await request(server, 'POST', '/api/prs/gh-merge-3/merge');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBeTruthy();
+  });
+
+  it('POST /api/prs/:id/merge in both mode creates GH PR BEFORE merging locally', async () => {
+    updateConfig({ mergeMode: 'both' });
+    // We need a real repo setup for merge to work, so just test that
+    // createGitHubPRForMerge is called and that the API handles the flow.
+    // Since merge() requires a real git repo and we can't set that up easily,
+    // we spy on the methods directly.
+    const pr = insertTestPR(prManager, {
+      id: 'both-merge-1',
+      status: 'approved',
+      verdict: 'approved',
+    });
+
+    const callOrder: string[] = [];
+    vi.spyOn(prManager, 'createGitHubPRForMerge').mockImplementation(async () => {
+      callOrder.push('createGitHubPRForMerge');
+      return { pr, prUrl: 'https://github.com/test/repo/pull/20' };
+    });
+    vi.spyOn(prManager, 'merge').mockImplementation(() => {
+      callOrder.push('merge');
+      pr.status = 'merged';
+      return { pr };
+    });
+
+    const res = await request(server, 'POST', '/api/prs/both-merge-1/merge');
+    expect(res.status).toBe(200);
+
+    // Verify ordering: GH PR must be created BEFORE merge
+    expect(callOrder).toEqual(['createGitHubPRForMerge', 'merge']);
+  });
+
+  it('POST /api/prs/:id/merge in both mode continues merging even if GH PR fails', async () => {
+    updateConfig({ mergeMode: 'both' });
+    const pr = insertTestPR(prManager, {
+      id: 'both-merge-2',
+      status: 'approved',
+      verdict: 'approved',
+    });
+
+    vi.spyOn(prManager, 'createGitHubPRForMerge').mockResolvedValue({
+      error: 'gh CLI not found',
+    });
+    vi.spyOn(prManager, 'merge').mockImplementation(() => {
+      pr.status = 'merged';
+      return { pr };
+    });
+
+    const res = await request(server, 'POST', '/api/prs/both-merge-2/merge');
+    expect(res.status).toBe(200);
+    // Merge should still succeed even if GH PR failed
+    expect(res.body.status).toBe('merged');
+  });
+});
+
+describe('PR API — Confirm Merge issue status transition', () => {
+  let terminalManager: TerminalManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let issueManager: IssueManager;
+  let server: Server;
+
+  beforeEach(async () => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+
+    const app = express();
+    app.use('/api', createPRApiRouter(prManager, issueManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    terminalManager.killAll();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('POST /api/prs/:id/confirm-merge moves linked issue to done', async () => {
+    const issue = issueManager.create({ title: 'Test Issue' });
+    // Manually set status to 'review' for testing
+    (issue as any).status = 'review';
+    insertTestPR(prManager, {
+      id: 'confirm-issue-1',
+      issueId: issue.id,
+      status: 'approved',
+      verdict: 'approved',
+      githubPrUrl: 'https://github.com/test/repo/pull/1',
+    });
+
+    const res = await request(server, 'POST', '/api/prs/confirm-issue-1/confirm-merge');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('merged');
+
+    // The linked issue should be moved to done
+    const updatedIssue = issueManager.get(issue.id);
+    expect(updatedIssue).toBeDefined();
+    expect(updatedIssue!.status).toBe('done');
+  });
+
+  it('POST /api/prs/:id/confirm-merge does not crash without an issueManager', async () => {
+    // Create router without issueManager
+    const app2 = express();
+    app2.use('/api', createPRApiRouter(prManager));
+    const server2 = createServer(app2);
+    await new Promise<void>((resolve) => server2.listen(0, resolve));
+
+    insertTestPR(prManager, {
+      id: 'confirm-issue-2',
+      status: 'approved',
+      verdict: 'approved',
+    });
+
+    const res = await request(server2, 'POST', '/api/prs/confirm-issue-2/confirm-merge');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('merged');
+
+    await new Promise<void>((resolve) => server2.close(() => resolve()));
   });
 });

@@ -1,8 +1,9 @@
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { execSync } from 'child_process';
+import type { MergeMode } from '@hermes-monitor/shared/types';
 
-export type MergeMode = 'local' | 'github' | 'both';
+export type { MergeMode } from '@hermes-monitor/shared/types';
 
 export interface AppConfig {
   repoPath: string;

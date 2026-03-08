@@ -769,13 +769,14 @@ export class PRManager {
       return { error: `Failed to create GitHub PR: ${ghResult.error}` };
     }
 
-    // Store the GitHub PR URL
-    pr.githubPrUrl = ghResult.prUrl;
-    pr.updatedAt = Date.now();
-    this.persist(pr);
-    this.emit('pr:updated', pr);
+    // Store the GitHub PR URL — use setGithubPrUrl to enforce URL validation
+    // (defense-in-depth: validates the URL starts with https://github.com/)
+    const updated = this.setGithubPrUrl(prId, ghResult.prUrl);
+    if (!updated) {
+      return { error: `GitHub returned an invalid PR URL: ${ghResult.prUrl}` };
+    }
 
-    return { pr, prUrl: ghResult.prUrl };
+    return { pr: updated, prUrl: ghResult.prUrl };
   }
 
   /**
@@ -807,6 +808,18 @@ export class PRManager {
 
     this.persist(pr);
     this.emit('pr:updated', pr);
+
+    // Clean up the remote branch (fire-and-forget).
+    // GitHub's "auto-delete branch" setting may handle this, but if disabled,
+    // stale remote branches accumulate. Safe to call even if already deleted.
+    if (config.githubEnabled) {
+      const sourceBranch = pr.sourceBranch;
+      const repoPath = pr.repoPath;
+      deleteRemoteBranch(sourceBranch, repoPath).catch((err) => {
+        console.warn('[confirmMerge] Failed to delete remote branch:', err);
+      });
+    }
+
     return { pr };
   }
 

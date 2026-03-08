@@ -479,4 +479,30 @@ describe('PRDetail — GitHub merge mode', () => {
       expect.stringContaining('Create GitHub PR'),
     );
   });
+
+  it('shows "MERGE + GH PR" button when mergeMode is both', async () => {
+    const props = defaultProps();
+    props.pr = makePR({ verdict: 'approved' });
+    render(<PRDetail {...props} mergeMode="both" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/MERGE \+ GH PR/)).toBeInTheDocument();
+    });
+  });
+
+  it('shows confirmation dialog mentioning GH PR when mergeMode is both', async () => {
+    window.confirm = vi.fn(() => true);
+    const props = defaultProps();
+    props.pr = makePR({ verdict: 'approved' });
+    render(<PRDetail {...props} mergeMode="both" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/MERGE \+ GH PR/)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/MERGE \+ GH PR/));
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('create a GitHub PR'),
+    );
+  });
 });

@@ -13,6 +13,7 @@ import type {
   TerminalInfo,
   Issue,
   AgentPreset,
+  MergeMode,
   PullRequest,
   ClientMessage,
   ServerMessage,
@@ -58,7 +59,7 @@ export interface AppContextValue {
   confirmMerge: (prId: string) => Promise<{ error?: string }>;
   fixConflicts: (prId: string) => Promise<void>;
   relaunchReview: (prId: string) => Promise<void>;
-  mergeMode: 'local' | 'github' | 'both';
+  mergeMode: MergeMode;
 
   // Agents
   agents: AgentPreset[];
@@ -184,7 +185,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { prs = [], addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe, addError);
   const { agents, loading: agentsLoading, error: agentsError } = useAgents();
   const gitGraph = useGitGraph();
-  const [mergeMode, setMergeMode] = useState<'local' | 'github' | 'both'>('local');
+  const [mergeMode, setMergeMode] = useState<MergeMode>('local');
 
   // ── Local state ──
   const [gitPanelOpen, setGitPanelOpen] = useState(() => {
@@ -220,6 +221,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       })
       .catch(() => {});
+  }, []);
+
+  // Listen for config changes from ConfigView (custom event) to keep mergeMode in sync
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.mergeMode && ['local', 'github', 'both'].includes(detail.mergeMode)) {
+        setMergeMode(detail.mergeMode);
+      }
+    };
+    window.addEventListener('hermes:config-updated', handler);
+    return () => window.removeEventListener('hermes:config-updated', handler);
   }, []);
 
   // Lazy-mount ResearchView
