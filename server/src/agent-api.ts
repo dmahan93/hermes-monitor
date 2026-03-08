@@ -11,7 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { IssueManager } from './issue-manager.js';
 import type { PRManager } from './pr-manager.js';
 import type { TerminalManager } from './terminal-manager.js';
-import type { WorktreeManager } from './worktree-manager.js';
+import type { WorktreeManager, HealthCheckResult } from './worktree-manager.js';
 import { config } from './config.js';
 import { ALLOWED_EXTENSIONS, getUploadedScreenshots, UI_EXTENSIONS } from './screenshot-utils.js';
 import { analyzeUiDiff } from './ui-change-analyzer.js';
@@ -53,6 +53,7 @@ interface AgentInfoResponse {
   screenshotUploadUrl: string;
   screenshotUploadInstructions: string;
   guidelines: AgentGuidelines;
+  workspaceHealth: HealthCheckResult | null;
 }
 
 /**
@@ -131,6 +132,7 @@ export function createAgentApiRouter(
           : 'If your changes modify UI components (.tsx, .css, .html files), upload before/after screenshots using the screenshotUploadUrl and include the returned markdown in your PR description.',
         requireScreenshotsForUiChanges: config.requireScreenshotsForUiChanges,
       },
+      workspaceHealth: worktreeManager.getHealthCheck(issue.id) || null,
     };
     res.json(response);
   });

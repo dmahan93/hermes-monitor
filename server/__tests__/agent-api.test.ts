@@ -109,6 +109,39 @@ describe('Agent API (Agent Communication)', () => {
     expect(res.body).toHaveProperty('worktreePath');
   });
 
+  it('GET /agent/:id/info includes workspaceHealth field', async () => {
+    const issue = issueManager.create({ title: 'Health check test' });
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // workspaceHealth should be present (null when no health check has been run)
+    expect(res.body).toHaveProperty('workspaceHealth');
+  });
+
+  it('GET /agent/:id/info returns stored health check result', async () => {
+    const issue = issueManager.create({ title: 'With health' });
+    // Mock the worktreeManager to return a health check result
+    vi.spyOn(worktreeManager, 'getHealthCheck').mockReturnValue({
+      healthy: true,
+      issues: [],
+      fixes: ['Re-symlinked node_modules'],
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.workspaceHealth).toEqual({
+      healthy: true,
+      issues: [],
+      fixes: ['Re-symlinked node_modules'],
+    });
+  });
+
+  it('GET /agent/:id/info returns null workspaceHealth when no check run', async () => {
+    const issue = issueManager.create({ title: 'No health check' });
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.workspaceHealth).toBeNull();
+  });
+
   it('POST /agent/:id/review moves issue to review', async () => {
     const issue = issueManager.create({ title: 'Review me' });
     issueManager.changeStatus(issue.id, 'in_progress');
