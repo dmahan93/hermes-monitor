@@ -22,8 +22,8 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
   });
 
   router.patch('/config', (req, res) => {
-    const { repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote, mergeMode } = req.body || {};
-    updateConfig({ repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote, mergeMode });
+    const { repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote, mergeMode, managerTerminalAgent } = req.body || {};
+    updateConfig({ repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote, mergeMode, managerTerminalAgent });
     res.json(config);
   });
 

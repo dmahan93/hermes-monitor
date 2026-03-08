@@ -677,11 +677,35 @@ describe('ManagerView', () => {
       expect(screen.getByText('MANAGER TERMINAL')).toBeInTheDocument();
     });
 
-    it('terminal pane is collapsed by default', () => {
+    it('terminal pane is collapsed while the manager view is inactive', () => {
       const props = defaultProps();
       const { container } = render(<ManagerView {...props} />);
       expect(container.querySelector('.manager-terminal-toolbar')).toBeNull();
       expect(container.querySelector('.manager-terminal-pane')).toBeNull();
+    });
+
+    it('auto-opens the terminal when the manager view becomes active', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/config')) {
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
+        }
+        if (urlStr.includes('/terminals') && opts?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'mgr-term-auto-open' }), { status: 201 });
+        }
+        if (urlStr.includes('/terminals')) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      });
+
+      const props = defaultProps();
+      const { container } = render(<ManagerView {...props} isActive />);
+
+      await waitFor(() => {
+        expect(container.querySelector('.manager-terminal-toolbar')).not.toBeNull();
+        expect(screen.getByTestId('terminal-view')).toBeInTheDocument();
+      });
     });
 
     it('clicking toggle expands the terminal section', async () => {
@@ -714,7 +738,7 @@ describe('ManagerView', () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000, managerTerminalAgent: 'hermes' }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return new Response(JSON.stringify({ id: 'mgr-term-1' }), { status: 201 });
@@ -737,7 +761,38 @@ describe('ManagerView', () => {
         expect(postCalls.length).toBe(1);
         const body = JSON.parse(postCalls[0][1]?.body as string);
         expect(body.title).toBe('Manager Terminal');
+        expect(body.command).toBe('hermes');
         expect(body.cwd).toBe('/test/repo');
+      });
+    });
+
+    it('uses managerTerminalAgent from config when spawning the terminal', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/config')) {
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000, managerTerminalAgent: 'claude' }), { status: 200 });
+        }
+        if (urlStr.includes('/terminals') && opts?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'mgr-term-claude' }), { status: 201 });
+        }
+        if (urlStr.includes('/terminals')) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      });
+
+      const props = defaultProps();
+      render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText('MANAGER TERMINAL'));
+
+      await waitFor(() => {
+        const postCalls = fetchSpy.mock.calls.filter(([url, opts]) => {
+          const urlStr = typeof url === 'string' ? url : url.toString();
+          return urlStr.includes('/terminals') && opts?.method === 'POST';
+        });
+        expect(postCalls.length).toBe(1);
+        const body = JSON.parse(postCalls[0][1]?.body as string);
+        expect(body.command).toBe('claude');
       });
     });
 
@@ -774,7 +829,7 @@ describe('ManagerView', () => {
           return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals')) {
-          return new Response(JSON.stringify([{ id: 'existing-term', title: 'Manager Terminal' }]), { status: 200 });
+          return new Response(JSON.stringify([{ id: 'existing-term', title: 'Manager Terminal', command: 'hermes' }]), { status: 200 });
         }
         return new Response('{}', { status: 200 });
       });
@@ -802,7 +857,7 @@ describe('ManagerView', () => {
           return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 5555 }), { status: 200 });
         }
         if (urlStr.includes('/terminals')) {
-          return new Response(JSON.stringify([{ id: 'existing-term', title: 'Manager Terminal' }]), { status: 200 });
+          return new Response(JSON.stringify([{ id: 'existing-term', title: 'Manager Terminal', command: 'hermes' }]), { status: 200 });
         }
         return new Response('{}', { status: 200 });
       });
@@ -1104,7 +1159,7 @@ describe('ManagerView', () => {
           return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals')) {
-          return new Response(JSON.stringify([{ id: 'doomed-term', title: 'Manager Terminal' }]), { status: 200 });
+          return new Response(JSON.stringify([{ id: 'doomed-term', title: 'Manager Terminal', command: 'hermes' }]), { status: 200 });
         }
         return new Response('{}', { status: 200 });
       });

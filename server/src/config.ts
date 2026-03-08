@@ -1,9 +1,15 @@
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { execSync } from 'child_process';
-import type { MergeMode } from '@hermes-monitor/shared/types';
+import type { MergeMode, ManagerTerminalAgent } from '@hermes-monitor/shared/types';
 
-export type { MergeMode } from '@hermes-monitor/shared/types';
+export type { MergeMode, ManagerTerminalAgent } from '@hermes-monitor/shared/types';
+
+const MANAGER_TERMINAL_AGENTS = ['hermes', 'claude', 'codex', 'gemini'] as const;
+
+function isManagerTerminalAgent(value: string | undefined): value is ManagerTerminalAgent {
+  return !!value && MANAGER_TERMINAL_AGENTS.includes(value as ManagerTerminalAgent);
+}
 
 export interface AppConfig {
   repoPath: string;
@@ -16,6 +22,7 @@ export interface AppConfig {
   githubEnabled: boolean;
   githubRemote: string;
   mergeMode: MergeMode;
+  managerTerminalAgent: ManagerTerminalAgent;
 }
 
 // Detect the default branch name for a repo
@@ -47,6 +54,9 @@ export const config: AppConfig = {
   mergeMode: (['local', 'github', 'both'].includes(process.env.HERMES_MERGE_MODE || '')
     ? process.env.HERMES_MERGE_MODE as MergeMode
     : 'local'),
+  managerTerminalAgent: isManagerTerminalAgent(process.env.HERMES_MANAGER_TERMINAL_AGENT)
+    ? process.env.HERMES_MANAGER_TERMINAL_AGENT
+    : 'hermes',
 };
 
 export function updateConfig(updates: Partial<AppConfig>): void {
@@ -73,6 +83,11 @@ export function updateConfig(updates: Partial<AppConfig>): void {
   if (updates.mergeMode !== undefined) {
     if (['local', 'github', 'both'].includes(updates.mergeMode)) {
       config.mergeMode = updates.mergeMode;
+    }
+  }
+  if (updates.managerTerminalAgent !== undefined) {
+    if (isManagerTerminalAgent(updates.managerTerminalAgent)) {
+      config.managerTerminalAgent = updates.managerTerminalAgent;
     }
   }
 }

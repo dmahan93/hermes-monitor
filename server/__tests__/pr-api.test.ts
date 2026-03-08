@@ -1029,9 +1029,11 @@ describe('PR API — mergeMode config', () => {
   let issueManager: IssueManager;
   let server: Server;
   let originalMergeMode: string;
+  let originalManagerTerminalAgent: string;
 
   beforeEach(async () => {
     originalMergeMode = config.mergeMode;
+    originalManagerTerminalAgent = config.managerTerminalAgent;
     terminalManager = new TerminalManager();
     worktreeManager = new WorktreeManager();
     prManager = new PRManager(terminalManager, worktreeManager);
@@ -1046,6 +1048,7 @@ describe('PR API — mergeMode config', () => {
   afterEach(async () => {
     // Restore original mergeMode
     updateConfig({ mergeMode: originalMergeMode as any });
+    updateConfig({ managerTerminalAgent: originalManagerTerminalAgent as any });
     terminalManager.killAll();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
@@ -1076,6 +1079,27 @@ describe('PR API — mergeMode config', () => {
     const res = await request(server, 'GET', '/api/config');
     expect(res.status).toBe(200);
     expect(res.body.mergeMode).toBe('github');
+  });
+
+  it('PATCH /api/config updates managerTerminalAgent', async () => {
+    const res = await request(server, 'PATCH', '/api/config', { managerTerminalAgent: 'codex' });
+    expect(res.status).toBe(200);
+    expect(res.body.managerTerminalAgent).toBe('codex');
+    expect(config.managerTerminalAgent).toBe('codex');
+  });
+
+  it('PATCH /api/config ignores invalid managerTerminalAgent', async () => {
+    updateConfig({ managerTerminalAgent: 'hermes' });
+    const res = await request(server, 'PATCH', '/api/config', { managerTerminalAgent: 'shell' });
+    expect(res.status).toBe(200);
+    expect(res.body.managerTerminalAgent).toBe('hermes');
+  });
+
+  it('GET /api/config includes managerTerminalAgent', async () => {
+    updateConfig({ managerTerminalAgent: 'gemini' });
+    const res = await request(server, 'GET', '/api/config');
+    expect(res.status).toBe(200);
+    expect(res.body.managerTerminalAgent).toBe('gemini');
   });
 });
 

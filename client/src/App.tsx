@@ -232,6 +232,7 @@ function AppContent() {
               issues={issues}
               prs={prs}
               agents={agents}
+              isActive={view === 'manager'}
               onStatusChange={handleStatusChange}
               onMerge={mergePR}
               onRelaunchReview={relaunchReview}

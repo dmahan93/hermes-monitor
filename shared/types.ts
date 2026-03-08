@@ -57,6 +57,8 @@ export interface AgentPreset {
   installed?: boolean;      // populated at runtime
 }
 
+export type ManagerTerminalAgent = 'hermes' | 'claude' | 'codex' | 'gemini';
+
 // ── Config ──
 
 export type MergeMode = 'local' | 'github' | 'both';

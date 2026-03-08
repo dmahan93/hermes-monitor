@@ -13,6 +13,7 @@ const mockConfig = {
   githubEnabled: false,
   githubRemote: 'origin',
   mergeMode: 'local',
+  managerTerminalAgent: 'hermes',
 };
 
 beforeEach(() => {
@@ -73,6 +74,18 @@ describe('ConfigView', () => {
       expect(screen.getByText(/Local — merge locally/)).toBeInTheDocument();
       expect(screen.getByText(/GitHub — push branch/)).toBeInTheDocument();
       expect(screen.getByText(/Both — merge locally AND/)).toBeInTheDocument();
+    });
+  });
+
+  it('renders Manager Terminal CLI dropdown with supported tools', async () => {
+    render(<ConfigView />);
+    await waitFor(() => {
+      expect(screen.getByText('Manager Terminal')).toBeInTheDocument();
+      expect(screen.getByText('CLI Tool')).toBeInTheDocument();
+      expect(screen.getByText('Hermes')).toBeInTheDocument();
+      expect(screen.getByText('Claude Code')).toBeInTheDocument();
+      expect(screen.getByText('Codex')).toBeInTheDocument();
+      expect(screen.getByText('Gemini CLI')).toBeInTheDocument();
     });
   });
 });

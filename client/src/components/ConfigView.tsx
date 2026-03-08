@@ -1,9 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { MergeMode } from '../types';
+import type { MergeMode, ManagerTerminalAgent } from '../types';
 import { API_BASE } from '../config';
 import './ConfigView.css';
 
 const GITHUB_URL = 'https://github.com/dmahan93/hermes-monitor';
+const MANAGER_TERMINAL_OPTIONS: Array<{ value: ManagerTerminalAgent; label: string }> = [
+  { value: 'hermes', label: 'Hermes' },
+  { value: 'claude', label: 'Claude Code' },
+  { value: 'codex', label: 'Codex' },
+  { value: 'gemini', label: 'Gemini CLI' },
+];
 
 interface AppConfig {
   repoPath: string;
@@ -15,6 +21,7 @@ interface AppConfig {
   githubEnabled: boolean;
   githubRemote: string;
   mergeMode: MergeMode;
+  managerTerminalAgent: ManagerTerminalAgent;
 }
 
 export function ConfigView() {
@@ -170,6 +177,26 @@ export function ConfigView() {
             </select>
             <span className="config-hint">
               How the Merge button works: local merge, GitHub PR, or both
+            </span>
+          </div>
+        </div>
+
+        <div className="config-section">
+          <h3 className="config-section-title">Manager Terminal</h3>
+          <div className="config-field">
+            <label className="config-label">CLI Tool</label>
+            <select
+              className="config-input"
+              value={config?.managerTerminalAgent ?? 'hermes'}
+              disabled={saving}
+              onChange={(e) => updateConfig({ managerTerminalAgent: e.target.value as ManagerTerminalAgent })}
+            >
+              {MANAGER_TERMINAL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <span className="config-hint">
+              The manager terminal launches this CLI when the manager view opens
             </span>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { TerminalView } from './TerminalView';
-import type { Issue, PullRequest, AgentPreset, IssueStatus, ClientMessage, ServerMessage } from '../types';
+import type { Issue, PullRequest, AgentPreset, IssueStatus, ClientMessage, ServerMessage, ManagerTerminalAgent, TerminalInfo } from '../types';
 import { API_BASE } from '../config';
 import './ManagerView.css';
 
@@ -10,6 +10,7 @@ interface ManagerViewProps {
   issues: Issue[];
   prs: PullRequest[];
   agents: AgentPreset[];
+  isActive?: boolean;
   onStatusChange: (id: string, status: IssueStatus) => Promise<string | null>;
   onMerge: (prId: string) => Promise<{ error?: string }>;
   onRelaunchReview: (prId: string) => Promise<void>;
@@ -64,9 +65,13 @@ const MANAGER_TERMINAL_HEIGHT_KEY = 'hermes:managerTerminalHeight';
 const DEFAULT_TERMINAL_HEIGHT = 320;
 const MIN_TERMINAL_HEIGHT = 120;
 const MAX_TERMINAL_HEIGHT = 800;
-
-const MANAGER_TERMINAL_COMMAND =
-  'bash -c \'echo "=== Hermes Monitor Manager ==="; echo "See MANAGER.md for commands"; echo ""; exec bash\'';
+const DEFAULT_MANAGER_TERMINAL_AGENT: ManagerTerminalAgent = 'hermes';
+const MANAGER_TERMINAL_COMMANDS: Record<ManagerTerminalAgent, string> = {
+  hermes: 'hermes',
+  claude: 'claude',
+  codex: 'codex',
+  gemini: 'gemini',
+};
 
 const DEFAULT_PORT = 4000;
 
@@ -84,12 +89,23 @@ const RESTART_CRASHED_COMMAND_TEMPLATE =
 function withPort(template: string, port: number): string {
   return template.replace(/__PORT__/g, String(port));
 }
+
+function normalizeManagerTerminalAgent(value: unknown): ManagerTerminalAgent {
+  return typeof value === 'string' && value in MANAGER_TERMINAL_COMMANDS
+    ? value as ManagerTerminalAgent
+    : DEFAULT_MANAGER_TERMINAL_AGENT;
+}
+
+function getManagerTerminalCommand(agent: ManagerTerminalAgent): string {
+  return MANAGER_TERMINAL_COMMANDS[agent];
+}
 // ── Component ──
 
 export function ManagerView({
   issues,
   prs,
   agents,
+  isActive = false,
   onStatusChange,
   onMerge,
   onRelaunchReview,
@@ -123,6 +139,8 @@ export function ManagerView({
   const resizeStartRef = useRef({ y: 0, height: 0 });
   const terminalHeightRef = useRef(terminalHeight);
   const resizeListenersRef = useRef<{ move: ((e: MouseEvent) => void) | null; up: (() => void) | null }>({ move: null, up: null });
+  const terminalToggleOverriddenRef = useRef(false);
+  const managerTerminalAgentRef = useRef<ManagerTerminalAgent>(DEFAULT_MANAGER_TERMINAL_AGENT);
 
   // Tick every 10s to update elapsed times
   useEffect(() => {
@@ -329,8 +347,8 @@ export function ManagerView({
 
   // ── Manager Terminal Helpers ──
 
-  /** Fetch /config and update serverPortRef. Returns config or null on failure. */
-  const fetchServerConfig = useCallback(async (): Promise<{ repoPath?: string; serverPort?: number } | null> => {
+  /** Fetch /config and update local refs. Returns config or null on failure. */
+  const fetchServerConfig = useCallback(async (): Promise<{ repoPath?: string; serverPort?: number; managerTerminalAgent?: ManagerTerminalAgent } | null> => {
     try {
       const configRes = await fetch(`${API_BASE}/config`);
       if (configRes.ok) {
@@ -338,6 +356,7 @@ export function ManagerView({
         if (cfg.serverPort) {
           serverPortRef.current = cfg.serverPort;
         }
+        managerTerminalAgentRef.current = normalizeManagerTerminalAgent(cfg.managerTerminalAgent);
         return cfg;
       }
     } catch {
@@ -346,23 +365,33 @@ export function ManagerView({
     return null;
   }, []);
 
-  const validateManagerTerminal = useCallback(async (id: string): Promise<boolean> => {
+  const validateManagerTerminal = useCallback(async (id: string): Promise<TerminalInfo | null> => {
     const res = await fetch(`${API_BASE}/terminals`);
     if (!res.ok) throw new Error('Failed to fetch terminals');
-    const terminals = await res.json();
-    return terminals.some((t: { id: string }) => t.id === id);
+    const terminals = await res.json() as TerminalInfo[];
+    return terminals.find((t) => t.id === id) || null;
   }, []);
 
-  const createManagerTerminal = useCallback(async (config?: { repoPath?: string } | null): Promise<string | null> => {
+  const deleteManagerTerminal = useCallback(async (id: string) => {
+    try {
+      await fetch(`${API_BASE}/terminals/${id}`, { method: 'DELETE' });
+    } catch {
+      // Best-effort cleanup — if deletion fails, the server can still reap it later.
+    }
+  }, []);
+
+  const createManagerTerminal = useCallback(async (config?: { repoPath?: string; managerTerminalAgent?: ManagerTerminalAgent } | null): Promise<string | null> => {
     try {
       const cwd = config?.repoPath;
+      const agent = normalizeManagerTerminalAgent(config?.managerTerminalAgent);
+      const command = getManagerTerminalCommand(agent);
 
       const res = await fetch(`${API_BASE}/terminals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: 'Manager Terminal',
-          command: MANAGER_TERMINAL_COMMAND,
+          command,
           ...(cwd ? { cwd } : {}),
         }),
       });
@@ -391,11 +420,15 @@ export function ManagerView({
       const savedId = localStorage.getItem(MANAGER_TERMINAL_STORAGE_KEY);
       if (savedId) {
         try {
-          const exists = await validateManagerTerminal(savedId);
-          if (exists) {
+          const terminal = await validateManagerTerminal(savedId);
+          const expectedCommand = getManagerTerminalCommand(managerTerminalAgentRef.current);
+          if (terminal?.command === expectedCommand) {
             setManagerTerminalId(savedId);
             managerInitRef.current = true;
             return;
+          }
+          if (terminal) {
+            await deleteManagerTerminal(savedId);
           }
         } catch {
           // Network error — don't create a duplicate
@@ -417,7 +450,41 @@ export function ManagerView({
       setManagerTerminalLoading(false);
       managerCreatingRef.current = false;
     }
-  }, [fetchServerConfig, validateManagerTerminal, createManagerTerminal]);
+  }, [fetchServerConfig, validateManagerTerminal, deleteManagerTerminal, createManagerTerminal]);
+
+  // Apply manager terminal agent changes pushed from the Config view.
+  useEffect(() => {
+    const onConfigUpdated = (event: Event) => {
+      void (async () => {
+        const detail = (event as CustomEvent<{ managerTerminalAgent?: unknown; serverPort?: number }>).detail;
+        const previousAgent = managerTerminalAgentRef.current;
+        const nextAgent = normalizeManagerTerminalAgent(detail?.managerTerminalAgent);
+        if (typeof detail?.serverPort === 'number') {
+          serverPortRef.current = detail.serverPort;
+        }
+        if (nextAgent === previousAgent) {
+          return;
+        }
+        managerTerminalAgentRef.current = nextAgent;
+
+        const currentTerminalId = managerTerminalId || localStorage.getItem(MANAGER_TERMINAL_STORAGE_KEY);
+        localStorage.removeItem(MANAGER_TERMINAL_STORAGE_KEY);
+        setManagerTerminalId(null);
+        setManagerTerminalError(null);
+        managerInitRef.current = false;
+
+        if (currentTerminalId) {
+          await deleteManagerTerminal(currentTerminalId);
+        }
+        if (managerTerminalOpen) {
+          await initManagerTerminal();
+        }
+      })();
+    };
+
+    window.addEventListener('hermes:config-updated', onConfigUpdated as EventListener);
+    return () => window.removeEventListener('hermes:config-updated', onConfigUpdated as EventListener);
+  }, [managerTerminalId, managerTerminalOpen, deleteManagerTerminal, initManagerTerminal]);
 
   // Listen for terminal removal
   useEffect(() => {
@@ -434,8 +501,17 @@ export function ManagerView({
 
   // Toggle terminal open/closed
   const handleToggleTerminal = useCallback(() => {
+    terminalToggleOverriddenRef.current = true;
     setManagerTerminalOpen((prev) => !prev);
   }, []);
+
+  // Auto-open when the manager view becomes active, unless the user has
+  // explicitly overridden the terminal visibility.
+  useEffect(() => {
+    if (isActive && !managerTerminalOpen && !terminalToggleOverriddenRef.current) {
+      setManagerTerminalOpen(true);
+    }
+  }, [isActive, managerTerminalOpen]);
 
   // Initialize on first open — separated from state updater per React contract
   useEffect(() => {
