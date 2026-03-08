@@ -11,6 +11,7 @@ import { createIssueApiRouter } from './issue-api.js';
 import { createPRApiRouter } from './pr-api.js';
 import { createAgentApiRouter } from './agent-api.js';
 import { createGitApiRouter } from './git-api.js';
+import { createBatchApiRouter } from './batch-api.js';
 import { setupWebSocket, broadcastToAll } from './ws.js';
 import { config, isGitRepo } from './config.js';
 import { enrichPRWithScreenshots } from './screenshot-utils.js';
@@ -126,6 +127,7 @@ app.use('/api', createApiRouter(terminalManager));
 app.use('/api', createIssueApiRouter(issueManager));
 app.use('/api', createPRApiRouter(prManager, issueManager));
 app.use('/api', createGitApiRouter());
+app.use('/api/batch', createBatchApiRouter(prManager, issueManager, terminalManager));
 
 // Manual worktree prune endpoint — registered before the catch-all agent router
 app.post('/api/worktrees/prune', (_req, res) => {
