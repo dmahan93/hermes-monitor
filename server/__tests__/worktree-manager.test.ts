@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { WorktreeManager } from '../src/worktree-manager.js';
 import type { HealthCheckResult } from '../src/worktree-manager.js';
 import { config, updateConfig } from '../src/config.js';
-import { existsSync, lstatSync, readlinkSync, mkdirSync, rmSync, writeFileSync, symlinkSync, unlinkSync } from 'fs';
+import { existsSync, lstatSync, readlinkSync, mkdirSync, rmSync, writeFileSync, symlinkSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { join, resolve } from 'path';
 import { tmpdir } from 'os';

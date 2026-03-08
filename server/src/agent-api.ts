@@ -132,7 +132,7 @@ export function createAgentApiRouter(
           : 'If your changes modify UI components (.tsx, .css, .html files), upload before/after screenshots using the screenshotUploadUrl and include the returned markdown in your PR description.',
         requireScreenshotsForUiChanges: config.requireScreenshotsForUiChanges,
       },
-      workspaceHealth: worktreeManager.getHealthCheck(issue.id) || null,
+      workspaceHealth: worktreeManager.getHealthCheck(issue.id) ?? null,
     };
     res.json(response);
   });

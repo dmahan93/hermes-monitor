@@ -126,6 +126,7 @@ export class WorktreeManager {
     }
 
     this.worktrees.delete(issueId);
+    this.healthChecks.delete(issueId);
     return true;
   }
 
@@ -486,6 +487,7 @@ export class WorktreeManager {
 
         if (removed) {
           this.worktrees.delete(entry);
+          this.healthChecks.delete(entry);
           result.removedWorktrees.push(entry);
         }
       }
