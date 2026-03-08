@@ -1,7 +1,12 @@
 import { execFileSync } from 'child_process';
-import { mkdirSync, existsSync, rmSync, symlinkSync, lstatSync } from 'fs';
+import { mkdirSync, existsSync, rmSync, symlinkSync, lstatSync, readdirSync } from 'fs';
 import { join, resolve } from 'path';
 import { config } from './config.js';
+
+export interface PruneResult {
+  removedWorktrees: string[];
+  prunedBranches: string[];
+}
 
 export interface WorktreeInfo {
   branch: string;
@@ -197,5 +202,93 @@ export class WorktreeManager {
 
   get size(): number {
     return this.worktrees.size;
+  }
+
+  /**
+   * Remove worktrees and branches that don't belong to any active issue.
+   * Handles:
+   * - Worktree dirs left behind after issues were deleted
+   * - Worktrees from issues that were in_progress when the server restarted
+   * - Branches from conflict-fixer agents with inconsistent naming
+   * - Orphaned git worktree entries
+   *
+   * @param activeIssueIds Set of issue IDs that are still active (not done/deleted)
+   */
+  pruneStaleWorktrees(activeIssueIds: Set<string>): PruneResult {
+    const result: PruneResult = {
+      removedWorktrees: [],
+      prunedBranches: [],
+    };
+
+    // 1. Remove stale worktree directories
+    if (existsSync(config.worktreeBase)) {
+      let entries: string[];
+      try {
+        entries = readdirSync(config.worktreeBase);
+      } catch {
+        entries = [];
+      }
+
+      for (const entry of entries) {
+        // Skip if this worktree belongs to an active issue
+        if (activeIssueIds.has(entry)) continue;
+
+        const worktreePath = join(config.worktreeBase, entry);
+
+        // Try git worktree remove first (cleanest), fall back to rm
+        try {
+          git(['worktree', 'remove', worktreePath, '--force'], config.repoPath);
+        } catch {
+          try {
+            rmSync(worktreePath, { recursive: true, force: true });
+          } catch {}
+        }
+
+        // Also remove from in-memory map if present
+        this.worktrees.delete(entry);
+        result.removedWorktrees.push(entry);
+      }
+    }
+
+    // 2. Prune git's internal worktree list (cleans up dangling entries)
+    try {
+      git(['worktree', 'prune'], config.repoPath);
+    } catch {}
+
+    // 3. Prune stale issue/* branches
+    // Build a set of short IDs (first 8 chars) from active issues
+    const activeShortIds = new Set<string>();
+    activeIssueIds.forEach((id) => {
+      activeShortIds.add(id.slice(0, 8));
+    });
+
+    // List all local branches matching issue/*
+    let branches: string[];
+    try {
+      const output = git(
+        ['for-each-ref', '--format=%(refname:short)', 'refs/heads/issue/'],
+        config.repoPath
+      );
+      branches = output ? output.split('\n').filter(Boolean) : [];
+    } catch {
+      branches = [];
+    }
+
+    for (const branch of branches) {
+      // Extract the short ID from the branch name: issue/<shortId>-<slug>
+      const match = branch.match(/^issue\/([a-f0-9]{8})-/);
+      if (!match) continue;
+
+      const shortId = match[1];
+      if (activeShortIds.has(shortId)) continue;
+
+      // No active issue matches this branch — delete it
+      try {
+        git(['branch', '-D', branch], config.repoPath);
+        result.prunedBranches.push(branch);
+      } catch {}
+    }
+
+    return result;
   }
 }

@@ -1,4 +1,4 @@
-import express, { static as serveStatic } from 'express';
+import express, { json, static as serveStatic } from 'express';
 import { createServer } from 'http';
 import { mkdirSync } from 'fs';
 import { TerminalManager } from './terminal-manager.js';
@@ -54,6 +54,41 @@ if (isGitRepo(config.repoPath)) {
   console.log(`Warning: ${config.repoPath} is not a git repo — worktrees disabled`);
 }
 
+// Startup cleanup: prune stale worktrees and branches from previous sessions
+function getActiveIssueIds(): Set<string> {
+  return new Set(issueManager.list().map((i) => i.id));
+}
+
+function runWorktreePrune(): { removedWorktrees: number; prunedBranches: number } {
+  if (!isGitRepo(config.repoPath)) return { removedWorktrees: 0, prunedBranches: 0 };
+  const activeIds = getActiveIssueIds();
+  const result = worktreeManager.pruneStaleWorktrees(activeIds);
+  return {
+    removedWorktrees: result.removedWorktrees.length,
+    prunedBranches: result.prunedBranches.length,
+  };
+}
+
+if (isGitRepo(config.repoPath)) {
+  const pruned = runWorktreePrune();
+  if (pruned.removedWorktrees > 0 || pruned.prunedBranches > 0) {
+    console.log(
+      `Pruned ${pruned.removedWorktrees} stale worktree(s), ${pruned.prunedBranches} orphaned branch(es)`
+    );
+  }
+}
+
+// Periodic cleanup every 4 hours
+const PRUNE_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const pruneInterval = setInterval(() => {
+  const pruned = runWorktreePrune();
+  if (pruned.removedWorktrees > 0 || pruned.prunedBranches > 0) {
+    console.log(
+      `[auto-prune] Cleaned ${pruned.removedWorktrees} worktree(s), ${pruned.prunedBranches} branch(es)`
+    );
+  }
+}, PRUNE_INTERVAL_MS);
+
 const issueCount = issueManager.list().length;
 const prCount = prManager.list().length;
 if (issueCount > 0 || prCount > 0) {
@@ -70,6 +105,21 @@ app.use('/api', createIssueApiRouter(issueManager));
 app.use('/api', createPRApiRouter(prManager, issueManager));
 app.use('/api', createGitApiRouter());
 app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, worktreeManager));
+
+// Manual worktree prune endpoint
+app.post('/api/worktrees/prune', json(), (_req, res) => {
+  if (!isGitRepo(config.repoPath)) {
+    res.status(400).json({ error: 'Not a git repo — worktrees disabled' });
+    return;
+  }
+  const activeIds = getActiveIssueIds();
+  const result = worktreeManager.pruneStaleWorktrees(activeIds);
+  res.json({
+    removedWorktrees: result.removedWorktrees,
+    prunedBranches: result.prunedBranches,
+    summary: `Removed ${result.removedWorktrees.length} worktree(s), pruned ${result.prunedBranches.length} branch(es)`,
+  });
+});
 
 // WebSocket
 const wss = setupWebSocket(server, terminalManager);
@@ -92,6 +142,7 @@ prManager.onEvent((event, pr) => {
 // Cleanup on shutdown
 const shutdown = () => {
   console.log('\nShutting down...');
+  clearInterval(pruneInterval);
   issueManager.clearResumeTimers();
   prManager.clearAllPendingTimers();
   terminalManager.killAll();
@@ -106,4 +157,4 @@ server.listen(PORT, () => {
   console.log(`Hermes Monitor server listening on :${PORT}`);
 });
 
-export { app, server, terminalManager, issueManager, worktreeManager, prManager, store };
+export { app, server, terminalManager, issueManager, worktreeManager, prManager, store, runWorktreePrune };

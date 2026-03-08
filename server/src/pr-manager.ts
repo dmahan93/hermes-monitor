@@ -440,7 +440,7 @@ export class PRManager {
         worktreePath = wt.path;
       } catch (err: any) {
         // Worktree might already exist on disk but not in our map
-        worktreePath = `/tmp/hermes-worktrees/${pr.issueId}`;
+        worktreePath = join(config.worktreeBase, pr.issueId);
         try {
           execSync(`git worktree add "${worktreePath}" ${pr.sourceBranch}`, { cwd: pr.repoPath, stdio: 'pipe' });
         } catch {
