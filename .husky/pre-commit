@@ -4,4 +4,4 @@ if [ "$(git config core.bare)" = "true" ]; then
   echo "⚠️  Fixed core.bare=true (an agent set this incorrectly)"
 fi
 
-npx lint-staged
+npx lint-staged --allow-empty
