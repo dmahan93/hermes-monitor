@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor, act } from '@testing-library/react';
 import { IssueDetail } from '../../src/components/IssueDetail';
 import type { Issue, AgentPreset } from '../../src/types';
 
@@ -37,7 +37,7 @@ describe('IssueDetail', () => {
       agents: mockAgents,
       onClose: vi.fn(),
       onUpdate: vi.fn(),
-      onStatusChange: vi.fn(),
+      onStatusChange: vi.fn().mockResolvedValue(null),
       onDelete: vi.fn(),
     };
   });
@@ -104,5 +104,111 @@ describe('IssueDetail', () => {
   it('delete button has aria-label for accessibility', () => {
     render(<IssueDetail {...defaultProps} />);
     expect(screen.getByLabelText('Delete issue')).toBeInTheDocument();
+  });
+
+  // ── Status dropdown tests ──
+
+  it('renders a status select dropdown with current value', () => {
+    render(<IssueDetail {...defaultProps} />);
+    const select = screen.getByLabelText('Change status') as HTMLSelectElement;
+    expect(select.tagName).toBe('SELECT');
+    expect(select.value).toBe('todo');
+  });
+
+  it('renders all 5 status options with correct values', () => {
+    render(<IssueDetail {...defaultProps} />);
+    const select = screen.getByLabelText('Change status');
+    const options = within(select).getAllByRole('option') as HTMLOptionElement[];
+    expect(options).toHaveLength(5);
+
+    const values = options.map((o) => o.value);
+    expect(values).toEqual(['backlog', 'todo', 'in_progress', 'review', 'done']);
+
+    const labels = options.map((o) => o.textContent);
+    expect(labels).toEqual(['BACKLOG', 'TODO', 'IN PROGRESS', 'REVIEW', 'DONE']);
+  });
+
+  it('calls onStatusChange with correct args when selection changes', async () => {
+    render(<IssueDetail {...defaultProps} />);
+    const select = screen.getByLabelText('Change status');
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'in_progress' } });
+    });
+    expect(defaultProps.onStatusChange).toHaveBeenCalledWith('issue-1', 'in_progress');
+  });
+
+  it('displays error when status change fails', async () => {
+    const onStatusChange = vi.fn().mockResolvedValue('Cannot move to done with open subtasks');
+    render(<IssueDetail {...defaultProps} onStatusChange={onStatusChange} />);
+    const select = screen.getByLabelText('Change status');
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'done' } });
+    });
+    expect(screen.getByText('Cannot move to done with open subtasks')).toBeInTheDocument();
+  });
+
+  it('reflects different issue statuses in select value', () => {
+    const statuses = ['backlog', 'todo', 'in_progress', 'review', 'done'] as const;
+    for (const status of statuses) {
+      const { unmount } = render(
+        <IssueDetail {...defaultProps} issue={{ ...mockIssue, status }} />
+      );
+      const select = screen.getByLabelText('Change status') as HTMLSelectElement;
+      expect(select.value).toBe(status);
+      unmount();
+    }
+  });
+
+  it('applies status-specific CSS class to the select element', () => {
+    const { unmount } = render(
+      <IssueDetail {...defaultProps} issue={{ ...mockIssue, status: 'in_progress' }} />
+    );
+    const select = screen.getByLabelText('Change status');
+    expect(select.className).toContain('issue-detail-status-select');
+    expect(select.className).toContain('issue-status-wip');
+    unmount();
+
+    render(
+      <IssueDetail {...defaultProps} issue={{ ...mockIssue, status: 'done' }} />
+    );
+    const select2 = screen.getByLabelText('Change status');
+    expect(select2.className).toContain('issue-status-done');
+  });
+
+  it('does not render old inline status buttons', () => {
+    render(<IssueDetail {...defaultProps} />);
+    // The old implementation rendered buttons like "→ BACKLOG", "→ TODO", etc.
+    expect(screen.queryByText('→ BACKLOG')).not.toBeInTheDocument();
+    expect(screen.queryByText('→ TODO')).not.toBeInTheDocument();
+    expect(screen.queryByText('→ IN PROGRESS')).not.toBeInTheDocument();
+    expect(screen.queryByText('→ REVIEW')).not.toBeInTheDocument();
+    expect(screen.queryByText('→ DONE')).not.toBeInTheDocument();
+  });
+
+  it('disables select during pending status change', async () => {
+    let resolveStatusChange!: (value: string | null) => void;
+    const onStatusChange = vi.fn().mockImplementation(
+      () => new Promise<string | null>((resolve) => { resolveStatusChange = resolve; })
+    );
+    render(<IssueDetail {...defaultProps} onStatusChange={onStatusChange} />);
+    const select = screen.getByLabelText('Change status') as HTMLSelectElement;
+
+    expect(select.disabled).toBe(false);
+
+    // Trigger a status change (don't resolve yet)
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'done' } });
+    });
+
+    // Select should be disabled while pending
+    expect(select.disabled).toBe(true);
+
+    // Resolve the promise
+    await act(async () => {
+      resolveStatusChange(null);
+    });
+
+    // Select should be re-enabled
+    expect(select.disabled).toBe(false);
   });
 });

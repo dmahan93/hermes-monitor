@@ -391,10 +391,40 @@
   align-items: center;
 }
 
-.issue-detail-status-actions {
-  display: flex;
-  gap: 4px;
+/* ── Status select dropdown ── */
+
+.issue-detail-status-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  color: var(--text);
+  font-family: 'VT323', monospace;
+  font-size: 14px;
+  letter-spacing: 1px;
+  padding: 2px 24px 2px 8px;
+  cursor: pointer;
+  outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
 }
+
+.issue-detail-status-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.issue-detail-status-select:hover:not(:disabled),
+.issue-detail-status-select:focus:not(:disabled) {
+  border-color: var(--accent) !important;
+}
+
+.issue-detail-status-select.issue-status-backlog { color: var(--backlog); border-color: var(--backlog-dim); }
+.issue-detail-status-select.issue-status-todo { color: var(--text-muted); border-color: var(--chrome); }
+.issue-detail-status-select.issue-status-wip { color: var(--accent); border-color: var(--accent); }
+.issue-detail-status-select.issue-status-review { color: var(--warn); border-color: var(--warn); }
+.issue-detail-status-select.issue-status-done { color: var(--link); border-color: var(--link); }
 
 .issue-detail-delete-btn {
   color: var(--error);
