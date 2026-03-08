@@ -1187,3 +1187,82 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
     expect(updated?.screenshotBypassReason).toBe(specialReason);
   });
 });
+
+describe('Agent API — GitHub Integration', () => {
+  let terminalManager: TerminalManager;
+  let issueManager: IssueManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let server: Server;
+
+  beforeEach(async () => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+    issueManager.setWorktreeManager(worktreeManager);
+    issueManager.setPRManager(prManager);
+
+    const app = express();
+    app.use('/api', createIssueApiRouter(issueManager));
+    app.use('/agent', createAgentApiRouter(issueManager, prManager, terminalManager, worktreeManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    // Restore config
+    config.githubEnabled = false;
+    terminalManager.killAll();
+    prManager.clearAllPendingTimers();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('POST /agent/:id/review succeeds even when github is disabled', async () => {
+    config.githubEnabled = false;
+    const issue = issueManager.create({ title: 'No github' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('POST /agent/:id/review succeeds when github is enabled (fire-and-forget)', async () => {
+    config.githubEnabled = true;
+    const issue = issueManager.create({ title: 'With github' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    // GitHub calls are fire-and-forget, so the review still succeeds
+    // even if there's no actual github remote
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.status).toBe('review');
+  });
+
+  it('PRManager.setGithubPrUrl stores the URL on the PR', () => {
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: 'test-issue',
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const pr = prManager.create({ issueId: 'test-issue', title: 'Test' });
+    expect(pr).not.toBeNull();
+
+    const updated = prManager.setGithubPrUrl(pr!.id, 'https://github.com/user/repo/pull/1');
+    expect(updated).not.toBeNull();
+    expect(updated!.githubPrUrl).toBe('https://github.com/user/repo/pull/1');
+
+    // Verify it persists on the PR object
+    const fetched = prManager.get(pr!.id);
+    expect(fetched?.githubPrUrl).toBe('https://github.com/user/repo/pull/1');
+  });
+
+  it('PRManager.setGithubPrUrl returns null for unknown PR', () => {
+    const result = prManager.setGithubPrUrl('nonexistent', 'https://github.com/user/repo/pull/1');
+    expect(result).toBeNull();
+  });
+});

@@ -8,6 +8,7 @@ import type { Store } from './store.js';
 import { config } from './config.js';
 import { buildScreenshotSection } from './screenshot-utils.js';
 import { loadTemplate, renderTemplate } from './agents.js';
+import { pushMerge, closeGitHubPR, deleteRemoteBranch } from './github.js';
 
 // Re-export shared types so existing server imports continue to work.
 export type { PRStatus, Verdict, PRComment, Screenshot, PullRequest } from '@hermes-monitor/shared/types';
@@ -582,7 +583,41 @@ export class PRManager {
 
     this.persist(pr);
     this.emit('pr:updated', pr);
+
+    // GitHub integration: push merge and close GitHub PR (fire-and-forget)
+    if (config.githubEnabled) {
+      const sourceBranch = pr.sourceBranch;
+      const githubPrUrl = pr.githubPrUrl;
+      const repoPath = pr.repoPath;
+
+      // Push the merged target branch to the remote
+      pushMerge(pr.targetBranch, repoPath).catch(() => {});
+
+      // Close the GitHub PR if one was created
+      if (githubPrUrl) {
+        closeGitHubPR(githubPrUrl, repoPath).catch(() => {});
+      }
+
+      // Delete the remote branch (cleanup)
+      deleteRemoteBranch(sourceBranch, repoPath).catch(() => {});
+    }
+
     return { pr };
+  }
+
+  /**
+   * Set the GitHub PR URL on a pull request.
+   * Called after successfully creating a GitHub PR.
+   */
+  setGithubPrUrl(prId: string, url: string): PullRequest | null {
+    const pr = this.prs.get(prId);
+    if (!pr) return null;
+
+    pr.githubPrUrl = url;
+    pr.updatedAt = Date.now();
+    this.persist(pr);
+    this.emit('pr:updated', pr);
+    return pr;
   }
 
   get(id: string): PullRequest | undefined {

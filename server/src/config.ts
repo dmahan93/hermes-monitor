@@ -9,6 +9,8 @@ export interface AppConfig {
   screenshotBase: string;
   targetBranch: string;
   requireScreenshotsForUiChanges: boolean;
+  githubEnabled: boolean;
+  githubRemote: string;
 }
 
 // Detect the default branch name for a repo
@@ -34,6 +36,8 @@ export const config: AppConfig = {
   screenshotBase: process.env.HERMES_SCREENSHOT_BASE || '/tmp/hermes-screenshots',
   targetBranch: detectDefaultBranch(defaultRepo),
   requireScreenshotsForUiChanges: process.env.HERMES_REQUIRE_SCREENSHOTS !== 'false',
+  githubEnabled: process.env.HERMES_GITHUB_ENABLED === 'true',
+  githubRemote: process.env.HERMES_GITHUB_REMOTE || 'origin',
 };
 
 export function updateConfig(updates: Partial<AppConfig>): void {
@@ -46,6 +50,8 @@ export function updateConfig(updates: Partial<AppConfig>): void {
   if (updates.screenshotBase !== undefined) config.screenshotBase = updates.screenshotBase;
   if (updates.targetBranch !== undefined) config.targetBranch = updates.targetBranch;
   if (updates.requireScreenshotsForUiChanges !== undefined) config.requireScreenshotsForUiChanges = updates.requireScreenshotsForUiChanges;
+  if (updates.githubEnabled !== undefined) config.githubEnabled = updates.githubEnabled;
+  if (updates.githubRemote !== undefined) config.githubRemote = updates.githubRemote;
 }
 
 // Cache isGitRepo result per path — the repo status doesn't change during

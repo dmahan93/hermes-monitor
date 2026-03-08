@@ -81,6 +81,7 @@ export interface PullRequest {
   verdict: Verdict;
   reviewerTerminalId: string | null;
   comments: PRComment[];
+  githubPrUrl?: string;
   screenshots?: Screenshot[];
   screenshotCount?: number;
   createdAt: number;

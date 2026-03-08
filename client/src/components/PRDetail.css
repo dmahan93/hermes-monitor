@@ -66,6 +66,18 @@
   font-family: 'VT323', monospace;
 }
 
+.pr-github-link {
+  color: var(--accent, #58a6ff);
+  text-decoration: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.833rem;
+}
+
+.pr-github-link:hover {
+  text-decoration: underline;
+  color: var(--text);
+}
+
 .pr-detail-desc {
   margin-top: 0.5rem;
   font-size: 0.917rem;

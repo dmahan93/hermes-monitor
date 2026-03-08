@@ -98,6 +98,16 @@ export function PRDetail({ pr, issueStatus, onBack, onComment, onVerdict, onMerg
         <div className="pr-detail-meta">
           <span>⎇ {pr.sourceBranch} → {pr.targetBranch}</span>
           <span>{pr.changedFiles.length} file{pr.changedFiles.length !== 1 ? 's' : ''} changed</span>
+          {pr.githubPrUrl && (
+            <a
+              href={pr.githubPrUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="pr-github-link"
+            >
+              🐙 GitHub PR ↗
+            </a>
+          )}
         </div>
         {pr.description && (
           <MarkdownContent text={pr.description} className="pr-detail-desc" />
