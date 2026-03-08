@@ -1,6 +1,10 @@
 {
   "name": "hermes-monitor",
+  "version": "0.1.0",
   "private": true,
+  "bin": {
+    "hermes-monitor": "./bin/hermes-monitor.js"
+  },
   "workspaces": [
     "server",
     "client",
