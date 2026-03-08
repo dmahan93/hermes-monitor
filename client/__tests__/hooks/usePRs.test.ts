@@ -187,4 +187,160 @@ describe('usePRs', () => {
     expect(consoleSpy).toHaveBeenCalledWith('Failed to fix conflicts:', expect.any(Error));
     consoleSpy.mockRestore();
   });
+
+  // --- onError integration tests ---
+
+  it('calls onError when fetchPRs fails', async () => {
+    const onError = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ error: 'Internal server error' }),
+    }) as any;
+
+    renderHook(() => usePRs(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(onError).toHaveBeenCalledWith('Failed to fetch PRs');
+    });
+
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when addComment fails', async () => {
+    const onError = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockPR]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({ error: 'fail' }) }) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.addComment('pr-1', 'Nice work!');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to add comment');
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when setVerdict fails', async () => {
+    const onError = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockPR]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, status: 400, json: () => Promise.resolve({ error: 'invalid' }) }) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.setVerdict('pr-1', 'approved');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to set verdict');
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when fixConflicts fails', async () => {
+    const onError = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockPR]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({ error: 'fail' }) }) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.fixConflicts('pr-1');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to fix conflicts');
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when relaunchReview fails (HTTP error)', async () => {
+    const onError = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockPR]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Internal Server Error', json: () => Promise.resolve({ error: 'fail' }) }) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.relaunchReview('pr-1');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to relaunch review');
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when relaunchReview fails (network error)', async () => {
+    const onError = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockPR]) }) // initial fetch
+      .mockRejectedValueOnce(new Error('Network error')) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.relaunchReview('pr-1');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to relaunch review');
+    consoleSpy.mockRestore();
+  });
+
+  it('does NOT call onError when mergePR fails (returns error to caller)', async () => {
+    const onError = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockPR]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'Merge failed' }) }) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    let mergeResult: { error?: string } = {};
+    await act(async () => {
+      mergeResult = await result.current.mergePR('pr-1');
+    });
+
+    // mergePR returns errors to callers, so onError should NOT be called
+    expect(mergeResult.error).toBe('Merge failed');
+    expect(onError).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
 });

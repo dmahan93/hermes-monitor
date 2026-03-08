@@ -173,10 +173,10 @@ function getWsUrl(): string {
 export function AppProvider({ children }: { children: ReactNode }) {
   // ── Hook calls ──
   const { connected, reconnectCount, send, subscribe } = useWebSocket(getWsUrl());
-  const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals(subscribe);
   const { errors, addError, removeError } = useErrorToast();
+  const { terminals, layout, loading, addTerminal, removeTerminal, updateLayout, refetch: refetchTerminals } = useTerminals(subscribe, addError);
   const { issues = [], createIssue, changeStatus, updateIssue, deleteIssue, startPlanning, stopPlanning, createSubtask } = useIssues(subscribe, addError);
-  const { prs = [], addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe);
+  const { prs = [], addComment, setVerdict, mergePR, fixConflicts, relaunchReview, refetch: refetchPRs } = usePRs(subscribe, addError);
   const agents = useAgents();
   const gitGraph = useGitGraph();
 
