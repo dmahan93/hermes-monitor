@@ -55,6 +55,7 @@ export function filterPRs(prs: PullRequest[], view: PRView): PullRequest[] {
 export function PRList({ prs = [], issues, mergeMode = 'local', onComment, onVerdict, onMerge, onConfirmMerge, onFixConflicts, onRelaunchReview, onClosePR, onCloseAllStale, onMoveToInProgress }: PRListProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<PRView>('open');
+  const [closingAll, setClosingAll] = useState(false);
 
   const counts = useMemo(() => {
     const result = {} as Record<PRView, number>;
@@ -83,9 +84,14 @@ export function PRList({ prs = [], issues, mergeMode = 'local', onComment, onVer
   };
 
   const handleCloseAllStale = async () => {
-    if (!onCloseAllStale) return;
+    if (!onCloseAllStale || closingAll) return;
     if (!window.confirm(`Close all ${stalePRCount} stale PR${stalePRCount !== 1 ? 's' : ''}? These are open PRs whose linked issue is already done or deleted.`)) return;
-    await onCloseAllStale();
+    setClosingAll(true);
+    try {
+      await onCloseAllStale();
+    } finally {
+      setClosingAll(false);
+    }
   };
 
   if (selectedPR) {
@@ -118,9 +124,10 @@ export function PRList({ prs = [], issues, mergeMode = 'local', onComment, onVer
           <button
             className="pr-close-stale-btn"
             onClick={handleCloseAllStale}
+            disabled={closingAll}
             title={`Close ${stalePRCount} stale PR${stalePRCount !== 1 ? 's' : ''} (linked issue done or deleted)`}
           >
-            [× CLOSE {stalePRCount} STALE]
+            {closingAll ? '[× CLOSING…]' : `[× CLOSE ${stalePRCount} STALE]`}
           </button>
         )}
       </div>

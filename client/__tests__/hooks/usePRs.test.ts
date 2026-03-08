@@ -484,5 +484,114 @@ describe('usePRs', () => {
     expect(staleResult.closed).toHaveLength(1);
     expect(staleResult.closed[0].id).toBe('pr-1');
     expect(staleResult.errors).toHaveLength(0);
+    // Should use /api/batch/close-stale-prs (not fragile .replace())
+    expect(fetch).toHaveBeenCalledWith(`${API_BASE}/batch/close-stale-prs`, { method: 'POST' });
+  });
+
+  it('calls onError when closePR fails (HTTP error)', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockPR]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'Cannot close a merged PR' }) }) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.closePR('pr-1');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Cannot close a merged PR');
+  });
+
+  it('calls onError when closePR fails (network error)', async () => {
+    const onError = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockPR]) }) // initial fetch
+      .mockRejectedValueOnce(new Error('Network down')) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.closePR('pr-1');
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to close PR');
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError when closeAllStalePRs fails (HTTP error)', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockPR]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'Server error' }) }) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.closeAllStalePRs();
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to close stale PRs');
+  });
+
+  it('calls onError when closeAllStalePRs fails (network error)', async () => {
+    const onError = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockPR]) }) // initial fetch
+      .mockRejectedValueOnce(new Error('Network down')) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.closeAllStalePRs();
+    });
+
+    expect(onError).toHaveBeenCalledWith('Failed to close stale PRs');
+    consoleSpy.mockRestore();
+  });
+
+  it('calls onError with summary when closeAllStalePRs has partial errors', async () => {
+    const onError = vi.fn();
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockPR]) }) // initial fetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({
+        closed: [{ id: 'pr-1', title: 'Closed PR' }],
+        errors: [{ id: 'pr-2', title: 'Failed PR', error: 'fail' }],
+      }) }) as any;
+
+    const { result } = renderHook(() => usePRs(mockSubscribe, onError));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.closeAllStalePRs();
+    });
+
+    expect(onError).toHaveBeenCalledWith('Closed 1 PR, 1 error');
   });
 });

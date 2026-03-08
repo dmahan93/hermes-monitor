@@ -135,24 +135,33 @@ export function usePRs(subscribe: (handler: (msg: ServerMessage) => void) => () 
       const res = await fetch(`${API_BASE}/prs/${prId}/close`, { method: 'POST' });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        return { error: data?.error || 'Failed to close PR' };
+        const error = data?.error || 'Failed to close PR';
+        onErrorRef.current?.(error);
+        return { error };
       }
       return {};
     } catch (err) {
       console.error('Failed to close PR:', err);
+      onErrorRef.current?.('Failed to close PR');
       return { error: 'Network error' };
     }
   }, []);
 
   const closeAllStalePRs = useCallback(async (): Promise<{ closed: Array<{ id: string; title: string }>; errors: Array<{ id: string; title: string; error: string }> }> => {
     try {
-      const res = await fetch(`${API_BASE.replace('/api', '/api/batch')}/close-stale-prs`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/batch/close-stale-prs`, { method: 'POST' });
       if (!res.ok) {
+        onErrorRef.current?.('Failed to close stale PRs');
         return { closed: [], errors: [{ id: '', title: '', error: 'Request failed' }] };
       }
-      return await res.json();
+      const result = await res.json();
+      if (result.errors?.length > 0) {
+        onErrorRef.current?.(`Closed ${result.closed.length} PR${result.closed.length !== 1 ? 's' : ''}, ${result.errors.length} error${result.errors.length !== 1 ? 's' : ''}`);
+      }
+      return result;
     } catch (err) {
       console.error('Failed to close stale PRs:', err);
+      onErrorRef.current?.('Failed to close stale PRs');
       return { closed: [], errors: [{ id: '', title: '', error: 'Network error' }] };
     }
   }, []);

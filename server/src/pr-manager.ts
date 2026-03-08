@@ -884,6 +884,12 @@ export class PRManager {
     }
     this.reviewerRelaunchAttempts.delete(prId);
 
+    // Clean up worktree to avoid resource leaks (mirrors merge/confirmMerge behavior)
+    this.worktreeManager.remove(pr.issueId, false);
+    try {
+      execSync('git worktree prune', { cwd: pr.repoPath, stdio: 'pipe' });
+    } catch {}
+
     pr.status = 'closed';
     pr.updatedAt = Date.now();
     this.persist(pr);

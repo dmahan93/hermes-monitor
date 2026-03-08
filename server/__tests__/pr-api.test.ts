@@ -439,6 +439,14 @@ describe('PRManager.close', () => {
     const updated = prManager.get('close-with-terminal');
     expect(updated!.reviewerTerminalId).toBeNull();
   });
+
+  it('calls worktreeManager.remove to clean up worktree', () => {
+    const removeSpy = vi.spyOn(worktreeManager, 'remove').mockReturnValue(true);
+    const pr = insertTestPR(prManager, { id: 'close-cleanup', status: 'open', verdict: 'pending' });
+    prManager.close(pr.id);
+    expect(removeSpy).toHaveBeenCalledWith(pr.issueId, false);
+    removeSpy.mockRestore();
+  });
 });
 
 describe('PR API — Close PR endpoint', () => {

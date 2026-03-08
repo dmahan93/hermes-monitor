@@ -580,4 +580,15 @@ describe('PRDetail — Close PR button', () => {
       expect(props.onClosePR).toHaveBeenCalledWith('pr-1');
     });
   });
+
+  it('displays close error when onClosePR returns error', async () => {
+    window.confirm = vi.fn(() => true);
+    const props = defaultProps();
+    props.onClosePR = vi.fn().mockResolvedValue({ error: 'Cannot close a merged PR' });
+    render(<PRDetail {...props} />);
+    fireEvent.click(screen.getByText(/× CLOSE/));
+    await waitFor(() => {
+      expect(screen.getByText('Cannot close a merged PR')).toBeInTheDocument();
+    });
+  });
 });

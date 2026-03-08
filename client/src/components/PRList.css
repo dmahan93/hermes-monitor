@@ -180,8 +180,8 @@
   opacity: 0.5;
 }
 
-.pr-list-close-btn:hover {
-  opacity: 1 !important;
+.pr-list-item:hover .pr-list-close-btn:hover {
+  opacity: 1;
   color: var(--error);
 }
 

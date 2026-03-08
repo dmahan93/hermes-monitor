@@ -35,6 +35,7 @@ export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComme
     checking: true, canMerge: false, hasConflicts: false,
   });
   const [mergeError, setMergeError] = useState<string | null>(null);
+  const [closeError, setCloseError] = useState<string | null>(null);
   const [githubPrCreated, setGithubPrCreated] = useState(false);
   const [screenshots, setScreenshots] = useState<Screenshot[]>(pr.screenshots || []);
   const status = STATUS_LABELS[pr.status] || STATUS_LABELS.open;
@@ -176,7 +177,9 @@ export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComme
               className="pr-action-btn pr-close-btn"
               onClick={async () => {
                 if (!window.confirm('Close this PR? It will be marked as closed.')) return;
-                await onClosePR(pr.id);
+                setCloseError(null);
+                const result = await onClosePR(pr.id);
+                if (result.error) setCloseError(result.error);
               }}
             >
               [× CLOSE]
@@ -254,6 +257,11 @@ export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComme
                 [🔧 FIX CONFLICTS]
               </button>
             )}
+          </div>
+        )}
+        {closeError && (
+          <div className="pr-merge-error">
+            {closeError}
           </div>
         )}
       </div>
