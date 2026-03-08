@@ -163,7 +163,7 @@ app.use('/ticket', agentRouter);
 const clientDistPath = resolve(new URL('.', import.meta.url).pathname, '../../client/dist');
 if (existsSync(clientDistPath)) {
   app.use(serveStatic(clientDistPath));
-  app.get('*', (_req, res) => {
+  app.get('/{*path}', (_req, res) => {
     res.sendFile(join(clientDistPath, 'index.html'));
   });
 }
