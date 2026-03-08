@@ -659,17 +659,25 @@ describe('PRManager.handleReviewerExit — auto-relaunch', () => {
 
     const originalTermId = term.id;
 
-    // Wait for auto-relaunch to fire — PR should get a new terminal ID
-    await waitFor(() => {
-      const current = prManager.get(pr.id);
-      return !!current && current.reviewerTerminalId !== null
-        && current.reviewerTerminalId !== originalTermId;
-    }, 5000);
+    // Use an event listener to catch the relaunch — the relaunched terminal
+    // may exit extremely quickly (bad cwd), so polling can miss the brief
+    // window where reviewerTerminalId is set to the new ID.
+    let relaunchedTerminalId: string | null = null;
+    prManager.onEvent((_event, updatedPr) => {
+      if (
+        updatedPr.id === pr.id &&
+        updatedPr.reviewerTerminalId !== null &&
+        updatedPr.reviewerTerminalId !== originalTermId
+      ) {
+        relaunchedTerminalId = updatedPr.reviewerTerminalId;
+      }
+    });
 
-    const updated = prManager.get(pr.id)!;
-    expect(updated.status).toBe('reviewing');
-    expect(updated.reviewerTerminalId).toBeTruthy();
-    expect(updated.reviewerTerminalId).not.toBe(originalTermId);
+    // Wait for the event listener to capture a relaunch
+    await waitFor(() => relaunchedTerminalId !== null, 5000);
+
+    expect(relaunchedTerminalId).toBeTruthy();
+    expect(relaunchedTerminalId).not.toBe(originalTermId);
   });
 
   it('auto-relaunch: stops after max relaunch attempts', async () => {
@@ -724,7 +732,7 @@ describe('PRManager.handleReviewerExit — auto-relaunch', () => {
     expect(updated.comments.some((c) => c.body.includes('VERDICT: APPROVED'))).toBe(true);
   });
 
-  it('auto-relaunch: does NOT relaunch when terminal is killed intentionally', async () => {
+  it('auto-relaunch: does NOT relaunch when terminal is killed via internal method', async () => {
     const term = terminalManager.create({ command: 'sleep 60' });
     const prId = 'relaunch-pr-4';
     insertTestPR(prManager, {
@@ -733,14 +741,16 @@ describe('PRManager.handleReviewerExit — auto-relaunch', () => {
       reviewerTerminalId: term.id,
     });
 
-    // Kill the terminal intentionally (simulates what relaunchReview does)
+    // Simulate what relaunchReview/fixConflicts does: mark the terminal as
+    // intentionally killed so handleReviewerExit skips cleanup
+    (prManager as any).intentionallyKilledTerminals.add(term.id);
     terminalManager.kill(term.id);
 
     // Wait a bit — should NOT relaunch
     await new Promise((r) => setTimeout(r, 500));
 
     // PR should still have the old terminal ID (handleReviewerExit returned early)
-    // since we didn't clear it manually
+    // since the caller (relaunchReview) handles its own cleanup
     const updated = prManager.get(prId)!;
     expect(updated.status).toBe('reviewing');
     // No warning comment added (handleReviewerExit returned early)

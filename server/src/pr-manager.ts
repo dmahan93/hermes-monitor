@@ -62,6 +62,9 @@ export class PRManager {
   private reviewerRelaunchAttempts = new Map<string, number>();
   private reviewerRelaunchTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private relaunchDelayMs = REVIEWER_RELAUNCH_DELAY_MS;
+  /** Terminal IDs being intentionally killed by internal methods (relaunchReview, fixConflicts).
+   *  handleReviewerExit skips cleanup for these — the caller handles it. */
+  private intentionallyKilledTerminals = new Set<string>();
 
   constructor(terminalManager: TerminalManager, worktreeManager: WorktreeManager) {
     this.terminalManager = terminalManager;
@@ -254,11 +257,13 @@ export class PRManager {
    * 'reviewing' status, auto-relaunch up to MAX_REVIEWER_RELAUNCH times.
    */
   private handleReviewerExit(terminalId: string): void {
-    // Key insight: when a terminal is killed intentionally (via kill()),
-    // it's removed from the TerminalManager map BEFORE onExit fires.
-    // So if the terminal is still in the map, it was a natural exit.
-    const terminalInfo = this.terminalManager.get(terminalId);
-    if (!terminalInfo) return; // Killed intentionally — caller handles cleanup
+    // Check if this terminal was intentionally killed by an internal method
+    // (relaunchReview, fixConflicts) that handles its own PR state cleanup.
+    // External kills (user via UI, killAll) should still trigger cleanup here.
+    if (this.intentionallyKilledTerminals.has(terminalId)) {
+      this.intentionallyKilledTerminals.delete(terminalId);
+      return;
+    }
 
     // Find the PR this reviewer belongs to
     const pr = Array.from(this.prs.values()).find(
@@ -317,13 +322,21 @@ export class PRManager {
           // Clean up the exited terminal from the manager
           this.terminalManager.kill(terminalId);
 
+          // Clear stale terminal reference and persist intermediate state
+          // so the frontend doesn't show a ghost terminal during the delay,
+          // and a server crash during the window won't leave stale state.
+          pr.reviewerTerminalId = null;
+          pr.updatedAt = Date.now();
+          this.persist(pr);
+          this.emit('pr:updated', pr);
+
           // Schedule relaunch after delay
           const existingTimer = this.reviewerRelaunchTimers.get(pr.id);
           if (existingTimer) clearTimeout(existingTimer);
 
           const timer = setTimeout(() => {
             this.reviewerRelaunchTimers.delete(pr.id);
-            this.performReviewerRelaunch(pr.id, terminalId);
+            this.performReviewerRelaunch(pr.id);
           }, this.relaunchDelayMs);
           this.reviewerRelaunchTimers.set(pr.id, timer);
 
@@ -361,29 +374,21 @@ export class PRManager {
    * Actually perform the reviewer relaunch after the delay.
    * Re-checks state in case things changed during the delay.
    */
-  private performReviewerRelaunch(prId: string, oldTerminalId: string): void {
+  private performReviewerRelaunch(prId: string): void {
     const pr = this.prs.get(prId);
     if (!pr) return;
 
     // Re-check: status may have changed during the delay (e.g., user intervened)
     if (pr.status !== 'reviewing') return;
 
-    // Re-check: reviewerTerminalId may have changed (e.g., manual relaunch).
-    // After the auto-relaunch path in handleReviewerExit, the old terminal was
-    // killed but reviewerTerminalId was NOT cleared — it still holds the old ID.
-    // However, kill() removed it from the manager, so a manual relaunch would
-    // have set a new ID. Check that nobody else relaunched in the meantime.
-    if (pr.reviewerTerminalId !== null && pr.reviewerTerminalId !== oldTerminalId) return;
-
-    // Save the relaunch attempt count — relaunchReview resets it (for manual
-    // relaunches) but we need to preserve it for auto-relaunch tracking
-    const attempts = this.reviewerRelaunchAttempts.get(prId) || 0;
+    // Re-check: if someone manually relaunched during the delay,
+    // reviewerTerminalId will be non-null (pointing to the new terminal).
+    // In that case, don't double-relaunch.
+    if (pr.reviewerTerminalId !== null) return;
 
     console.log(`[auto-relaunch] Relaunching reviewer for PR "${pr.title}"`);
-    this.relaunchReview(prId);
-
-    // Restore the attempt count so subsequent auto-relaunches respect the limit
-    this.reviewerRelaunchAttempts.set(prId, attempts);
+    // Use resetAttempts=false so auto-relaunch preserves the attempt counter
+    this.relaunchReview(prId, undefined, { resetAttempts: false });
   }
 
   /**
@@ -428,12 +433,19 @@ export class PRManager {
    * Relaunch a review — kill existing reviewer if any, re-spawn a new one.
    * Useful when the reviewer terminal crashed or the review was lost.
    */
-  relaunchReview(prId: string, submitterNotes?: string): PullRequest | null {
+  relaunchReview(
+    prId: string,
+    submitterNotes?: string,
+    options?: { resetAttempts?: boolean },
+  ): PullRequest | null {
     const pr = this.prs.get(prId);
     if (!pr) return null;
 
-    // Reset auto-relaunch attempts — a fresh review gets fresh retries
-    this.reviewerRelaunchAttempts.delete(prId);
+    // Reset auto-relaunch attempts — a fresh (external) review gets fresh retries.
+    // Internal auto-relaunches pass resetAttempts=false to preserve the counter.
+    if (options?.resetAttempts !== false) {
+      this.reviewerRelaunchAttempts.delete(prId);
+    }
 
     // Cancel any pending auto-relaunch timer
     const pendingRelaunch = this.reviewerRelaunchTimers.get(prId);
@@ -446,6 +458,8 @@ export class PRManager {
     if (pr.reviewerTerminalId) {
       this.cancelPendingRemoval(pr.reviewerTerminalId);
       this.conflictFixerTerminals.delete(pr.reviewerTerminalId);
+      // Mark as intentionally killed so handleReviewerExit skips cleanup
+      this.intentionallyKilledTerminals.add(pr.reviewerTerminalId);
       this.terminalManager.kill(pr.reviewerTerminalId);
       pr.reviewerTerminalId = null;
     }
@@ -587,6 +601,8 @@ export class PRManager {
     if (pr.reviewerTerminalId) {
       this.cancelPendingRemoval(pr.reviewerTerminalId);
       this.conflictFixerTerminals.delete(pr.reviewerTerminalId);
+      // Mark as intentionally killed so handleReviewerExit skips cleanup
+      this.intentionallyKilledTerminals.add(pr.reviewerTerminalId);
       this.terminalManager.kill(pr.reviewerTerminalId);
       pr.reviewerTerminalId = null;
     }

@@ -272,7 +272,7 @@ export class IssueManager {
         }
       }
 
-      let command = issue.command
+      const command = issue.command
         ? this.interpolateCommand(issue.command, issue)
         : undefined;
 

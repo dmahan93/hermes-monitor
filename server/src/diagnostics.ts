@@ -13,6 +13,7 @@
 
 import { mkdirSync, writeFileSync, readdirSync, unlinkSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { stripAnsi } from './strip-ansi.js';
 
 const MAX_DIAGNOSTIC_FILES = 5;
 const SCROLLBACK_LINES = 100;
@@ -30,18 +31,6 @@ export interface SaveDiagnosticsOptions {
   exitCode: number;
   scrollback: string;
   diagnosticsBase: string;
-}
-
-/**
- * Strip ANSI escape sequences from terminal output for readable log files.
- */
-function stripAnsi(str: string): string {
-  return str
-    .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
-    .replace(/\x1b[()][A-Z0-9]/g, '')
-    .replace(/\x1b[=>]/g, '')
-    .replace(/\r/g, '');
 }
 
 /**
