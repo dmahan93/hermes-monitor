@@ -52,6 +52,7 @@ function getPackageVersion() {
 
 /**
  * Detect the default remote branch name (master or main).
+ * Falls back through: remote HEAD → origin/master → origin/main → 'master'.
  * @returns {string}
  */
 function getDefaultBranch() {
@@ -81,7 +82,8 @@ function getDefaultBranch() {
 
 /**
  * Display version information.
- * Shows package version, git commit, and available updates.
+ * Shows package version, git commit, and cached update status.
+ * Does NOT hit the network — uses cached check result for speed.
  */
 function showVersion() {
   const version = getPackageVersion();
@@ -89,20 +91,16 @@ function showVersion() {
 
   console.log(`hermes-monitor v${version} (${commit})`);
 
-  // Check for updates (fetch from remote)
-  try {
-    const branch = getDefaultBranch();
-    git('fetch --quiet');
-    const count = git(`rev-list HEAD..origin/${branch} --count`);
-    const behind = parseInt(count, 10);
-    if (behind > 0) {
-      console.log(`\n  ${behind} update${behind === 1 ? '' : 's'} available. Run: hermes-monitor update`);
+  // Use cached update info (no network call — keeps `version` instant)
+  const cached = readCache();
+  if (cached && (Date.now() - cached.checkedAt) < CACHE_TTL_MS) {
+    if (cached.count > 0) {
+      console.log(`\n  ${cached.count} update${cached.count === 1 ? '' : 's'} available. Run: hermes-monitor update`);
     } else {
       console.log('\n  Up to date.');
     }
-  } catch {
-    // Offline or not a git repo — skip update check
-    console.log('\n  Could not check for updates (offline or not a git repo).');
+  } else {
+    console.log('\n  Update status unknown. Start hermes-monitor to check, or run: hermes-monitor update');
   }
 }
 
@@ -112,10 +110,41 @@ function showVersion() {
 
 /**
  * Perform a full update: git pull, npm install, npm run build.
- * Reports what changed.
+ * Reports what changed. Exits with non-zero code on build failure.
+ *
+ * Safety checks:
+ * - Refuses to run if not on the default branch (master/main)
+ * - Refuses to run if the working tree has uncommitted changes
  */
 function performUpdate() {
   const branch = getDefaultBranch();
+
+  // Safety: ensure we're on the default branch
+  try {
+    const currentBranch = git('rev-parse --abbrev-ref HEAD');
+    if (currentBranch !== branch) {
+      console.error(`Error: Cannot update — not on the '${branch}' branch (currently on '${currentBranch}').`);
+      console.error(`Switch to ${branch} first: git checkout ${branch}`);
+      process.exit(1);
+    }
+  } catch {
+    console.error('Error: Could not determine current git branch.');
+    process.exit(1);
+  }
+
+  // Safety: ensure working tree is clean
+  try {
+    const status = git('status --porcelain');
+    if (status.length > 0) {
+      console.error('Error: Working tree has uncommitted changes.');
+      console.error('Stash or commit your changes first:');
+      console.error('  git stash && hermes-monitor update && git stash pop');
+      process.exit(1);
+    }
+  } catch {
+    // If git status fails, proceed anyway
+  }
+
   const oldHash = getCommitHash();
 
   console.log('Updating hermes-monitor...\n');
@@ -142,7 +171,7 @@ function performUpdate() {
   try {
     execSync(`git pull origin ${branch}`, { cwd: ROOT, stdio: 'inherit' });
   } catch {
-    console.error('\nError: git pull failed. You may have local changes.');
+    console.error('\nError: git pull failed.');
     console.error('Try: git stash && hermes-monitor update && git stash pop');
     process.exit(1);
   }
@@ -164,15 +193,16 @@ function performUpdate() {
       execSync('npm run build', { cwd: ROOT, stdio: 'inherit' });
     }
   } catch {
-    // Build failure is non-fatal for the update command
-    console.warn('\n  Warning: build step failed (non-fatal).');
+    console.error('\n  Error: Build step failed. The app may be in a broken state.');
+    console.error(`  Try running manually: cd ${ROOT} && npm run build`);
+    process.exitCode = 1;
   }
 
   // 5. Report
   const newHash = getCommitHash();
   console.log(`\nUpdated from ${oldHash} to ${newHash} (${commitCount} commit${commitCount === 1 ? '' : 's'})`);
 
-  // Clear the update check cache
+  // Reset the update check cache
   clearCache();
 }
 
@@ -182,12 +212,13 @@ function performUpdate() {
 
 /**
  * Read the cached update check result.
+ * @param {string} [cacheFile] - Override cache file path (for testing)
  * @returns {{ count: number, checkedAt: number } | null}
  */
-function readCache() {
+function readCache(cacheFile = CACHE_FILE) {
   try {
-    if (!existsSync(CACHE_FILE)) return null;
-    const data = JSON.parse(readFileSync(CACHE_FILE, 'utf8'));
+    if (!existsSync(cacheFile)) return null;
+    const data = JSON.parse(readFileSync(cacheFile, 'utf8'));
     if (typeof data.count !== 'number' || typeof data.checkedAt !== 'number') return null;
     return data;
   } catch {
@@ -198,25 +229,29 @@ function readCache() {
 /**
  * Write update check result to cache.
  * @param {number} count
+ * @param {object} [opts] - Override cache paths (for testing)
+ * @param {string} [opts.dir] - Cache directory
+ * @param {string} [opts.file] - Cache file path
  */
-function writeCache(count) {
+function writeCache(count, { dir = CACHE_DIR, file = CACHE_FILE } = {}) {
   try {
-    if (!existsSync(CACHE_DIR)) {
-      mkdirSync(CACHE_DIR, { recursive: true });
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
     }
-    writeFileSync(CACHE_FILE, JSON.stringify({ count, checkedAt: Date.now() }));
+    writeFileSync(file, JSON.stringify({ count, checkedAt: Date.now() }));
   } catch {
     // Cache write failure is non-fatal
   }
 }
 
 /**
- * Clear the update check cache.
+ * Reset the update check cache (writes count=0, preserving the file).
+ * @param {string} [cacheFile] - Override cache file path (for testing)
  */
-function clearCache() {
+function clearCache(cacheFile = CACHE_FILE) {
   try {
-    if (existsSync(CACHE_FILE)) {
-      writeFileSync(CACHE_FILE, JSON.stringify({ count: 0, checkedAt: Date.now() }));
+    if (existsSync(cacheFile)) {
+      writeFileSync(cacheFile, JSON.stringify({ count: 0, checkedAt: Date.now() }));
     }
   } catch {
     // Non-fatal
@@ -256,7 +291,7 @@ function checkForUpdatesInBackground() {
     },
   );
   // Unref so it doesn't prevent the process from exiting
-  if (child.unref) child.unref();
+  child.unref();
 }
 
 /**
@@ -264,7 +299,7 @@ function checkForUpdatesInBackground() {
  * @param {number} count
  */
 function printUpdateNotice(count) {
-  console.log(`  update:  ${count} new commit${count === 1 ? '' : 's'} available. Run: hermes-monitor update`);
+  process.stderr.write(`  update:  ${count} new commit${count === 1 ? '' : 's'} available. Run: hermes-monitor update\n`);
 }
 
 module.exports = {
@@ -278,7 +313,9 @@ module.exports = {
   readCache,
   writeCache,
   clearCache,
+  printUpdateNotice,
   ROOT,
+  CACHE_DIR,
   CACHE_FILE,
   CACHE_TTL_MS,
 };
