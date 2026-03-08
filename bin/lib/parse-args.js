@@ -13,18 +13,22 @@ class ParseError extends Error {
   }
 }
 
+/** Recognized subcommands that don't start the server */
+const SUBCOMMANDS = ['update', 'version'];
+
 /**
  * Parse CLI arguments into an options object.
  *
  * @param {string[]} argv - The arguments (process.argv.slice(2))
  * @param {object}   [defaults] - Override default values (useful for testing)
  * @param {string}   [defaults.cwd] - Working directory for resolving relative --repo paths
- * @returns {{ port: number, serverPort: number, repo: string, browser: boolean, build: boolean, help: boolean }}
+ * @returns {{ command: string|null, port: number, serverPort: number, repo: string, browser: boolean, build: boolean, help: boolean }}
  * @throws {ParseError} on invalid arguments
  */
 function parseArgs(argv, defaults = {}) {
   const cwd = defaults.cwd || process.cwd();
   const opts = {
+    command: null,
     port: 3000,
     serverPort: 4000,
     repo: cwd,
@@ -75,12 +79,17 @@ function parseArgs(argv, defaults = {}) {
         opts.help = true;
         break;
       default:
+        // Check for subcommands (only valid as first argument, no command set yet)
+        if (i === 0 && SUBCOMMANDS.includes(arg)) {
+          opts.command = arg;
+          break;
+        }
         throw new ParseError(`Unknown option: ${arg}\nRun 'hermes-monitor --help' for usage`);
     }
   }
 
-  // Validate port collision (skip when just showing help)
-  if (!opts.help && opts.port === opts.serverPort) {
+  // Validate port collision (skip when just showing help or running a subcommand)
+  if (!opts.help && !opts.command && opts.port === opts.serverPort) {
     throw new ParseError('--port and --server-port must be different');
   }
 
@@ -92,6 +101,11 @@ hermes-monitor — start the Hermes Monitor dashboard
 
 Usage:
   hermes-monitor [options]
+  hermes-monitor <command>
+
+Commands:
+  update                   Pull latest code, install deps, rebuild
+  version                  Show version, commit hash, and available updates
 
 Options:
   --port, -p <port>        Client port (default: 3000)
@@ -107,6 +121,8 @@ Examples:
   hermes-monitor --port 5000              # custom port
   hermes-monitor --server-port 8000       # custom server port
   hermes-monitor --build --no-browser     # production mode, no browser
+  hermes-monitor version                  # show version info
+  hermes-monitor update                   # self-update
 `;
 
-module.exports = { parseArgs, ParseError, HELP_TEXT };
+module.exports = { parseArgs, ParseError, HELP_TEXT, SUBCOMMANDS };
