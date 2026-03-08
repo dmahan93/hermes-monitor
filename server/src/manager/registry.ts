@@ -212,7 +212,14 @@ export class Registry {
     return row ? this.rowToEntry(row) : null;
   }
 
-  /** Look up a repo by its assigned port. Useful for proxy routing. */
+  /**
+   * Look up a repo by its assigned port. Useful for proxy routing.
+   *
+   * NOTE: Proxy wiring (spec item 4: "Wire into the proxy so it can look up
+   * repoId → port for routing") is deferred to a follow-up PR. The proxy
+   * infrastructure does not exist yet — this method is the building block
+   * that the proxy will use once it's implemented.
+   */
   findByPort(port: number): RepoEntry | null {
     const row = this.db.prepare('SELECT * FROM repos WHERE port = ?').get(port) as any;
     return row ? this.rowToEntry(row) : null;

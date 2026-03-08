@@ -107,13 +107,18 @@ export function createRegistryApiRouter(registry: Registry): Router {
     }
   });
 
-  /** DELETE /hub/repos/:id — unregister a repo */
+  /** DELETE /hub/repos/:id — unregister a repo (must be stopped first) */
   router.delete('/hub/repos/:id', (req, res) => {
-    const removed = registry.unregister(req.params.id);
-    if (!removed) {
+    const entry = registry.get(req.params.id);
+    if (!entry) {
       res.status(404).json({ error: 'Repo not found' });
       return;
     }
+    if (entry.status === 'running' || entry.status === 'starting') {
+      res.status(409).json({ error: 'Cannot unregister a running repo. Stop it first.' });
+      return;
+    }
+    registry.unregister(req.params.id);
     res.json({ ok: true });
   });
 

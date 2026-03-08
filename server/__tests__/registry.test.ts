@@ -573,6 +573,62 @@ describe('Registry API', () => {
     expect(res.body.error).toBe('Repo not found');
   });
 
+  it('DELETE /api/hub/repos/:id returns 409 when repo is running', async () => {
+    const repoPath = makeRepo('running-repo');
+    const created = await request(server, 'POST', '/api/hub/repos', { path: repoPath });
+    // Set repo to running
+    await request(server, 'PATCH', `/api/hub/repos/${created.body.id}`, {
+      status: 'running',
+      pid: 12345,
+    });
+    const res = await request(server, 'DELETE', `/api/hub/repos/${created.body.id}`);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain('Cannot unregister a running repo');
+
+    // Verify repo is still registered
+    const list = await request(server, 'GET', '/api/hub/repos');
+    expect(list.body).toHaveLength(1);
+  });
+
+  it('DELETE /api/hub/repos/:id returns 409 when repo is starting', async () => {
+    const repoPath = makeRepo('starting-repo');
+    const created = await request(server, 'POST', '/api/hub/repos', { path: repoPath });
+    // Set repo to starting
+    await request(server, 'PATCH', `/api/hub/repos/${created.body.id}`, {
+      status: 'starting',
+    });
+    const res = await request(server, 'DELETE', `/api/hub/repos/${created.body.id}`);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain('Cannot unregister a running repo');
+  });
+
+  it('DELETE /api/hub/repos/:id succeeds when repo is stopped', async () => {
+    const repoPath = makeRepo('stopped-repo');
+    const created = await request(server, 'POST', '/api/hub/repos', { path: repoPath });
+    // Set to running then back to stopped
+    await request(server, 'PATCH', `/api/hub/repos/${created.body.id}`, {
+      status: 'running',
+      pid: 12345,
+    });
+    await request(server, 'PATCH', `/api/hub/repos/${created.body.id}`, {
+      status: 'stopped',
+    });
+    const res = await request(server, 'DELETE', `/api/hub/repos/${created.body.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('DELETE /api/hub/repos/:id succeeds when repo is in error state', async () => {
+    const repoPath = makeRepo('error-repo');
+    const created = await request(server, 'POST', '/api/hub/repos', { path: repoPath });
+    await request(server, 'PATCH', `/api/hub/repos/${created.body.id}`, {
+      status: 'error',
+    });
+    const res = await request(server, 'DELETE', `/api/hub/repos/${created.body.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
   // ── Port auto-assignment through API ──
 
   it('auto-assigns incrementing ports through API', async () => {
