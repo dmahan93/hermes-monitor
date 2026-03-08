@@ -173,7 +173,11 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
         console.error('[pr-api] Failed to create GitHub PR in both mode:', ghResult.error);
         // Continue with local merge even if GH PR fails — it's a best-effort side effect
       }
-      const result = prManager.merge(req.params.id);
+      // Pass skipGitHubClose: true so merge() doesn't close the just-created GH PR.
+      // merge() normally calls closeGitHubPR as part of its cleanup, but in 'both' mode
+      // we want the GH PR to stay open — GitHub will auto-detect the merge when we push
+      // the target branch with the merge commit.
+      const result = prManager.merge(req.params.id, { skipGitHubClose: true });
       if (result.error || !result.pr) {
         res.status(500).json({ error: result.error || 'Merge failed' });
         return;
@@ -182,7 +186,7 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
       if (issueManager) {
         issueManager.changeStatus(result.pr.issueId, 'done');
       }
-      res.json(result.pr);
+      res.json({ status: 'merged', prUrl: ghResult?.prUrl, pr: result.pr });
       return;
     }
 

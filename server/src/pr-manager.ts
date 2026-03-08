@@ -640,7 +640,7 @@ export class PRManager {
     return { pr };
   }
 
-  merge(prId: string): { pr?: PullRequest; error?: string } {
+  merge(prId: string, options?: { skipGitHubClose?: boolean }): { pr?: PullRequest; error?: string } {
     const pr = this.prs.get(prId);
     if (!pr) return { error: 'PR not found' };
 
@@ -716,10 +716,17 @@ export class PRManager {
     // because they have hard ordering dependencies:
     //   1. pushMerge must complete before closeGitHubPR (so merged state is visible on remote)
     //   2. deleteRemoteBranch must run after closeGitHubPR (PR still references the branch)
+    //
+    // When skipGitHubClose is true (used by 'both' mode), we still push the merge
+    // to the remote, but skip closeGitHubPR and deleteRemoteBranch. In 'both' mode
+    // a GH PR was just created — pushing the merge commit lets GitHub auto-detect
+    // the merge and close the PR naturally. Explicitly closing it would race with
+    // GitHub's detection and leave a confusing "Merged locally" comment.
     if (config.githubEnabled) {
       const sourceBranch = pr.sourceBranch;
       const githubPrUrl = pr.githubPrUrl;
       const repoPath = pr.repoPath;
+      const skipClose = options?.skipGitHubClose ?? false;
 
       (async () => {
         try {
@@ -728,12 +735,14 @@ export class PRManager {
             console.warn(`[github] Push merge failed, skipping GitHub cleanup: ${pushResult.error}`);
             return;
           }
-          if (githubPrUrl) {
-            await closeGitHubPR(githubPrUrl, repoPath);
-            // Don't gate deleteRemoteBranch on close success —
-            // branch should be cleaned up even if closing the PR fails
+          if (!skipClose) {
+            if (githubPrUrl) {
+              await closeGitHubPR(githubPrUrl, repoPath);
+              // Don't gate deleteRemoteBranch on close success —
+              // branch should be cleaned up even if closing the PR fails
+            }
+            await deleteRemoteBranch(sourceBranch, repoPath);
           }
-          await deleteRemoteBranch(sourceBranch, repoPath);
         } catch (err) {
           console.error('[github] Error during merge cleanup:', err);
         }

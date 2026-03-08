@@ -1172,6 +1172,53 @@ describe('PR API — GitHub merge mode endpoint', () => {
     expect(callOrder).toEqual(['createGitHubPRForMerge', 'merge']);
   });
 
+  it('POST /api/prs/:id/merge in both mode passes skipGitHubClose to merge()', async () => {
+    updateConfig({ mergeMode: 'both' });
+    const pr = insertTestPR(prManager, {
+      id: 'both-merge-skip-1',
+      status: 'approved',
+      verdict: 'approved',
+    });
+
+    vi.spyOn(prManager, 'createGitHubPRForMerge').mockResolvedValue({
+      pr, prUrl: 'https://github.com/test/repo/pull/30',
+    });
+    const mergeSpy = vi.spyOn(prManager, 'merge').mockImplementation(() => {
+      pr.status = 'merged';
+      return { pr };
+    });
+
+    await request(server, 'POST', '/api/prs/both-merge-skip-1/merge');
+
+    // merge() must be called with skipGitHubClose: true so it doesn't
+    // close the just-created GH PR
+    expect(mergeSpy).toHaveBeenCalledWith('both-merge-skip-1', { skipGitHubClose: true });
+  });
+
+  it('POST /api/prs/:id/merge in both mode returns { status, prUrl, pr } response shape', async () => {
+    updateConfig({ mergeMode: 'both' });
+    const pr = insertTestPR(prManager, {
+      id: 'both-merge-shape-1',
+      status: 'approved',
+      verdict: 'approved',
+    });
+
+    vi.spyOn(prManager, 'createGitHubPRForMerge').mockResolvedValue({
+      pr, prUrl: 'https://github.com/test/repo/pull/25',
+    });
+    vi.spyOn(prManager, 'merge').mockImplementation(() => {
+      pr.status = 'merged';
+      return { pr };
+    });
+
+    const res = await request(server, 'POST', '/api/prs/both-merge-shape-1/merge');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('merged');
+    expect(res.body.prUrl).toBe('https://github.com/test/repo/pull/25');
+    expect(res.body.pr).toBeDefined();
+    expect(res.body.pr.id).toBe('both-merge-shape-1');
+  });
+
   it('POST /api/prs/:id/merge in both mode continues merging even if GH PR fails', async () => {
     updateConfig({ mergeMode: 'both' });
     const pr = insertTestPR(prManager, {
@@ -1192,6 +1239,35 @@ describe('PR API — GitHub merge mode endpoint', () => {
     expect(res.status).toBe(200);
     // Merge should still succeed even if GH PR failed
     expect(res.body.status).toBe('merged');
+    // prUrl should be undefined when GH PR creation failed
+    expect(res.body.prUrl).toBeUndefined();
+  });
+
+  it('POST /api/prs/:id/merge in both mode moves linked issue to done', async () => {
+    updateConfig({ mergeMode: 'both' });
+    const issue = issueManager.create({ title: 'Both Mode Issue' });
+    (issue as any).status = 'review';
+    const pr = insertTestPR(prManager, {
+      id: 'both-merge-issue-1',
+      issueId: issue.id,
+      status: 'approved',
+      verdict: 'approved',
+    });
+
+    vi.spyOn(prManager, 'createGitHubPRForMerge').mockResolvedValue({
+      pr, prUrl: 'https://github.com/test/repo/pull/50',
+    });
+    vi.spyOn(prManager, 'merge').mockImplementation(() => {
+      pr.status = 'merged';
+      return { pr };
+    });
+
+    const res = await request(server, 'POST', `/api/prs/both-merge-issue-1/merge`);
+    expect(res.status).toBe(200);
+
+    // Issue should be moved to done
+    const updatedIssue = issueManager.get(issue.id);
+    expect(updatedIssue!.status).toBe('done');
   });
 });
 
