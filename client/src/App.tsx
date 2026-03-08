@@ -175,22 +175,6 @@ export default function App() {
     }
   }, [termViewSelection, termViewAgentIssue]);
 
-  // Refetch terminals and PRs when issues change
-  useEffect(() => {
-    const unsub = subscribe((msg) => {
-      if (msg.type === 'issue:updated' || msg.type === 'issue:deleted') {
-        setTimeout(() => {
-          refetchTerminals();
-          refetchPRs();
-        }, 300);
-      }
-      if (msg.type === 'pr:created' || msg.type === 'pr:updated') {
-        setTimeout(() => refetchTerminals(), 300);
-      }
-    });
-    return unsub;
-  }, [subscribe, refetchTerminals, refetchPRs]);
-
   const handleAddTerminal = useCallback(() => {
     addTerminal();
   }, [addTerminal]);
