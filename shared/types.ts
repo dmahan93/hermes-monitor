@@ -28,6 +28,7 @@ export interface Issue {
   branch: string | null;
   parentId: string | null;  // if set, this issue is a subtask of the parent
   submitterNotes?: string;  // transient: notes from agent when submitting for review
+  screenshotBypassReason?: string;  // transient: why screenshots were bypassed (auto-detected or agent-provided)
   createdAt: number;
   updatedAt: number;
 }

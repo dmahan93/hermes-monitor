@@ -413,13 +413,29 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
   });
 
   /**
-   * Helper: create an issue, move to in_progress, mock getChangedFiles.
+   * Helper: create an issue, move to in_progress, mock getChangedFiles and getDiffForFiles.
    * Tests the agent API's enforcement logic without requiring real git worktrees.
+   *
+   * By default, mocks getDiffForFiles to return a visual change diff so that
+   * the auto-bypass analyzer doesn't interfere. Pass a custom diff to override.
    */
-  function setupIssueWithChangedFiles(title: string, changedFiles: string[]): { issue: any } {
+  function setupIssueWithChangedFiles(title: string, changedFiles: string[], diff?: string): { issue: any } {
     const issue = issueManager.create({ title });
     issueManager.changeStatus(issue.id, 'in_progress');
     vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue(changedFiles);
+
+    // Default diff simulates a visual change so screenshot enforcement triggers.
+    // Tests that want to test auto-bypass should provide their own diff.
+    const defaultDiff = changedFiles.map((f) => [
+      `diff --git a/${f} b/${f}`,
+      `--- a/${f}`,
+      `+++ b/${f}`,
+      '@@ -1 +1 @@',
+      '-  /* original */',
+      '+  color: red; /* visual change */',
+    ].join('\n')).join('\n');
+
+    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(diff !== undefined ? diff : defaultDiff);
     return { issue: issueManager.get(issue.id)! };
   }
 
@@ -519,5 +535,168 @@ describe('Agent API — Screenshot Requirement Enforcement', () => {
     res = await request(server, 'GET', `/agent/${issue.id}/info`);
     expect(res.body.guidelines.requireScreenshotsForUiChanges).toBe(false);
     expect(res.body.guidelines.screenshots).not.toContain('REQUIRED');
+  });
+
+  it('GET /agent/:id/info mentions auto-detection in guidelines', async () => {
+    config.requireScreenshotsForUiChanges = true;
+    const issue = issueManager.create({ title: 'Auto-detect mention' });
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.body.guidelines.screenshots).toContain('auto-detected');
+    expect(res.body.guidelines.screenshots).toContain('reason');
+  });
+
+  it('auto-bypasses screenshot requirement for comment-only CSS changes', async () => {
+    // Mock getChangedFiles to return a CSS file
+    const { issue } = setupIssueWithChangedFiles('CSS comment change', ['styles.css']);
+
+    // Mock getDiffForFiles to return a comment-only diff
+    const commentDiff = [
+      'diff --git a/styles.css b/styles.css',
+      '--- a/styles.css',
+      '+++ b/styles.css',
+      '@@ -1 +1 @@',
+      '-/* old comment */',
+      '+/* new comment */',
+    ].join('\n');
+    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(commentDiff);
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.screenshotBypass).toBeDefined();
+    expect(res.body.screenshotBypass.bypassed).toBe(true);
+    expect(res.body.screenshotBypass.reason).toContain('comment');
+  });
+
+  it('auto-bypasses screenshot requirement for whitespace-only CSS changes', async () => {
+    const { issue } = setupIssueWithChangedFiles('CSS whitespace', ['styles.css']);
+
+    const whitespaceDiff = [
+      'diff --git a/styles.css b/styles.css',
+      '--- a/styles.css',
+      '+++ b/styles.css',
+      '@@ -1,2 +1,2 @@',
+      '-.foo{color:red;}',
+      '+.foo { color: red; }',
+    ].join('\n');
+    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(whitespaceDiff);
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.screenshotBypass.bypassed).toBe(true);
+    expect(res.body.screenshotBypass.reason).toContain('whitespace');
+  });
+
+  it('auto-bypasses screenshot requirement for import-only TSX changes', async () => {
+    const { issue } = setupIssueWithChangedFiles('TSX import change', ['App.tsx']);
+
+    const importDiff = [
+      'diff --git a/App.tsx b/App.tsx',
+      '--- a/App.tsx',
+      '+++ b/App.tsx',
+      '@@ -1,2 +1,2 @@',
+      "-import { Button } from './old-path';",
+      "+import { Button } from './new-path';",
+    ].join('\n');
+    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(importDiff);
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.screenshotBypass.bypassed).toBe(true);
+    expect(res.body.screenshotBypass.reason).toContain('import');
+  });
+
+  it('still rejects when CSS has actual visual changes', async () => {
+    const { issue } = setupIssueWithChangedFiles('CSS visual change', ['styles.css']);
+
+    const visualDiff = [
+      'diff --git a/styles.css b/styles.css',
+      '--- a/styles.css',
+      '+++ b/styles.css',
+      '@@ -1,3 +1,3 @@',
+      ' .header {',
+      '-  background: white;',
+      '+  background: black;',
+      ' }',
+    ].join('\n');
+    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(visualDiff);
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Screenshots required for UI changes');
+  });
+
+  it('stores bypass reason in submitter notes for auto-bypass', async () => {
+    const { issue } = setupIssueWithChangedFiles('Auto-bypass notes', ['styles.css']);
+
+    const commentDiff = [
+      'diff --git a/styles.css b/styles.css',
+      '--- a/styles.css',
+      '+++ b/styles.css',
+      '@@ -1 +1 @@',
+      '-/* old */',
+      '+/* new */',
+    ].join('\n');
+    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(commentDiff);
+
+    await request(server, 'POST', `/agent/${issue.id}/review`);
+    const updated = issueManager.get(issue.id);
+    expect(updated?.submitterNotes).toContain('[Screenshot bypass:');
+    expect(updated?.submitterNotes).toContain('comment');
+  });
+
+  it('allows agent to provide a reason with noUiChanges bypass', async () => {
+    const { issue } = setupIssueWithChangedFiles('Manual bypass reason', ['Component.tsx']);
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`, {
+      noUiChanges: true,
+      reason: 'CSS class rename only, no visual impact',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.screenshotBypass).toBeDefined();
+    expect(res.body.screenshotBypass.reason).toBe('CSS class rename only, no visual impact');
+
+    // Check the reason is in submitter notes
+    const updated = issueManager.get(issue.id);
+    expect(updated?.submitterNotes).toContain('CSS class rename only');
+  });
+
+  it('uses default reason when noUiChanges is set without reason', async () => {
+    const { issue } = setupIssueWithChangedFiles('Manual bypass no reason', ['Page.tsx']);
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`, {
+      noUiChanges: true,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.screenshotBypass.reason).toContain('self-certified');
+  });
+
+  it('does not include screenshotBypass in response when not bypassed', async () => {
+    const { issue } = setupIssueWithChangedFiles('No bypass', ['utils.ts']);
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
+    expect(res.status).toBe(200);
+    expect(res.body.screenshotBypass).toBeUndefined();
+  });
+
+  it('error message suggests reason parameter', async () => {
+    const { issue } = setupIssueWithChangedFiles('Error msg check', ['styles.css']);
+
+    const visualDiff = [
+      'diff --git a/styles.css b/styles.css',
+      '--- a/styles.css',
+      '+++ b/styles.css',
+      '@@ -1 +1 @@',
+      '-  color: red;',
+      '+  color: blue;',
+    ].join('\n');
+    vi.spyOn(worktreeManager, 'getDiffForFiles').mockReturnValue(visualDiff);
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('"reason"');
   });
 });

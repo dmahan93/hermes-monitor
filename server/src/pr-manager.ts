@@ -168,8 +168,11 @@ export class PRManager {
     mkdirSync(reviewDir, { recursive: true });
 
     // Build screenshot section for the review context
+    // Extract bypass reason from submitterNotes if present (format: [Screenshot bypass: reason])
     const port = process.env.PORT || '4000';
-    const screenshotSection = buildScreenshotSection(pr.issueId, pr.changedFiles, port);
+    const bypassMatch = pr.submitterNotes?.match(/\[Screenshot bypass: (.+?)\]/);
+    const screenshotBypassReason = bypassMatch ? bypassMatch[1] : undefined;
+    const screenshotSection = buildScreenshotSection(pr.issueId, pr.changedFiles, port, screenshotBypassReason);
 
     const contextSections = [
       `# PR Review: ${pr.title}`,

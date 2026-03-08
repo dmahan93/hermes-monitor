@@ -32,6 +32,7 @@ export interface UpdateIssueOptions {
   command?: string;
   branch?: string;
   submitterNotes?: string;
+  screenshotBypassReason?: string;
 }
 
 export type IssueEventCallback = (event: IssueEvent, issue: Issue) => void;
@@ -201,6 +202,7 @@ export class IssueManager {
     if (options.command !== undefined) issue.command = options.command;
     if (options.branch !== undefined) issue.branch = options.branch;
     if (options.submitterNotes !== undefined) issue.submitterNotes = options.submitterNotes;
+    if (options.screenshotBypassReason !== undefined) issue.screenshotBypassReason = options.screenshotBypassReason;
     issue.updatedAt = Date.now();
 
     this.persist(issue);
