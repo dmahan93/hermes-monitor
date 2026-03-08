@@ -41,7 +41,7 @@ if (opts.command === 'version') {
 
 if (opts.command === 'update') {
   performUpdate();
-  process.exit(0);
+  process.exit(); // uses process.exitCode if set (e.g., build failure)
 }
 
 // ────────────────────────────────────────────────────────────
