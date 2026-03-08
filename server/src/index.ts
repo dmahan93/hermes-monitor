@@ -15,6 +15,8 @@ import { createGitApiRouter } from './git-api.js';
 import { createBatchApiRouter } from './batch-api.js';
 import { Registry } from './manager/registry.js';
 import { createRegistryApiRouter } from './manager/registry-api.js';
+import { Spawner } from './manager/spawner.js';
+import { createSpawnerApiRouter } from './manager/spawner-api.js';
 import { setupWebSocket, broadcastToAll } from './ws.js';
 import { config, isGitRepo } from './config.js';
 import { enrichPRWithScreenshots } from './screenshot-utils.js';
@@ -27,8 +29,9 @@ const server = createServer(app);
 // Persistent store
 const store = new Store();
 
-// Hub registry (multi-repo management)
+// Hub registry and instance spawner (multi-repo management)
 const registry = new Registry();
+const spawner = new Spawner(registry);
 
 // Core managers
 const terminalManager = new TerminalManager();
@@ -136,6 +139,7 @@ app.use('/api', createPRApiRouter(prManager, issueManager));
 app.use('/api', createGitApiRouter());
 app.use('/api/batch', createBatchApiRouter(prManager, issueManager, terminalManager));
 app.use('/api', createRegistryApiRouter(registry));
+app.use('/api', createSpawnerApiRouter(spawner));
 
 // Manual worktree prune endpoint — registered before the catch-all agent router
 app.post('/api/worktrees/prune', (_req, res) => {
@@ -201,22 +205,42 @@ prManager.onEvent((event, pr) => {
 });
 
 // Cleanup on shutdown
+// NOTE: Node.js signal handlers are fire-and-forget — the runtime does NOT
+// await returned promises. We use a synchronous handler that chains .finally()
+// to ensure child processes are cleaned up before exit.
 const shutdown = () => {
   console.log('\nShutting down...');
   clearInterval(pruneInterval);
   issueManager.clearResumeTimers();
   prManager.clearAllPendingTimers();
   terminalManager.killAll();
-  store.close();
-  registry.close();
-  server.close();
-  process.exit(0);
+  // Stop all spawned repo instances, then close everything
+  spawner.stopAll()
+    .catch((err) => console.error('[spawner] Error stopping instances:', err))
+    .finally(() => {
+      store.close();
+      registry.close();
+      server.close();
+      process.exit(0);
+    });
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 server.listen(PORT, () => {
   console.log(`Hermes Monitor server listening on :${PORT}`);
+
+  // Start all registered repo instances and begin health checking
+  spawner.startAll().then(() => {
+    const running = registry.list().filter(r => r.status === 'running').length;
+    if (running > 0) {
+      console.log(`[spawner] Started ${running} repo instance(s)`);
+    }
+    spawner.startHealthCheck();
+  }).catch((err) => {
+    console.error('[spawner] Failed to start instances on boot:', err);
+    spawner.startHealthCheck();
+  });
 });
 
-export { app, server, terminalManager, issueManager, worktreeManager, prManager, store, registry };
+export { app, server, terminalManager, issueManager, worktreeManager, prManager, store, registry, spawner };
