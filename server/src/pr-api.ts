@@ -17,7 +17,8 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
   // ── Config ──
 
   router.get('/config', (_req, res) => {
-    res.json(config);
+    const serverPort = parseInt(process.env.PORT || '4000', 10);
+    res.json({ ...config, serverPort });
   });
 
   router.patch('/config', (req, res) => {
@@ -201,6 +202,29 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
       issueManager.changeStatus(result.pr.issueId, 'done');
     }
     res.json(result.pr);
+  });
+
+  // Close PR — mark it as closed (dismiss stale/unwanted PRs)
+  router.post('/prs/:id/close', (req, res) => {
+    const pr = prManager.get(req.params.id);
+    if (!pr) {
+      res.status(404).json({ error: 'PR not found' });
+      return;
+    }
+    if (pr.status === 'merged') {
+      res.status(400).json({ error: 'Cannot close a merged PR' });
+      return;
+    }
+    if (pr.status === 'closed') {
+      res.status(400).json({ error: 'PR is already closed' });
+      return;
+    }
+    const closed = prManager.close(req.params.id);
+    if (!closed) {
+      res.status(500).json({ error: 'Failed to close PR' });
+      return;
+    }
+    res.json(closed);
   });
 
   // Confirm merge — used when mergeMode is 'github' to mark a PR as merged

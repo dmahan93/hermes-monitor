@@ -74,6 +74,9 @@
 }
 
 .git-graph-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-family: 'VT323', monospace;
   font-size: 0.917rem;
   color: var(--text-muted);
@@ -81,6 +84,44 @@
   padding: 0.333rem 0.667rem;
   border-bottom: 1px solid var(--bevel-dark);
   flex-shrink: 0;
+}
+
+/* ── Refresh Button ── */
+
+.git-graph-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.333rem;
+  height: 1.333rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.git-graph-refresh:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.git-graph-refresh:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.git-graph-refresh-spinning {
+  animation: git-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes git-refresh-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
 .git-graph-loading,
@@ -146,6 +187,13 @@
   flex-shrink: 0;
   display: block;
   overflow: visible;
+}
+
+/* First row: clip the top edge so nothing renders above the topmost commit
+   circle, even if a line coordinate is accidentally negative.  The bottom
+   extends slightly (LINE_EXT ≈ 0.13rem) to keep the overlap with row 2. */
+.git-graph-svg-first {
+  clip-path: inset(0 0 -0.5rem 0);
 }
 
 .git-graph-info {

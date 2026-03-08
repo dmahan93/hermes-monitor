@@ -6,12 +6,14 @@ interface GitGraphProps {
   commits: GitCommit[];
   graph: GraphNode[];
   loading: boolean;
+  refreshing?: boolean;
   error: string | null;
   selectedSha: string | null;
   files: GitFileChange[];
   filesLoading: boolean;
   onSelectCommit: (sha: string | null) => void;
   onFileClick: (sha: string, path: string) => void;
+  onRefresh?: () => void;
 }
 
 const LANE_COLORS = [
@@ -50,7 +52,7 @@ const ROW_H_REM = 2.333;
 // .git-graph-svg.
 const LINE_EXT = 1.5;
 
-function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
+function GraphSvg({ node, maxCols, isFirstRow }: { node: GraphNode; maxCols: number; isFirstRow: boolean }) {
   const vW = (maxCols + 1) * LANE_W + SVG_PAD;
   const wRem = vW / 12; // rem width matching the virtual coordinate system
   const cx = node.col * LANE_W + LANE_W / 2 + 2;
@@ -61,7 +63,7 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
       viewBox={`0 0 ${vW} ${ROW_H}`}
       preserveAspectRatio="none"
       style={{ width: `${wRem}rem`, height: `${ROW_H_REM}rem` }}
-      className="git-graph-svg"
+      className={`git-graph-svg${isFirstRow ? ' git-graph-svg-first' : ''}`}
     >
       {/* Pass-through and branch lines */}
       {node.lines.map((line, i) => {
@@ -74,7 +76,7 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
             <line
               key={i}
               x1={x1}
-              y1={-LINE_EXT}
+              y1={isFirstRow ? cy : -LINE_EXT}
               x2={x2}
               y2={ROW_H + LINE_EXT}
               stroke={color}
@@ -95,6 +97,7 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
         return (
           <g key={i}>
             {/* Straight segment from top to node center on the source lane */}
+            {!isFirstRow && (
             <line
               x1={x1}
               y1={-LINE_EXT}
@@ -104,6 +107,7 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
               strokeWidth={1.5}
               opacity={0.6}
             />
+            )}
             {/* Bezier from commit dot to bottom of target lane */}
             <path
               d={`M ${x1} ${cy} C ${x1} ${ROW_H}, ${x2} ${cy}, ${x2} ${ROW_H + LINE_EXT}`}
@@ -169,12 +173,14 @@ export function GitGraph({
   commits,
   graph,
   loading,
+  refreshing,
   error,
   selectedSha,
   files,
   filesLoading,
   onSelectCommit,
   onFileClick,
+  onRefresh,
 }: GitGraphProps) {
   const maxCols = useMemo(
     () =>
@@ -200,7 +206,20 @@ export function GitGraph({
   if (error) {
     return (
       <div className="git-graph-panel">
-        <div className="git-graph-header">GIT</div>
+        <div className="git-graph-header">
+          <span>GIT</span>
+          {onRefresh && (
+            <button
+              className={`git-graph-refresh ${refreshing ? 'git-graph-refresh-spinning' : ''}`}
+              onClick={onRefresh}
+              disabled={refreshing}
+              title="Refresh git graph"
+              aria-label="Refresh git graph"
+            >
+              ↻
+            </button>
+          )}
+        </div>
         <div className="git-graph-error">{error}</div>
       </div>
     );
@@ -208,7 +227,20 @@ export function GitGraph({
 
   return (
     <div className="git-graph-panel">
-      <div className="git-graph-header">GIT GRAPH</div>
+      <div className="git-graph-header">
+        <span>GIT GRAPH</span>
+        {onRefresh && (
+          <button
+            className={`git-graph-refresh ${refreshing ? 'git-graph-refresh-spinning' : ''}`}
+            onClick={onRefresh}
+            disabled={refreshing}
+            title="Refresh git graph"
+            aria-label="Refresh git graph"
+          >
+            ↻
+          </button>
+        )}
+      </div>
       <div className="git-graph-list">
         {commits.map((commit, idx) => {
           const node = graph[idx];
@@ -222,7 +254,7 @@ export function GitGraph({
                 onClick={() => onSelectCommit(commit.hash)}
                 title={`${commit.hash}\n${commit.author}\n${commit.date}`}
               >
-                {node && <GraphSvg node={node} maxCols={maxCols} />}
+                {node && <GraphSvg node={node} maxCols={maxCols} isFirstRow={idx === 0} />}
                 <div className="git-graph-info">
                   <div className="git-graph-msg">
                     {hasRefs && (

@@ -31,12 +31,14 @@ const defaultProps = {
   commits: [] as GitCommit[],
   graph: [] as GraphNode[],
   loading: false,
+  refreshing: false,
   error: null,
   selectedSha: null,
   files: [],
   filesLoading: false,
   onSelectCommit: vi.fn(),
   onFileClick: vi.fn(),
+  onRefresh: vi.fn(),
 };
 
 describe('GitGraph', () => {
@@ -71,8 +73,10 @@ describe('GitGraph', () => {
   it('handles empty commit list', () => {
     render(<GitGraph {...defaultProps} />);
     expect(screen.getByText('GIT GRAPH')).toBeInTheDocument();
-    // No commit elements rendered
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    // Only the refresh button — no commit row buttons
+    const buttons = screen.queryAllByRole('button');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAttribute('aria-label', 'Refresh git graph');
   });
 
   it('clicking a commit calls onSelectCommit', () => {
@@ -368,6 +372,132 @@ describe('GitGraph', () => {
     expect(subject?.classList.contains('git-graph-subject')).toBe(true);
   });
 
+  it('first row straight line starts at commit center, not above', () => {
+    // When the first commit has a straight line, the y1 should be cy (ROW_H/2 = 14)
+    // instead of -LINE_EXT (-1.5) to prevent a line from extending above the topmost row
+    const commits = [
+      makeCommit('abc1234567890', 'HEAD commit'),
+      makeCommit('def4567890123', 'Second commit'),
+    ];
+    const graph = [
+      makeNode('abc1234567890', 0, [{ fromCol: 0, toCol: 0, type: 'straight' }]),
+      makeNode('def4567890123', 0, [{ fromCol: 0, toCol: 0, type: 'straight' }]),
+    ];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} />,
+    );
+
+    const rows = container.querySelectorAll('.git-graph-row');
+    expect(rows.length).toBe(2);
+
+    // First row: line should start at cy=14 (not -1.5)
+    const firstRowLine = rows[0].querySelector('svg line');
+    expect(firstRowLine).toBeInTheDocument();
+    expect(firstRowLine?.getAttribute('y1')).toBe('14');
+
+    // Second row: line should start at -LINE_EXT = -1.5
+    const secondRowLine = rows[1].querySelector('svg line');
+    expect(secondRowLine).toBeInTheDocument();
+    expect(secondRowLine?.getAttribute('y1')).toBe('-1.5');
+  });
+
+  it('first row curved line omits the straight segment above the commit', () => {
+    // For merge/branch lines on the first row, the straight segment from
+    // -LINE_EXT to cy should be omitted entirely (no line going above the dot)
+    const commits = [
+      makeCommit('abc1234567890', 'Merge at HEAD'),
+      makeCommit('def4567890123', 'Normal merge'),
+    ];
+    const graph = [
+      makeNode('abc1234567890', 0, [{ fromCol: 1, toCol: 0, type: 'merge-left' }]),
+      makeNode('def4567890123', 0, [{ fromCol: 1, toCol: 0, type: 'merge-left' }]),
+    ];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} />,
+    );
+
+    const rows = container.querySelectorAll('.git-graph-row');
+
+    // First row: should have a path (bezier) but NO line element inside the <g>
+    const firstRowG = rows[0].querySelector('svg g');
+    expect(firstRowG).toBeInTheDocument();
+    const firstRowLines = firstRowG!.querySelectorAll('line');
+    expect(firstRowLines.length).toBe(0);
+    // But should still have the bezier path
+    const firstRowPaths = firstRowG!.querySelectorAll('path');
+    expect(firstRowPaths.length).toBe(1);
+
+    // Second row: should have both a line and a path inside the <g>
+    const secondRowG = rows[1].querySelector('svg g');
+    expect(secondRowG).toBeInTheDocument();
+    const secondRowLines = secondRowG!.querySelectorAll('line');
+    expect(secondRowLines.length).toBe(1);
+    expect(secondRowLines[0].getAttribute('y1')).toBe('-1.5');
+    const secondRowPaths = secondRowG!.querySelectorAll('path');
+    expect(secondRowPaths.length).toBe(1);
+  });
+
+  it('first row SVG has git-graph-svg-first class for CSS clip-path', () => {
+    const commits = [
+      makeCommit('abc1234567890', 'HEAD commit'),
+      makeCommit('def4567890123', 'Second commit'),
+    ];
+    const graph = [
+      makeNode('abc1234567890', 0, [{ fromCol: 0, toCol: 0, type: 'straight' }]),
+      makeNode('def4567890123', 0, [{ fromCol: 0, toCol: 0, type: 'straight' }]),
+    ];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} />,
+    );
+
+    const svgs = container.querySelectorAll('.git-graph-svg');
+    expect(svgs.length).toBe(2);
+    // First row SVG has the -first class
+    expect(svgs[0].classList.contains('git-graph-svg-first')).toBe(true);
+    // Second row SVG does not
+    expect(svgs[1].classList.contains('git-graph-svg-first')).toBe(false);
+  });
+
+  it('first row merge commit: straight line starts at cy, branch bezier still renders', () => {
+    // A merge commit at HEAD has both a straight line (first parent) and
+    // a branch-right line (second parent). The straight line should start
+    // at cy, and the branch-right bezier should render without a straight
+    // segment above the circle.
+    const commits = [
+      makeCommit('abc1234567890', 'Merge at HEAD'),
+      makeCommit('def4567890123', 'Parent commit'),
+    ];
+    const graph = [
+      makeNode('abc1234567890', 0, [
+        { fromCol: 0, toCol: 0, type: 'straight' },
+        { fromCol: 0, toCol: 1, type: 'branch-right' },
+      ]),
+      makeNode('def4567890123', 0, [{ fromCol: 0, toCol: 0, type: 'straight' }]),
+    ];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} />,
+    );
+
+    const rows = container.querySelectorAll('.git-graph-row');
+    const firstRowSvg = rows[0].querySelector('svg')!;
+
+    // The straight line should start at cy=14
+    const straightLine = firstRowSvg.querySelector('line');
+    expect(straightLine).toBeInTheDocument();
+    expect(straightLine?.getAttribute('y1')).toBe('14');
+
+    // The branch-right bezier group should have a <path> but NO <line>
+    // (the straight segment above the circle is suppressed for first row)
+    const gElements = firstRowSvg.querySelectorAll('g');
+    expect(gElements.length).toBe(1);
+    expect(gElements[0].querySelectorAll('path').length).toBe(1);
+    expect(gElements[0].querySelectorAll('line').length).toBe(0);
+  });
+
   it('renders unknown file status with fallback', () => {
     const commits = [makeCommit('abc1234567890', 'Unknown status')];
     const graph = [makeNode('abc1234567890')];
@@ -387,5 +517,121 @@ describe('GitGraph', () => {
 
     // statusIcon(unknown) = '?'
     expect(screen.getByText('?')).toBeInTheDocument();
+  });
+
+  // ── Refresh button tests ──
+
+  it('renders refresh button in header when onRefresh is provided', () => {
+    const commits = [makeCommit('abc1234567890', 'Commit')];
+    const graph = [makeNode('abc1234567890')];
+
+    render(<GitGraph {...defaultProps} commits={commits} graph={graph} />);
+
+    const refreshBtn = screen.getByRole('button', { name: 'Refresh git graph' });
+    expect(refreshBtn).toBeInTheDocument();
+    expect(refreshBtn).toHaveTextContent('↻');
+  });
+
+  it('does not render refresh button when onRefresh is not provided', () => {
+    const commits = [makeCommit('abc1234567890', 'Commit')];
+    const graph = [makeNode('abc1234567890')];
+
+    render(
+      <GitGraph
+        {...defaultProps}
+        commits={commits}
+        graph={graph}
+        onRefresh={undefined}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Refresh git graph' })).not.toBeInTheDocument();
+  });
+
+  it('calls onRefresh when refresh button is clicked', () => {
+    const onRefresh = vi.fn();
+    const commits = [makeCommit('abc1234567890', 'Commit')];
+    const graph = [makeNode('abc1234567890')];
+
+    render(
+      <GitGraph
+        {...defaultProps}
+        commits={commits}
+        graph={graph}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh git graph' }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('refresh button has spinning class when refreshing', () => {
+    const commits = [makeCommit('abc1234567890', 'Commit')];
+    const graph = [makeNode('abc1234567890')];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} refreshing={true} />,
+    );
+
+    const refreshBtn = container.querySelector('.git-graph-refresh-spinning');
+    expect(refreshBtn).toBeInTheDocument();
+  });
+
+  it('refresh button is disabled when refreshing', () => {
+    const commits = [makeCommit('abc1234567890', 'Commit')];
+    const graph = [makeNode('abc1234567890')];
+
+    render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} refreshing={true} />,
+    );
+
+    const refreshBtn = screen.getByRole('button', { name: 'Refresh git graph' });
+    expect(refreshBtn).toBeDisabled();
+  });
+
+  it('refresh button does not have spinning class when not refreshing', () => {
+    const commits = [makeCommit('abc1234567890', 'Commit')];
+    const graph = [makeNode('abc1234567890')];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} refreshing={false} />,
+    );
+
+    expect(container.querySelector('.git-graph-refresh-spinning')).not.toBeInTheDocument();
+  });
+
+  it('renders refresh button in error state header', () => {
+    render(<GitGraph {...defaultProps} error="Failed to load" />);
+
+    const refreshBtn = screen.getByRole('button', { name: 'Refresh git graph' });
+    expect(refreshBtn).toBeInTheDocument();
+  });
+
+  it('clicking refresh in error state calls onRefresh', () => {
+    const onRefresh = vi.fn();
+
+    render(<GitGraph {...defaultProps} error="Failed to load" onRefresh={onRefresh} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh git graph' }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('error-state refresh button has spinning class when refreshing', () => {
+    const { container } = render(
+      <GitGraph {...defaultProps} error="Failed to load" refreshing={true} />,
+    );
+
+    const refreshBtn = container.querySelector('.git-graph-refresh-spinning');
+    expect(refreshBtn).toBeInTheDocument();
+  });
+
+  it('error-state refresh button is disabled when refreshing', () => {
+    render(
+      <GitGraph {...defaultProps} error="Failed to load" refreshing={true} />,
+    );
+
+    const refreshBtn = screen.getByRole('button', { name: 'Refresh git graph' });
+    expect(refreshBtn).toBeDisabled();
   });
 });

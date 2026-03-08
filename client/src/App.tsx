@@ -22,7 +22,7 @@ function AppContent() {
     connected, reconnectCount, send, subscribe,
     terminals, loading, updateLayout,
     issues, updateIssue, createSubtask,
-    prs, addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, mergeMode,
+    prs, addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, closePR, closeAllStalePRs, mergeMode,
     agents, agentsLoading, agentsError,
     gitGraph,
     view, setView,
@@ -73,12 +73,14 @@ function AppContent() {
               commits={gitGraph.commits}
               graph={gitGraph.graph}
               loading={gitGraph.loading}
+              refreshing={gitGraph.refreshing}
               error={gitGraph.error}
               selectedSha={gitGraph.selectedSha}
               files={gitGraph.files}
               filesLoading={gitGraph.filesLoading}
               onSelectCommit={gitGraph.selectCommit}
               onFileClick={gitGraph.viewDiff}
+              onRefresh={gitGraph.refresh}
             />
           ) : (
             <button
@@ -110,6 +112,7 @@ function AppContent() {
               <div className="terminals-main">
                 {termViewAgentIssue && termViewAgentIssue.terminalId ? (
                   <TaskTerminalPane
+                    key={termViewAgentIssue.terminalId}
                     issue={termViewAgentIssue}
                     send={send}
                     subscribe={subscribe}
@@ -205,6 +208,8 @@ function AppContent() {
               onConfirmMerge={confirmMerge}
               onFixConflicts={fixConflicts}
               onRelaunchReview={relaunchReview}
+              onClosePR={closePR}
+              onCloseAllStale={closeAllStalePRs}
               onMoveToInProgress={async (issueId) => { await handleStatusChange(issueId, 'in_progress'); }}
             />
           </div>

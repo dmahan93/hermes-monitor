@@ -17,6 +17,8 @@ interface PRListProps {
   onConfirmMerge: (prId: string) => Promise<{ error?: string }>;
   onFixConflicts: (prId: string) => void;
   onRelaunchReview: (prId: string) => void;
+  onClosePR: (prId: string) => Promise<{ error?: string }>;
+  onCloseAllStale?: () => Promise<{ closed: Array<{ id: string; title: string }>; errors: Array<{ id: string; title: string; error: string }> }>;
   onMoveToInProgress: (issueId: string) => Promise<void>;
 }
 
@@ -52,9 +54,10 @@ export function filterPRs(prs: PullRequest[], view: PRView): PullRequest[] {
   }
 }
 
-export function PRList({ prs = [], issues, mergeMode = 'local', selectedPrId: externalSelectedId, onSelectPr, onComment, onVerdict, onMerge, onConfirmMerge, onFixConflicts, onRelaunchReview, onMoveToInProgress }: PRListProps) {
+export function PRList({ prs = [], issues, mergeMode = 'local', selectedPrId: externalSelectedId, onSelectPr, onComment, onVerdict, onMerge, onConfirmMerge, onFixConflicts, onRelaunchReview, onClosePR, onCloseAllStale, onMoveToInProgress }: PRListProps) {
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<PRView>('open');
+  const [closingAll, setClosingAll] = useState(false);
 
   // Use URL-driven selectedPrId if provided, otherwise fall back to internal state
   const selectedId = externalSelectedId !== undefined ? externalSelectedId : internalSelectedId;
@@ -74,8 +77,34 @@ export function PRList({ prs = [], issues, mergeMode = 'local', selectedPrId: ex
 
   const filtered = useMemo(() => filterPRs(prs, view), [prs, view]);
 
+  // Count stale PRs: open PRs whose linked issue is done or missing
+  const stalePRCount = useMemo(() => {
+    return prs.filter((pr) => {
+      if (pr.status === 'merged' || pr.status === 'closed') return false;
+      const issue = issues.find((i) => i.id === pr.issueId);
+      return !issue || issue.status === 'done';
+    }).length;
+  }, [prs, issues]);
+
   const selectedPR = selectedId ? prs.find((p) => p.id === selectedId) : null;
   const selectedIssue = selectedPR ? issues.find((i) => i.id === selectedPR.issueId) : null;
+
+  const handleClosePR = async (e: React.MouseEvent, prId: string, prTitle: string) => {
+    e.stopPropagation();
+    if (!window.confirm(`Close this PR? It will be marked as closed.\n\n"${prTitle}"`)) return;
+    await onClosePR(prId);
+  };
+
+  const handleCloseAllStale = async () => {
+    if (!onCloseAllStale || closingAll) return;
+    if (!window.confirm(`Close all ${stalePRCount} stale PR${stalePRCount !== 1 ? 's' : ''}? These are open PRs whose linked issue is already done or deleted.`)) return;
+    setClosingAll(true);
+    try {
+      await onCloseAllStale();
+    } finally {
+      setClosingAll(false);
+    }
+  };
 
   if (selectedPR) {
     return (
@@ -90,6 +119,7 @@ export function PRList({ prs = [], issues, mergeMode = 'local', selectedPrId: ex
         onConfirmMerge={onConfirmMerge}
         onFixConflicts={onFixConflicts}
         onRelaunchReview={onRelaunchReview}
+        onClosePR={onClosePR}
         onMoveToInProgress={onMoveToInProgress}
       />
     );
@@ -98,8 +128,20 @@ export function PRList({ prs = [], issues, mergeMode = 'local', selectedPrId: ex
   return (
     <div className="pr-list">
       <div className="pr-list-header">
-        <span className="pr-list-title">PULL REQUESTS</span>
-        <span className="pr-list-count">{filtered.length}</span>
+        <div className="pr-list-header-left">
+          <span className="pr-list-title">PULL REQUESTS</span>
+          <span className="pr-list-count">{filtered.length}</span>
+        </div>
+        {onCloseAllStale && stalePRCount > 0 && (
+          <button
+            className="pr-close-stale-btn"
+            onClick={handleCloseAllStale}
+            disabled={closingAll}
+            title={`Close ${stalePRCount} stale PR${stalePRCount !== 1 ? 's' : ''} (linked issue done or deleted)`}
+          >
+            {closingAll ? '[× CLOSING…]' : `[× CLOSE ${stalePRCount} STALE]`}
+          </button>
+        )}
       </div>
       <div className="pr-view-tabs">
         {VIEWS.map((v) => (
@@ -147,6 +189,17 @@ export function PRList({ prs = [], issues, mergeMode = 'local', selectedPrId: ex
               <span className={`pr-list-verdict verdict-${pr.verdict}`}>
                 {pr.verdict === 'approved' ? '✓' : pr.verdict === 'changes_requested' ? '✗' : '…'}
               </span>
+              {pr.status !== 'merged' && pr.status !== 'closed' && (
+                <span
+                  className="pr-list-close-btn"
+                  role="button"
+                  aria-label={`Close PR: ${pr.title}`}
+                  onClick={(e) => handleClosePR(e, pr.id, pr.title)}
+                  title="Close PR"
+                >
+                  ×
+                </span>
+              )}
             </button>
           ))}
         </div>

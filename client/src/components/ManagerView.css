@@ -3,9 +3,16 @@
    ═══════════════════════════════════════════ */
 
 .manager-view {
-  padding: 0.667rem;
+  display: flex;
+  flex-direction: column;
   height: 100%;
+  overflow: hidden;
+}
+
+.manager-content {
+  flex: 1;
   overflow-y: auto;
+  padding: 0.667rem;
 }
 
 /* ── Stats Bar ── */
@@ -409,4 +416,168 @@
   display: flex;
   gap: 0.25rem;
   flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════
+   MANAGER TERMINAL — Collapsible Bottom Pane
+   ═══════════════════════════════════════════ */
+
+.manager-terminal-section {
+  flex-shrink: 0;
+  border-top: 1px solid var(--chrome);
+}
+
+/* ── Toggle Bar ── */
+
+.manager-terminal-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.333rem 0.667rem;
+  background: var(--chrome-dark);
+  border: none;
+  border-bottom: 1px solid var(--bevel-dark);
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  font-size: 1rem;
+  cursor: pointer;
+  letter-spacing: 0.05rem;
+  text-align: left;
+  transition: color 0.15s, background 0.15s;
+  user-select: none;
+}
+
+.manager-terminal-toggle:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.manager-terminal-toggle-icon {
+  font-size: 0.833rem;
+  flex-shrink: 0;
+}
+
+.manager-terminal-toggle-label {
+  flex: 1;
+}
+
+.manager-terminal-toggle-status {
+  font-size: 0.833rem;
+  color: var(--accent);
+  animation: manager-terminal-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes manager-terminal-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* ── Resize Handle ── */
+
+.manager-terminal-resize-handle {
+  height: 4px;
+  background: var(--chrome-dark);
+  cursor: ns-resize;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.manager-terminal-resize-handle:hover {
+  background: var(--accent);
+}
+
+/* ── Quick Actions Toolbar ── */
+
+.manager-terminal-toolbar {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--chrome-dark);
+  border-bottom: 1px solid var(--bevel-dark);
+  flex-shrink: 0;
+}
+
+.manager-terminal-action {
+  font-family: 'VT323', monospace;
+  font-size: 0.917rem;
+  padding: 0.167rem 0.5rem;
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  letter-spacing: 0.03rem;
+}
+
+.manager-terminal-action:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.manager-terminal-action:active:not(:disabled) {
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.manager-terminal-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Terminal Pane ── */
+
+.manager-terminal-pane {
+  overflow: hidden;
+  position: relative;
+}
+
+.manager-terminal-pane .terminal-view {
+  height: 100%;
+}
+
+.manager-terminal-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  font-size: 1.167rem;
+}
+
+.manager-terminal-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.667rem;
+  height: 100%;
+  color: var(--error);
+  font-family: 'VT323', monospace;
+  font-size: 1.167rem;
+}
+
+.manager-terminal-retry {
+  background: transparent;
+  border: 1px solid var(--chrome-light);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.833rem;
+  padding: 0.167rem 0.5rem;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.manager-terminal-retry:hover {
+  background: var(--accent-dim);
 }
