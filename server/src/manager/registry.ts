@@ -48,6 +48,7 @@ export interface RepoEntry {
 export class Registry {
   private _db: Database.Database | null = null;
   private dbPath: string;
+  private closed = false;
 
   constructor(dbPath?: string) {
     this.dbPath = dbPath || DEFAULT_DB_PATH;
@@ -55,6 +56,9 @@ export class Registry {
 
   /** Lazy-initialize the database connection and schema on first access. */
   private get db(): Database.Database {
+    if (this.closed) {
+      throw new Error('Registry is closed');
+    }
     if (!this._db) {
       const dir = dirname(this.dbPath);
       mkdirSync(dir, { recursive: true });
@@ -167,7 +171,7 @@ export class Registry {
    */
   updateStatus(id: string, status: RepoStatus, pid?: number | null): RepoEntry | null {
     if (!VALID_STATUSES.has(status)) {
-      throw new Error(`Invalid status: ${status}. Must be one of: ${[...VALID_STATUSES].join(', ')}`);
+      throw new Error(`Invalid status: ${status}. Must be one of: ${Array.from(VALID_STATUSES).join(', ')}`);
     }
 
     const now = Date.now();
@@ -231,8 +235,9 @@ export class Registry {
     return candidate;
   }
 
-  /** Close the database connection. Safe to call multiple times. */
+  /** Close the database connection. Safe to call multiple times. Prevents re-initialization. */
   close(): void {
+    this.closed = true;
     if (this._db) {
       this._db.close();
       this._db = null;

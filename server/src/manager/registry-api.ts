@@ -11,7 +11,7 @@
  *   DELETE /hub/repos/:id  — unregister
  */
 import { Router, json } from 'express';
-import { existsSync, statSync } from 'fs';
+import { statSync } from 'fs';
 import type { Registry, RepoStatus } from './registry.js';
 
 export function createRegistryApiRouter(registry: Registry): Router {
@@ -39,8 +39,13 @@ export function createRegistryApiRouter(registry: Registry): Router {
       return;
     }
 
-    // Validate path exists and is a directory
-    if (!existsSync(trimmedPath) || !statSync(trimmedPath).isDirectory()) {
+    // Validate path exists and is a directory (single statSync call avoids TOCTOU race)
+    try {
+      if (!statSync(trimmedPath).isDirectory()) {
+        res.status(400).json({ error: 'path must be an existing directory' });
+        return;
+      }
+    } catch {
       res.status(400).json({ error: 'path must be an existing directory' });
       return;
     }

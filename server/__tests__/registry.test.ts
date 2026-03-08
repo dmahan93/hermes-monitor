@@ -251,6 +251,14 @@ describe('Registry', () => {
     registry.close();
     expect(() => registry.close()).not.toThrow();
   });
+
+  it('throws after close to prevent silent re-initialization', () => {
+    registry.list(); // trigger DB init
+    registry.close();
+    expect(() => registry.list()).toThrow('Registry is closed');
+    expect(() => registry.get('any-id')).toThrow('Registry is closed');
+    expect(() => registry.register('/tmp/foo')).toThrow('Registry is closed');
+  });
 });
 
 // ── Registry API endpoint tests ──
