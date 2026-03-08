@@ -6,7 +6,10 @@ import { execSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-// These tests need a real git repo — skip if not available
+// These tests need a real git repo — skip if not available.
+// NOTE: Tests mutate global config via updateConfig(). This is safe because vitest
+// runs test files in separate workers, but tests within this file must NOT run
+// concurrently (no .concurrent) as they'd stomp on each other's config state.
 const isGitRepo = (() => {
   try {
     execSync('git rev-parse --git-dir', { cwd: config.repoPath, stdio: 'pipe' });

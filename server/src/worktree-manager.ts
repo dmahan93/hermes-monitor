@@ -31,6 +31,7 @@ function git(args: string[], cwd?: string): string {
 
 export class WorktreeManager {
   private worktrees = new Map<string, WorktreeInfo>();
+  private isPruning = false;
 
   /**
    * Create a branch + worktree for an issue.
@@ -215,96 +216,109 @@ export class WorktreeManager {
    * @param activeIssueIds Set of issue IDs that are still active (not done/deleted)
    */
   pruneStaleWorktrees(activeIssueIds: Set<string>): PruneResult {
+    if (this.isPruning) {
+      // Another prune is already running — skip to avoid concurrent git operations
+      return { removedWorktrees: [], prunedBranches: [] };
+    }
+    this.isPruning = true;
+
     const result: PruneResult = {
       removedWorktrees: [],
       prunedBranches: [],
     };
 
-    // 1. Remove stale worktree directories
-    if (existsSync(config.worktreeBase)) {
-      let entries: string[];
-      try {
-        entries = readdirSync(config.worktreeBase);
-      } catch {
-        entries = [];
-      }
-
-      for (const entry of entries) {
-        const worktreePath = join(config.worktreeBase, entry);
-
-        // Only prune directories — skip stray files (README, .gitkeep, etc.)
+    try {
+      // 1. Remove stale worktree directories
+      if (existsSync(config.worktreeBase)) {
+        let entries: string[];
         try {
-          if (!lstatSync(worktreePath).isDirectory()) continue;
+          entries = readdirSync(config.worktreeBase);
         } catch {
-          continue;
+          entries = [];
         }
 
-        // Skip if this worktree belongs to an active issue
-        if (activeIssueIds.has(entry)) continue;
+        for (const entry of entries) {
+          const worktreePath = join(config.worktreeBase, entry);
 
-        // Try git worktree remove first (cleanest), fall back to rm
+          // Only prune directories — skip stray files (README, .gitkeep, etc.)
+          try {
+            if (!lstatSync(worktreePath).isDirectory()) continue;
+          } catch {
+            continue;
+          }
+
+          // Skip if this worktree belongs to an active issue
+          if (activeIssueIds.has(entry)) continue;
+
+          // Try git worktree remove first (cleanest), fall back to rm
+          try {
+            git(['worktree', 'remove', worktreePath, '--force'], config.repoPath);
+          } catch {
+            try {
+              rmSync(worktreePath, { recursive: true, force: true });
+            } catch {}
+          }
+
+          // Also remove from in-memory map if present
+          this.worktrees.delete(entry);
+          result.removedWorktrees.push(entry);
+        }
+      }
+
+      // 2. Prune git's internal worktree list (cleans up dangling entries)
+      try {
+        git(['worktree', 'prune'], config.repoPath);
+      } catch {}
+
+      // 3. Prune stale issue/* branches
+      // Build a set of short IDs (first 8 chars) from active issues
+      const activeShortIds = new Set<string>();
+      activeIssueIds.forEach((id) => {
+        activeShortIds.add(id.slice(0, 8));
+      });
+
+      // List all local branches matching issue/*
+      let branches: string[];
+      try {
+        const output = git(
+          ['for-each-ref', '--format=%(refname:short)', 'refs/heads/issue/'],
+          config.repoPath
+        );
+        branches = output ? output.split('\n').filter(Boolean) : [];
+      } catch {
+        branches = [];
+      }
+
+      for (const branch of branches) {
+        // Extract the short ID from the branch name: issue/<shortId>-<slug>
+        // NOTE: 8-char hex prefix matching (32 bits) has per-pair collision odds of
+        // ~1 in 4 billion, but birthday paradox gives 50% collision at ~77k issues.
+        // A collision only causes a stale branch to be preserved (safe failure mode),
+        // so this is acceptable. The alternative (persisting full branch-to-issue
+        // mappings) adds significant complexity for minimal practical benefit.
+        const match = branch.match(/^issue\/([a-f0-9]{8})-/);
+        if (!match) continue;
+
+        const shortId = match[1];
+        if (activeShortIds.has(shortId)) continue;
+
+        // No active issue matches this branch — try safe delete first,
+        // fall back to force delete with a warning and commit hash for recovery
         try {
-          git(['worktree', 'remove', worktreePath, '--force'], config.repoPath);
+          git(['branch', '-d', branch], config.repoPath);
+          result.prunedBranches.push(branch);
         } catch {
           try {
-            rmSync(worktreePath, { recursive: true, force: true });
+            // Log the HEAD commit hash so work can be recovered via git reflog
+            const sha = git(['rev-parse', branch], config.repoPath);
+            console.warn(`[prune] Force-deleting unmerged branch: ${branch} (HEAD was ${sha})`);
+            git(['branch', '-D', branch], config.repoPath);
+            result.prunedBranches.push(branch);
           } catch {}
         }
-
-        // Also remove from in-memory map if present
-        this.worktrees.delete(entry);
-        result.removedWorktrees.push(entry);
       }
-    }
-
-    // 2. Prune git's internal worktree list (cleans up dangling entries)
-    try {
-      git(['worktree', 'prune'], config.repoPath);
-    } catch {}
-
-    // 3. Prune stale issue/* branches
-    // Build a set of short IDs (first 8 chars) from active issues
-    const activeShortIds = new Set<string>();
-    activeIssueIds.forEach((id) => {
-      activeShortIds.add(id.slice(0, 8));
-    });
-
-    // List all local branches matching issue/*
-    let branches: string[];
-    try {
-      const output = git(
-        ['for-each-ref', '--format=%(refname:short)', 'refs/heads/issue/'],
-        config.repoPath
-      );
-      branches = output ? output.split('\n').filter(Boolean) : [];
-    } catch {
-      branches = [];
-    }
-
-    for (const branch of branches) {
-      // Extract the short ID from the branch name: issue/<shortId>-<slug>
-      // NOTE: 8-char hex prefix matching has ~1 in 4 billion collision chance.
-      // Two issues could theoretically share a short ID, causing a stale branch
-      // to be incorrectly preserved. This is acceptable — the alternative
-      // (persisting full branch-to-issue mappings) adds significant complexity.
-      const match = branch.match(/^issue\/([a-f0-9]{8})-/);
-      if (!match) continue;
-
-      const shortId = match[1];
-      if (activeShortIds.has(shortId)) continue;
-
-      // No active issue matches this branch — try safe delete first,
-      // fall back to force delete with a warning for unmerged branches
-      try {
-        git(['branch', '-d', branch], config.repoPath);
-        result.prunedBranches.push(branch);
-      } catch {
-        try {
-          console.warn(`[prune] Force-deleting unmerged branch: ${branch}`);
-          git(['branch', '-D', branch], config.repoPath);
-          result.prunedBranches.push(branch);
-        } catch {}
-      }
+    } finally {
+      this.isPruning = false;
     }
 
     return result;

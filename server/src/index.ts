@@ -114,9 +114,8 @@ app.use('/api', createApiRouter(terminalManager));
 app.use('/api', createIssueApiRouter(issueManager));
 app.use('/api', createPRApiRouter(prManager, issueManager));
 app.use('/api', createGitApiRouter());
-app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, worktreeManager));
 
-// Manual worktree prune endpoint
+// Manual worktree prune endpoint — registered before the catch-all ticket router
 app.post('/api/worktrees/prune', (_req, res) => {
   if (!isGitRepo(config.repoPath)) {
     res.status(400).json({ error: 'Not a git repo — worktrees disabled' });
@@ -130,6 +129,9 @@ app.post('/api/worktrees/prune', (_req, res) => {
     summary: `Removed ${result.removedWorktrees.length} worktree(s), pruned ${result.prunedBranches.length} branch(es)`,
   });
 });
+
+// Catch-all ticket/agent API router — must be last
+app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, worktreeManager));
 
 // WebSocket
 const wss = setupWebSocket(server, terminalManager);
@@ -167,4 +169,4 @@ server.listen(PORT, () => {
   console.log(`Hermes Monitor server listening on :${PORT}`);
 });
 
-export { app, server, terminalManager, issueManager, worktreeManager, prManager, store, runWorktreePrune };
+export { app, server, terminalManager, issueManager, worktreeManager, prManager, store };
