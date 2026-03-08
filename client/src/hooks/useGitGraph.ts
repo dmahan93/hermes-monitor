@@ -16,6 +16,7 @@ export interface GraphNode {
   hash: string;
   col: number;
   lines: GraphLine[];
+  isHead: boolean;
 }
 
 export interface GraphLine {

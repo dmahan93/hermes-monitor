@@ -278,6 +278,7 @@ export interface GraphNode {
   hash: string;
   col: number;       // which column (lane) this commit is in
   lines: GraphLine[]; // lines connecting to children/parents
+  isHead: boolean;   // true if this commit starts a new lane (no line above it)
 }
 
 export interface GraphLine {
@@ -294,6 +295,7 @@ export function buildGraphLanes(commits: GitCommit[]): GraphNode[] {
   for (const commit of commits) {
     // Find which lane this commit is in
     let col = lanes.indexOf(commit.hash);
+    const isHead = col === -1; // true if this commit starts a new lane
     if (col === -1) {
       // New lane — find an empty slot or append
       col = lanes.indexOf(null);
@@ -380,6 +382,7 @@ export function buildGraphLanes(commits: GitCommit[]): GraphNode[] {
       hash: commit.hash,
       col,
       lines: graphLines,
+      isHead,
     });
   }
 

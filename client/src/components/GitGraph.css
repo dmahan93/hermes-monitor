@@ -196,7 +196,7 @@
    is just above the circle top edge (cy - NODE_R - stroke/2 = 10.5).
    Bottom extends -0.5rem to preserve the LINE_EXT inter-row overlap. */
 .git-graph-svg-first {
-  clip-path: inset(36% 0 -0.5rem 0);
+  clip-path: inset(46% 0 -0.5rem 0);
 }
 
 .git-graph-info {

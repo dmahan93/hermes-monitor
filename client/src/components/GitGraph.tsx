@@ -53,6 +53,8 @@ const ROW_H_REM = 2.333;
 const LINE_EXT = 1.5;
 
 function GraphSvg({ node, maxCols, isFirstRow }: { node: GraphNode; maxCols: number; isFirstRow: boolean }) {
+  // A commit is a "head" (no line above) if it starts a new lane OR is the first row
+  const noLineAbove = node.isHead || isFirstRow;
   const vW = (maxCols + 1) * LANE_W + SVG_PAD;
   const wRem = vW / 12; // rem width matching the virtual coordinate system
   const cx = node.col * LANE_W + LANE_W / 2 + 2;
@@ -81,7 +83,7 @@ function GraphSvg({ node, maxCols, isFirstRow }: { node: GraphNode; maxCols: num
             <line
               key={i}
               x1={x1}
-              y1={isFirstRow ? cy : -LINE_EXT}
+              y1={(noLineAbove && line.fromCol === node.col) ? cy : -LINE_EXT}
               x2={x2}
               y2={ROW_H + LINE_EXT}
               stroke={color}
@@ -102,7 +104,7 @@ function GraphSvg({ node, maxCols, isFirstRow }: { node: GraphNode; maxCols: num
         return (
           <g key={i}>
             {/* Straight segment from top to node center on the source lane */}
-            {!isFirstRow && (
+            {!(noLineAbove && line.fromCol === node.col) && (
             <line
               x1={x1}
               y1={-LINE_EXT}
