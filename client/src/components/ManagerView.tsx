@@ -22,7 +22,6 @@ interface ManagerViewProps {
 
 /** Strip ANSI escape codes from terminal output */
 function stripAnsi(str: string): string {
-  // eslint-disable-next-line no-control-regex
   return str.replace(/\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b[()][AB012]|\x1b\[[\?]?[0-9;]*[hlm]|\r/g, '');
 }
 
