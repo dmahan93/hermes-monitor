@@ -135,6 +135,42 @@ export class IssueManager {
       .replace(/\{\{branch\}\}/g, this.shellEscape(issue.branch || ''));
   }
 
+  /**
+   * Get the latest review feedback for an issue from its PR.
+   * Returns the body of the most recent reviewer comment, or undefined if none.
+   */
+  getLatestReviewFeedback(issueId: string): string | undefined {
+    if (!this.prManager) return undefined;
+    const pr = this.prManager.getByIssueId(issueId);
+    if (!pr || !pr.comments || pr.comments.length === 0) return undefined;
+    // Return the most recent comment body
+    return pr.comments[pr.comments.length - 1].body;
+  }
+
+  /**
+   * Inject review feedback into an agent command for rework cycles.
+   * Replaces the standard agent preamble with a rework-aware version that
+   * includes the reviewer's feedback inline, so the agent sees it immediately
+   * without needing to parse the /info response.
+   *
+   * If the command doesn't contain the standard preamble, returns it unchanged.
+   */
+  injectReworkFeedback(command: string, feedback: string): string {
+    const marker = 'You are an autonomous coding agent.';
+    if (!command.includes(marker)) return command;
+
+    const escapedFeedback = this.shellEscape(feedback);
+    const reworkPreamble = [
+      'You are an autonomous coding agent working on REWORK.',
+      ' Previous review requested these changes:',
+      '\\n\\n<REVIEW_FEEDBACK>\\n',
+      escapedFeedback,
+      '\\n</REVIEW_FEEDBACK>\\n\\n',
+    ].join('');
+
+    return command.replace(marker, reworkPreamble);
+  }
+
   create(options: CreateIssueOptions): Issue {
     // Validate parent exists if parentId is specified, and prevent nested subtasks
     if (options.parentId) {
@@ -270,9 +306,19 @@ export class IssueManager {
         }
       }
 
-      const command = issue.command
+      let command = issue.command
         ? this.interpolateCommand(issue.command, issue)
         : undefined;
+
+      // On rework cycles (review → in_progress), inject the reviewer's feedback
+      // directly into the agent command so it knows what to fix immediately.
+      if (from === 'review' && command) {
+        const feedback = this.getLatestReviewFeedback(issue.id);
+        if (feedback) {
+          command = this.injectReworkFeedback(command, feedback);
+        }
+      }
+
       const terminal = this.terminalManager.create({
         title: issue.title,
         command,

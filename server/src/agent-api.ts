@@ -36,6 +36,7 @@ interface AgentGuidelines {
 
 interface AgentInfoResponse {
   id: string;
+  reworkFeedback: string | null;
   title: string;
   description: string;
   branch: string | undefined;
@@ -89,6 +90,14 @@ export function createAgentApiRouter(
         }))
       : [];
 
+    // Build rework feedback: if there are previous reviews, extract the latest
+    // reviewer comment and present it prominently so agents see it first.
+    let reworkFeedback: string | null = null;
+    if (previousReviews.length > 0) {
+      const latestReview = previousReviews[previousReviews.length - 1];
+      reworkFeedback = `REWORK REQUIRED: The reviewer requested changes.\n\n${latestReview.body}`;
+    }
+
     const baseUrl = `http://localhost:${PORT}`;
 
     const screenshotUploadUrl = `${baseUrl}/agent/${issue.id}/screenshots`;
@@ -105,6 +114,7 @@ export function createAgentApiRouter(
 
     const response: AgentInfoResponse = {
       id: issue.id,
+      reworkFeedback,
       title: issue.title,
       description: issue.description,
       branch: issue.branch ?? undefined,

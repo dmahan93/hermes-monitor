@@ -93,6 +93,102 @@ describe('Agent API (Agent Communication)', () => {
     config.requireScreenshotsForUiChanges = savedRequire;
   });
 
+  it('GET /agent/:id/info returns null reworkFeedback when no reviews', async () => {
+    const issue = issueManager.create({ title: 'No reviews', description: 'Fresh issue' });
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.reworkFeedback).toBeNull();
+  });
+
+  it('GET /agent/:id/info returns reworkFeedback when reviews exist', async () => {
+    const issue = issueManager.create({ title: 'Rework issue', description: 'Needs fixes' });
+
+    // Mock the prManager to return a PR with review comments
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-1',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/test',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'changes_requested',
+      diff: '',
+      changedFiles: [],
+      verdict: 'changes_requested',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'comment-1',
+          prId: 'mock-pr-1',
+          author: 'hermes-reviewer',
+          body: 'VERDICT: CHANGES_REQUESTED\n\nMissing null check in getUserById()',
+          createdAt: Date.now(),
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+
+    // reworkFeedback should be prominent and contain the review body
+    expect(res.body.reworkFeedback).toBeTruthy();
+    expect(res.body.reworkFeedback).toContain('REWORK REQUIRED');
+    expect(res.body.reworkFeedback).toContain('Missing null check in getUserById()');
+
+    // reworkFeedback should appear before title in the JSON (it's declared first in the interface)
+    const keys = Object.keys(res.body);
+    const reworkIdx = keys.indexOf('reworkFeedback');
+    const titleIdx = keys.indexOf('title');
+    expect(reworkIdx).toBeLessThan(titleIdx);
+  });
+
+  it('GET /agent/:id/info reworkFeedback uses latest review comment', async () => {
+    const issue = issueManager.create({ title: 'Multi-review', description: 'Multiple rounds' });
+
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-2',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/multi',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'changes_requested',
+      diff: '',
+      changedFiles: [],
+      verdict: 'changes_requested',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'c1',
+          prId: 'mock-pr-2',
+          author: 'hermes-reviewer',
+          body: 'First review: fix typing',
+          createdAt: 1000,
+        },
+        {
+          id: 'c2',
+          prId: 'mock-pr-2',
+          author: 'hermes-reviewer',
+          body: 'Second review: still needs error handling',
+          createdAt: 2000,
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // Should use the latest comment
+    expect(res.body.reworkFeedback).toContain('still needs error handling');
+  });
+
   it('GET /agent/:id/info returns 404 for unknown issue', async () => {
     const res = await request(server, 'GET', '/agent/nope/info');
     expect(res.status).toBe(404);
