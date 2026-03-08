@@ -17,6 +17,7 @@ const makeIssue = (id: string, title: string, status: Issue['status'] = 'todo'):
   terminalId: null,
   branch: null,
   parentId: null,
+  reviewerModel: null,
   createdAt: Date.now(),
   updatedAt: Date.now(),
 });

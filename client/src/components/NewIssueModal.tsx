@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AgentPreset } from '../types';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { useModels } from '../hooks/useModels';
 import './NewIssueModal.css';
 
 interface NewIssueModalProps {
   agents: AgentPreset[];
   agentsLoading: boolean;
   agentsError: string | null;
-  onSubmit: (title: string, description: string, agent: string, command: string, branch: string) => void;
+  onSubmit: (title: string, description: string, agent: string, command: string, branch: string, reviewerModel?: string) => void;
   onClose: () => void;
 }
 
@@ -29,6 +30,8 @@ export function NewIssueModal({ agents, agentsLoading, agentsError, onSubmit, on
   const [agent, setAgent] = useState('hermes');
   const [command, setCommand] = useState('');
   const [branch, setBranch] = useState('');
+  const [reviewerModel, setReviewerModel] = useState('');
+  const { models } = useModels();
 
   const selectedAgent = agents.find((a) => a.id === agent);
   const showCommand = agent === 'custom';
@@ -41,7 +44,8 @@ export function NewIssueModal({ agents, agentsLoading, agentsError, onSubmit, on
       description.trim(),
       agent,
       showCommand ? command.trim() : '',
-      branch.trim()
+      branch.trim(),
+      reviewerModel || undefined,
     );
   };
 
@@ -120,6 +124,23 @@ export function NewIssueModal({ agents, agentsLoading, agentsError, onSubmit, on
               onChange={(e) => setBranch(e.target.value)}
               placeholder="e.g. fix/login-bug"
             />
+          </label>
+          <label className="modal-field">
+            <span className="modal-label">reviewer model</span>
+            <select
+              className="modal-select"
+              value={reviewerModel}
+              onChange={(e) => setReviewerModel(e.target.value)}
+              aria-label="Reviewer model"
+            >
+              <option value="">Same as agent (default)</option>
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.provider})
+                </option>
+              ))}
+            </select>
+            <span className="modal-hint">which AI model reviews this ticket&apos;s PR</span>
           </label>
           <div className="modal-backlog-hint">
             issue will be added to the backlog for planning before moving to TODO

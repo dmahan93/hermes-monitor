@@ -19,6 +19,8 @@ const mockIssue: Issue = {
   command: '',
   terminalId: 'term-1',
   branch: 'issue/abc-fix-the-bug',
+  parentId: null,
+  reviewerModel: null,
   createdAt: Date.now(),
   updatedAt: Date.now(),
 };

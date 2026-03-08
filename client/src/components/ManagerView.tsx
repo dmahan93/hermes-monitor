@@ -590,6 +590,11 @@ export function ManagerView({
                     </div>
                     <div className="manager-card-meta">
                       <span className="manager-card-agent">{getAgentName(agents, issue.agent)}</span>
+                      {issue.reviewerModel && (
+                        <span className="manager-card-reviewer" title={`Reviewer: ${issue.reviewerModel}`}>
+                          ⚖ {issue.reviewerModel.split('/').pop()}
+                        </span>
+                      )}
                       <span className="manager-card-elapsed">{elapsed}</span>
                     </div>
                     {issue.progressMessage && (

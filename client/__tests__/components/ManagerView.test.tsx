@@ -25,6 +25,7 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     terminalId: overrides.terminalId ?? 'term-1',
     branch: 'feature-1',
     parentId: null,
+    reviewerModel: null,
     createdAt: Date.now() - 60_000,
     updatedAt: Date.now() - 60_000,
     ...overrides,

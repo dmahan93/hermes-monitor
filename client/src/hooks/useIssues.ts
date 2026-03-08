@@ -63,12 +63,12 @@ export function useIssues(subscribe: (handler: (msg: ServerMessage) => void) => 
     return unsub;
   }, [subscribe]);
 
-  const createIssue = useCallback(async (title: string, description?: string, agent?: string, command?: string, branch?: string) => {
+  const createIssue = useCallback(async (title: string, description?: string, agent?: string, command?: string, branch?: string, reviewerModel?: string) => {
     try {
       const res = await fetch(`${API_BASE}/issues`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description, agent, command, branch }),
+        body: JSON.stringify({ title, description, agent, command, branch, reviewerModel }),
       });
       if (!res.ok) throw new Error(`Failed to create issue (${res.status})`);
       const issue = await res.json();

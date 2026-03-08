@@ -15,7 +15,7 @@ interface KanbanBoardProps {
   agentsLoading: boolean;
   agentsError: string | null;
   onStatusChange: (id: string, status: IssueStatus) => Promise<string | null>;
-  onCreateIssue: (title: string, description: string, agent: string, command: string, branch: string) => void;
+  onCreateIssue: (title: string, description: string, agent: string, command: string, branch: string, reviewerModel?: string) => void;
   onDeleteIssue: (id: string) => void;
   onEditIssue?: (issueId: string) => void;
   onTerminalClick?: (issueId: string) => void;
@@ -61,8 +61,8 @@ export function KanbanBoard({ issues, agents, agentsLoading, agentsError, onStat
     }
   }, [issues, onStatusChange]);
 
-  const handleCreate = useCallback((title: string, description: string, agent: string, command: string, branch: string) => {
-    onCreateIssue(title, description, agent, command, branch);
+  const handleCreate = useCallback((title: string, description: string, agent: string, command: string, branch: string, reviewerModel?: string) => {
+    onCreateIssue(title, description, agent, command, branch, reviewerModel);
     setShowModal(false);
   }, [onCreateIssue]);
 

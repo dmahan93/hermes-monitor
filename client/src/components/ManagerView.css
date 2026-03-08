@@ -245,6 +245,14 @@
   white-space: nowrap;
 }
 
+.manager-card-reviewer {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--warn);
+  font-size: 10px;
+}
+
 .manager-card-elapsed {
   flex-shrink: 0;
   color: var(--text-muted);

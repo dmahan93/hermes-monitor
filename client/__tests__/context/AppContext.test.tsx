@@ -128,6 +128,7 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     terminalId: 'term-1',
     branch: 'feature/test',
     parentId: null,
+    reviewerModel: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...overrides,

@@ -37,6 +37,7 @@ issueManager.setPRManager(prManager);
 issueManager.setStore(store);
 issueManager.setupAutoResume();
 prManager.setStore(store);
+prManager.setIssueManager(issueManager);
 
 // Load persisted state (clear stale terminal refs from previous session)
 const { inProgress, backlog } = store.resetStaleTerminals();

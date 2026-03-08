@@ -176,6 +176,18 @@
 
 .issue-detail-branch { color: var(--link); }
 
+.issue-detail-reviewer-select {
+  background: var(--chrome-dark);
+  border: 1px solid var(--chrome);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 2px 4px;
+  flex: 1;
+  cursor: pointer;
+}
+.issue-detail-reviewer-select:focus { outline: 1px solid var(--accent); }
+
 .issue-detail-terminal-link {
   background: transparent;
   border: none;

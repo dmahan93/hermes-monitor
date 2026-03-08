@@ -17,6 +17,7 @@ const makeIssue = (id: string, title: string, opts?: Partial<Issue>): Issue => (
   terminalId: `term-${id}`,
   branch: `branch-${id}`,
   parentId: null,
+  reviewerModel: null,
   createdAt: Date.now(),
   updatedAt: Date.now(),
   ...opts,
