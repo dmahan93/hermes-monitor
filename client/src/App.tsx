@@ -110,6 +110,7 @@ function AppContent() {
               <div className="terminals-main">
                 {termViewAgentIssue && termViewAgentIssue.terminalId ? (
                   <TaskTerminalPane
+                    key={termViewAgentIssue.terminalId}
                     issue={termViewAgentIssue}
                     send={send}
                     subscribe={subscribe}
