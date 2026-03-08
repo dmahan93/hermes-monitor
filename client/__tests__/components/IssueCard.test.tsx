@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { SubtaskInfo } from '../../src/components/IssueCard';
 import { DragDropContext, Droppable } from '@hello-pangea/dnd';
 import { IssueCard } from '../../src/components/IssueCard';
@@ -71,77 +71,90 @@ describe('IssueCard', () => {
   });
 
   describe('delete confirmation', () => {
-    let originalConfirm: typeof window.confirm;
-
-    beforeEach(() => {
-      originalConfirm = window.confirm;
+    it('shows confirm dialog when delete is clicked', async () => {
+      renderCard();
+      fireEvent.click(screen.getByTitle('Delete issue'));
+      await waitFor(() => {
+        expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+      });
+      expect(screen.getByText(/DELETE ISSUE/)).toBeInTheDocument();
     });
 
-    afterEach(() => {
-      window.confirm = originalConfirm;
-    });
-
-    it('calls onDelete when user confirms', () => {
-      window.confirm = vi.fn(() => true);
+    it('calls onDelete when user confirms', async () => {
       const onDelete = vi.fn();
       renderCard(mockIssue, onDelete);
       fireEvent.click(screen.getByTitle('Delete issue'));
-      expect(window.confirm).toHaveBeenCalled();
-      expect(onDelete).toHaveBeenCalledWith('issue-1');
+      await waitFor(() => {
+        expect(screen.getByText('[DELETE]')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText('[DELETE]'));
+      await waitFor(() => {
+        expect(onDelete).toHaveBeenCalledWith('issue-1');
+      });
     });
 
-    it('does not call onDelete when user cancels', () => {
-      window.confirm = vi.fn(() => false);
+    it('does not call onDelete when user cancels', async () => {
       const onDelete = vi.fn();
       renderCard(mockIssue, onDelete);
       fireEvent.click(screen.getByTitle('Delete issue'));
-      expect(window.confirm).toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByText('[CANCEL]')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText('[CANCEL]'));
+      await waitFor(() => {
+        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+      });
       expect(onDelete).not.toHaveBeenCalled();
     });
 
-    it('shows issue title in confirmation message', () => {
-      window.confirm = vi.fn(() => false);
+    it('shows issue title in confirmation message', async () => {
       renderCard(mockIssue);
       fireEvent.click(screen.getByTitle('Delete issue'));
-      expect(window.confirm).toHaveBeenCalledWith(
-        expect.stringContaining('Fix the login bug'),
-      );
+      await waitFor(() => {
+        expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+      });
+      const dialog = screen.getByRole('alertdialog');
+      expect(within(dialog).getByText(/Fix the login bug/)).toBeInTheDocument();
     });
 
-    it('shows subtask count when subtaskInfo is provided', () => {
-      window.confirm = vi.fn(() => false);
+    it('shows subtask count when subtaskInfo is provided', async () => {
       renderCard(mockIssue, vi.fn(), { subtaskInfo: { total: 3, done: 1 } });
       fireEvent.click(screen.getByTitle('Delete issue'));
-      expect(window.confirm).toHaveBeenCalledWith(
-        expect.stringContaining('3 subtasks'),
-      );
+      await waitFor(() => {
+        expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+      });
+      expect(screen.getByText(/3 subtasks/)).toBeInTheDocument();
     });
 
-    it('shows singular subtask when count is 1', () => {
-      window.confirm = vi.fn(() => false);
+    it('shows singular subtask when count is 1', async () => {
       renderCard(mockIssue, vi.fn(), { subtaskInfo: { total: 1, done: 0 } });
       fireEvent.click(screen.getByTitle('Delete issue'));
-      const msg = (window.confirm as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      expect(msg).toContain('1 subtask');
-      expect(msg).not.toContain('1 subtasks');
+      await waitFor(() => {
+        expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+      });
+      const message = screen.getByText(/1 subtask/);
+      expect(message.textContent).toContain('1 subtask');
+      expect(message.textContent).not.toContain('1 subtasks');
     });
 
-    it('shows generic subtask warning when no subtaskInfo for top-level issue', () => {
-      window.confirm = vi.fn(() => false);
+    it('shows generic subtask warning when no subtaskInfo for top-level issue', async () => {
       renderCard(mockIssue);
       fireEvent.click(screen.getByTitle('Delete issue'));
-      expect(window.confirm).toHaveBeenCalledWith(
-        expect.stringContaining('may also delete associated subtasks'),
-      );
+      await waitFor(() => {
+        expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+      });
+      expect(screen.getByText(/may also delete associated subtasks/)).toBeInTheDocument();
     });
 
-    it('does not show subtask warning for child issues without subtaskInfo', () => {
-      window.confirm = vi.fn(() => false);
+    it('does not show subtask warning for child issues without subtaskInfo', async () => {
       const childIssue = { ...mockIssue, parentId: 'parent-1' };
       renderCard(childIssue);
       fireEvent.click(screen.getByTitle('Delete issue'));
-      const msg = (window.confirm as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      expect(msg).not.toContain('subtask');
+      await waitFor(() => {
+        expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+      });
+      const message = screen.getByText(/Delete/);
+      expect(message.textContent).not.toContain('subtask');
     });
   });
 

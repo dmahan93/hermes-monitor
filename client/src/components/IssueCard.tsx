@@ -1,5 +1,6 @@
 import { Draggable } from '@hello-pangea/dnd';
 import type { Issue, AgentPreset } from '../types';
+import { useConfirm } from '../hooks/useConfirm';
 
 export interface SubtaskInfo {
   total: number;
@@ -20,6 +21,7 @@ interface IssueCardProps {
 
 export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalClick, onClick, parentTitle, subtaskInfo }: IssueCardProps) {
   const agent = agents.find((a) => a.id === issue.agent);
+  const { confirm, ConfirmDialogElement } = useConfirm();
 
   return (
     <Draggable draggableId={issue.id} index={index}>
@@ -53,7 +55,7 @@ export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalCl
               )}
               <button
                 className="issue-card-delete"
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
                   let subtaskWarning = '';
                   if (subtaskInfo && subtaskInfo.total > 0) {
@@ -61,7 +63,13 @@ export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalCl
                   } else if (!subtaskInfo && !issue.parentId) {
                     subtaskWarning = ' This may also delete associated subtasks.';
                   }
-                  if (window.confirm(`Delete "${issue.title}"?${subtaskWarning}`)) {
+                  const confirmed = await confirm({
+                    title: 'DELETE ISSUE',
+                    message: `Delete "${issue.title}"?${subtaskWarning}`,
+                    confirmText: '[DELETE]',
+                    variant: 'danger',
+                  });
+                  if (confirmed) {
                     onDelete(issue.id);
                   }
                 }}
@@ -72,6 +80,7 @@ export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalCl
               </button>
             </div>
           </div>
+          {ConfirmDialogElement}
           {parentTitle && (
             <div className="issue-card-parent" title="Subtask of parent issue">
               ↑ {parentTitle}

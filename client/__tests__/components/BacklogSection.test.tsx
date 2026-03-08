@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { DragDropContext } from '@hello-pangea/dnd';
 import { BacklogSection } from '../../src/components/BacklogSection';
 import type { Issue, AgentPreset } from '../../src/types';
@@ -105,43 +105,44 @@ describe('BacklogSection', () => {
   });
 
   describe('delete confirmation', () => {
-    let originalConfirm: typeof window.confirm;
-
-    beforeEach(() => {
-      originalConfirm = window.confirm;
-    });
-
-    afterEach(() => {
-      window.confirm = originalConfirm;
-    });
-
-    it('shows confirmation dialog before deleting', () => {
-      window.confirm = vi.fn(() => true);
+    it('shows confirmation dialog before deleting', async () => {
       const onDelete = vi.fn();
       const issues = [makeIssue('del-1', 'Delete me')];
       renderBacklog(issues, { onDelete });
       fireEvent.click(screen.getByTitle('Delete issue'));
-      expect(window.confirm).toHaveBeenCalledWith(
-        expect.stringContaining('Delete me'),
-      );
+      await waitFor(() => {
+        expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+      });
+      const dialog = screen.getByRole('alertdialog');
+      expect(within(dialog).getByText(/Delete me/)).toBeInTheDocument();
     });
 
-    it('calls onDelete when user confirms', () => {
-      window.confirm = vi.fn(() => true);
+    it('calls onDelete when user confirms', async () => {
       const onDelete = vi.fn();
       const issues = [makeIssue('del-1', 'Delete me')];
       renderBacklog(issues, { onDelete });
       fireEvent.click(screen.getByTitle('Delete issue'));
-      expect(onDelete).toHaveBeenCalledWith('del-1');
+      await waitFor(() => {
+        expect(screen.getByText('[DELETE]')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText('[DELETE]'));
+      await waitFor(() => {
+        expect(onDelete).toHaveBeenCalledWith('del-1');
+      });
     });
 
-    it('does not call onDelete when user cancels', () => {
-      window.confirm = vi.fn(() => false);
+    it('does not call onDelete when user cancels', async () => {
       const onDelete = vi.fn();
       const issues = [makeIssue('del-1', 'Delete me')];
       renderBacklog(issues, { onDelete });
       fireEvent.click(screen.getByTitle('Delete issue'));
-      expect(window.confirm).toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByText('[CANCEL]')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText('[CANCEL]'));
+      await waitFor(() => {
+        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+      });
       expect(onDelete).not.toHaveBeenCalled();
     });
   });

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { DiffViewer } from './DiffViewer';
 import { MarkdownContent, ImageWithZoom } from './MarkdownContent';
 import type { PullRequest, IssueStatus, Screenshot, MergeMode } from '../types';
+import { useConfirm } from '../hooks/useConfirm';
 import './PRDetail.css';
 import { API_BASE } from '../config';
 
@@ -37,6 +38,7 @@ export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComme
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [closeError, setCloseError] = useState<string | null>(null);
   const [githubPrCreated, setGithubPrCreated] = useState(false);
+  const { confirm, ConfirmDialogElement } = useConfirm();
   const [screenshots, setScreenshots] = useState<Screenshot[]>(pr.screenshots || []);
   const status = STATUS_LABELS[pr.status] || STATUS_LABELS.open;
 
@@ -94,6 +96,7 @@ export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComme
 
   return (
     <div className="pr-detail">
+      {ConfirmDialogElement}
       <div className="pr-detail-header">
         <button className="pr-back-btn" onClick={onBack}>[← BACK]</button>
         <div className="pr-detail-title-row">
@@ -176,7 +179,13 @@ export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComme
             <button
               className="pr-action-btn pr-close-btn"
               onClick={async () => {
-                if (!window.confirm('Close this PR? It will be marked as closed.')) return;
+                const confirmed = await confirm({
+                  title: 'CLOSE PR',
+                  message: 'Close this PR? It will be marked as closed.',
+                  confirmText: '[CLOSE]',
+                  variant: 'warning',
+                });
+                if (!confirmed) return;
                 setCloseError(null);
                 const result = await onClosePR(pr.id);
                 if (result.error) setCloseError(result.error);
@@ -208,7 +217,13 @@ export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComme
                     <button
                       className="pr-action-btn pr-confirm-merge-btn"
                       onClick={async () => {
-                        if (!window.confirm(`Confirm that "${pr.title}" was merged on GitHub?`)) return;
+                        const confirmed = await confirm({
+                          title: 'CONFIRM MERGE',
+                          message: `Confirm that "${pr.title}" was merged on GitHub?`,
+                          confirmText: '[CONFIRM]',
+                          variant: 'info',
+                        });
+                        if (!confirmed) return;
                         setMergeError(null);
                         const result = await onConfirmMerge(pr.id);
                         if (result.error) setMergeError(result.error);
@@ -226,7 +241,13 @@ export function PRDetail({ pr, issueStatus, mergeMode = 'local', onBack, onComme
                         : mergeMode === 'both'
                         ? `Merge "${pr.title}" into ${pr.targetBranch} and create a GitHub PR?`
                         : `Merge "${pr.title}" into ${pr.targetBranch}?`;
-                      if (!window.confirm(confirmMsg)) return;
+                      const confirmed = await confirm({
+                        title: mergeMode === 'github' ? 'CREATE GITHUB PR' : 'MERGE',
+                        message: confirmMsg,
+                        confirmText: mergeMode === 'github' ? '[CREATE PR]' : '[MERGE]',
+                        variant: 'info',
+                      });
+                      if (!confirmed) return;
                       setMergeError(null);
                       const result = await onMerge(pr.id);
                       if (result.error) {

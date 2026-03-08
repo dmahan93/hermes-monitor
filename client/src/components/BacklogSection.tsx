@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Droppable, Draggable } from '@hello-pangea/dnd';
 import type { Issue, AgentPreset } from '../types';
+import { useConfirm } from '../hooks/useConfirm';
 import './BacklogSection.css';
 
 interface BacklogSectionProps {
@@ -14,6 +15,7 @@ interface BacklogSectionProps {
 export function BacklogSection({ issues, agents, onDelete, onPlanClick, onIssueClick }: BacklogSectionProps) {
   const [collapsed, setCollapsed] = useState(false);
   const prevCountRef = useRef(issues.length);
+  const { confirm, ConfirmDialogElement } = useConfirm();
 
   // Auto-expand when new issues are added to backlog
   useEffect(() => {
@@ -25,6 +27,7 @@ export function BacklogSection({ issues, agents, onDelete, onPlanClick, onIssueC
 
   return (
     <div className="backlog-section">
+      {ConfirmDialogElement}
       <div className="backlog-header" onClick={() => setCollapsed(!collapsed)}>
         <span className="backlog-toggle">{collapsed ? '▸' : '▾'}</span>
         <span className="backlog-label">BACKLOG</span>
@@ -63,9 +66,15 @@ export function BacklogSection({ issues, agents, onDelete, onPlanClick, onIssueC
                           </span>
                           <button
                             className="issue-card-delete"
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              if (window.confirm(`Delete "${issue.title}"?`)) {
+                              const confirmed = await confirm({
+                                title: 'DELETE ISSUE',
+                                message: `Delete "${issue.title}"?`,
+                                confirmText: '[DELETE]',
+                                variant: 'danger',
+                              });
+                              if (confirmed) {
                                 onDelete(issue.id);
                               }
                             }}

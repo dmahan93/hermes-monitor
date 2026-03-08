@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { PRDetail } from '../../src/components/PRDetail';
 import { API_BASE } from '../../src/config';
 import type { PullRequest, IssueStatus, PRStatus } from '../../src/types';
@@ -286,11 +286,9 @@ describe('PRDetail — Screenshots section', () => {
 
 describe('PRDetail — Merge confirmation', () => {
   let originalFetch: typeof globalThis.fetch;
-  let originalConfirm: typeof window.confirm;
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
-    originalConfirm = window.confirm;
     // Mock fetch: merge-check returns canMerge: true, no conflicts
     globalThis.fetch = vi.fn((url: string | URL | Request) => {
       const urlStr = typeof url === 'string' ? url : url.toString();
@@ -309,28 +307,26 @@ describe('PRDetail — Merge confirmation', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    window.confirm = originalConfirm;
   });
 
   it('shows confirmation dialog before merging', async () => {
-    window.confirm = vi.fn(() => true);
     const props = defaultProps();
     props.pr = makePR({ verdict: 'approved' });
     render(<PRDetail {...props} />);
 
-    // Wait for merge button to appear (after merge-check resolves)
     await waitFor(() => {
       expect(screen.getByText(/MERGE/)).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByText(/MERGE/));
-    expect(window.confirm).toHaveBeenCalledWith(
-      expect.stringContaining('Test PR'),
-    );
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByText(/Test PR/)).toBeInTheDocument();
   });
 
   it('calls onMerge when user confirms', async () => {
-    window.confirm = vi.fn(() => true);
     const props = defaultProps();
     props.pr = makePR({ verdict: 'approved' });
     render(<PRDetail {...props} />);
@@ -340,6 +336,10 @@ describe('PRDetail — Merge confirmation', () => {
     });
 
     fireEvent.click(screen.getByText(/MERGE/));
+    await waitFor(() => {
+      expect(screen.getByText('[MERGE]')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('[MERGE]'));
 
     await waitFor(() => {
       expect(props.onMerge).toHaveBeenCalledWith('pr-1');
@@ -347,7 +347,6 @@ describe('PRDetail — Merge confirmation', () => {
   });
 
   it('does not call onMerge when user cancels', async () => {
-    window.confirm = vi.fn(() => false);
     const props = defaultProps();
     props.pr = makePR({ verdict: 'approved' });
     render(<PRDetail {...props} />);
@@ -357,12 +356,17 @@ describe('PRDetail — Merge confirmation', () => {
     });
 
     fireEvent.click(screen.getByText(/MERGE/));
-    expect(window.confirm).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('[CANCEL]'));
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    });
     expect(props.onMerge).not.toHaveBeenCalled();
   });
 
   it('includes target branch in confirmation message', async () => {
-    window.confirm = vi.fn(() => false);
     const props = defaultProps();
     props.pr = makePR({ verdict: 'approved', targetBranch: 'production' });
     render(<PRDetail {...props} />);
@@ -372,19 +376,19 @@ describe('PRDetail — Merge confirmation', () => {
     });
 
     fireEvent.click(screen.getByText(/MERGE/));
-    expect(window.confirm).toHaveBeenCalledWith(
-      expect.stringContaining('production'),
-    );
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByText(/production/)).toBeInTheDocument();
   });
 });
 
 describe('PRDetail — GitHub merge mode', () => {
   let originalFetch: typeof globalThis.fetch;
-  let originalConfirm: typeof window.confirm;
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
-    originalConfirm = window.confirm;
     globalThis.fetch = vi.fn((url: string | URL | Request) => {
       const urlStr = typeof url === 'string' ? url : url.toString();
       if (urlStr.includes('/merge-check')) {
@@ -402,7 +406,6 @@ describe('PRDetail — GitHub merge mode', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    window.confirm = originalConfirm;
   });
 
   it('shows "Create GitHub PR" button when mergeMode is github', async () => {
@@ -449,7 +452,6 @@ describe('PRDetail — GitHub merge mode', () => {
   });
 
   it('calls onConfirmMerge when CONFIRM MERGED is clicked and confirmed', async () => {
-    window.confirm = vi.fn(() => true);
     const props = defaultProps();
     props.pr = makePR({ verdict: 'approved', githubPrUrl: 'https://github.com/test/repo/pull/1' });
     render(<PRDetail {...props} mergeMode="github" />);
@@ -459,6 +461,10 @@ describe('PRDetail — GitHub merge mode', () => {
     });
 
     fireEvent.click(screen.getByText(/CONFIRM MERGED/));
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('[CONFIRM]'));
 
     await waitFor(() => {
       expect(props.onConfirmMerge).toHaveBeenCalledWith('pr-1');
@@ -466,7 +472,6 @@ describe('PRDetail — GitHub merge mode', () => {
   });
 
   it('shows confirmation dialog for GitHub PR creation', async () => {
-    window.confirm = vi.fn(() => true);
     const props = defaultProps();
     props.pr = makePR({ verdict: 'approved' });
     render(<PRDetail {...props} mergeMode="github" />);
@@ -476,9 +481,11 @@ describe('PRDetail — GitHub merge mode', () => {
     });
 
     fireEvent.click(screen.getByText(/Create GitHub PR/));
-    expect(window.confirm).toHaveBeenCalledWith(
-      expect.stringContaining('Create GitHub PR'),
-    );
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByText(/Create GitHub PR/)).toBeInTheDocument();
   });
 
   it('shows "MERGE + GH PR" button when mergeMode is both', async () => {
@@ -492,7 +499,6 @@ describe('PRDetail — GitHub merge mode', () => {
   });
 
   it('shows confirmation dialog mentioning GH PR when mergeMode is both', async () => {
-    window.confirm = vi.fn(() => true);
     const props = defaultProps();
     props.pr = makePR({ verdict: 'approved' });
     render(<PRDetail {...props} mergeMode="both" />);
@@ -502,9 +508,10 @@ describe('PRDetail — GitHub merge mode', () => {
     });
 
     fireEvent.click(screen.getByText(/MERGE \+ GH PR/));
-    expect(window.confirm).toHaveBeenCalledWith(
-      expect.stringContaining('create a GitHub PR'),
-    );
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/create a GitHub PR/)).toBeInTheDocument();
   });
 });
 
@@ -563,30 +570,43 @@ describe('PRDetail — Close PR button', () => {
   });
 
   it('shows confirmation dialog when close button is clicked', async () => {
-    window.confirm = vi.fn(() => false);
     const props = defaultProps();
     render(<PRDetail {...props} />);
     fireEvent.click(screen.getByText(/× CLOSE/));
-    expect(window.confirm).toHaveBeenCalledWith('Close this PR? It will be marked as closed.');
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Close this PR/)).toBeInTheDocument();
+    // Cancel to verify onClosePR is not called
+    fireEvent.click(screen.getByText('[CANCEL]'));
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    });
     expect(props.onClosePR).not.toHaveBeenCalled();
   });
 
   it('calls onClosePR when confirmed', async () => {
-    window.confirm = vi.fn(() => true);
     const props = defaultProps();
     render(<PRDetail {...props} />);
     fireEvent.click(screen.getByText(/× CLOSE/));
+    await waitFor(() => {
+      expect(screen.getByText('[CLOSE]')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('[CLOSE]'));
     await waitFor(() => {
       expect(props.onClosePR).toHaveBeenCalledWith('pr-1');
     });
   });
 
   it('displays close error when onClosePR returns error', async () => {
-    window.confirm = vi.fn(() => true);
     const props = defaultProps();
     props.onClosePR = vi.fn().mockResolvedValue({ error: 'Cannot close a merged PR' });
     render(<PRDetail {...props} />);
     fireEvent.click(screen.getByText(/× CLOSE/));
+    await waitFor(() => {
+      expect(screen.getByText('[CLOSE]')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('[CLOSE]'));
     await waitFor(() => {
       expect(screen.getByText('Cannot close a merged PR')).toBeInTheDocument();
     });

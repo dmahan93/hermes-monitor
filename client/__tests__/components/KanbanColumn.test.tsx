@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { DragDropContext, Droppable } from '@hello-pangea/dnd';
 import { KanbanColumn } from '../../src/components/KanbanColumn';
 import type { Issue, AgentPreset } from '../../src/types';
@@ -119,18 +119,21 @@ describe('KanbanColumn', () => {
     expect(screen.getByTitle('1/2 subtasks done')).toBeInTheDocument();
   });
 
-  it('calls onDelete when delete button is clicked', () => {
+  it('calls onDelete when delete button is clicked and confirmed', async () => {
     const onDelete = vi.fn();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const issues = [makeIssue('1', 'Task to delete')];
     renderColumn(issues, issues, { onDelete });
 
     const deleteBtn = screen.getByLabelText('Delete issue');
     fireEvent.click(deleteBtn);
 
-    expect(window.confirm).toHaveBeenCalled();
-    expect(onDelete).toHaveBeenCalledWith('1');
-    vi.mocked(window.confirm).mockRestore();
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('[DELETE]'));
+    await waitFor(() => {
+      expect(onDelete).toHaveBeenCalledWith('1');
+    });
   });
 
   it('calls onEdit when edit button is clicked', () => {
