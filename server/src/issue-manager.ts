@@ -220,8 +220,12 @@ export class IssueManager {
     if (!issue) return undefined;
     if (issue.status !== 'in_progress') return undefined;
 
-    if (message !== undefined) issue.progressMessage = message || null;
-    if (percent !== undefined) issue.progressPercent = (percent !== null && percent >= 0 && percent <= 100) ? percent : null;
+    if (message !== undefined) {
+      // Truncate for defense-in-depth (route also truncates, but internal callers may not)
+      const truncated = message && message.length > 200 ? message.slice(0, 200) : message;
+      issue.progressMessage = truncated || null;
+    }
+    if (percent !== undefined) issue.progressPercent = (percent !== null && Number.isFinite(percent) && percent >= 0 && percent <= 100) ? percent : null;
     issue.progressUpdatedAt = Date.now();
 
     // Emit progress event (lightweight — no persist needed)
