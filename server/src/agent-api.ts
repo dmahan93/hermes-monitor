@@ -14,6 +14,7 @@ import type { TerminalManager } from './terminal-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
 import { config } from './config.js';
 import { ALLOWED_EXTENSIONS, getUploadedScreenshots, UI_EXTENSIONS } from './screenshot-utils.js';
+import { getDiagnostics } from './diagnostics.js';
 
 /** File extensions that indicate UI changes requiring screenshots (derived from screenshot-utils) */
 const UI_FILE_EXTENSIONS = new Set(UI_EXTENSIONS);
@@ -48,6 +49,11 @@ interface AgentInfoResponse {
     verdict: string | null;
     body: string;
     createdAt: number;
+  }>;
+  previousAttempts: Array<{
+    exitCode: number;
+    logFile: string;
+    timestamp: number;
   }>;
   reviewUrl: string;
   screenshotUploadUrl: string;
@@ -102,6 +108,9 @@ export function createAgentApiRouter(
       }
     }
 
+    // Get diagnostic entries from previous terminal exits
+    const previousAttempts = getDiagnostics(issue.id, config.diagnosticsBase);
+
     const baseUrl = `http://localhost:${PORT}`;
 
     const screenshotUploadUrl = `${baseUrl}/agent/${issue.id}/screenshots`;
@@ -126,6 +135,7 @@ export function createAgentApiRouter(
       repoPath: config.repoPath,
       targetBranch: config.targetBranch,
       previousReviews,
+      previousAttempts,
       reviewUrl: `${baseUrl}/agent/${issue.id}/review`,
       screenshotUploadUrl,
       screenshotUploadInstructions,

@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { TerminalManager } from '../src/terminal-manager.js';
 import { IssueManager } from '../src/issue-manager.js';
 import { WorktreeManager } from '../src/worktree-manager.js';
@@ -11,6 +12,7 @@ import { PRManager } from '../src/pr-manager.js';
 import { createAgentApiRouter } from '../src/agent-api.js';
 import { createIssueApiRouter } from '../src/issue-api.js';
 import { config } from '../src/config.js';
+import { saveDiagnostics } from '../src/diagnostics.js';
 
 async function request(server: Server, method: string, path: string, body?: any) {
   const addr = server.address() as any;
@@ -91,6 +93,45 @@ describe('Agent API (Agent Communication)', () => {
     expect(res.body.screenshotUploadInstructions).toContain('curl');
 
     config.requireScreenshotsForUiChanges = savedRequire;
+  });
+
+  it('GET /agent/:id/info includes empty previousAttempts when no diagnostics', async () => {
+    const issue = issueManager.create({ title: 'Fresh issue' });
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.previousAttempts).toEqual([]);
+  });
+
+  it('GET /agent/:id/info includes previousAttempts from diagnostics', async () => {
+    // Set up temp diagnostics dir
+    const testDiagBase = join(tmpdir(), `hermes-diag-agent-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(testDiagBase, { recursive: true });
+    const savedBase = config.diagnosticsBase;
+    config.diagnosticsBase = testDiagBase;
+
+    try {
+      const issue = issueManager.create({ title: 'Reattempt issue' });
+
+      // Save a diagnostic entry
+      saveDiagnostics({
+        issueId: issue.id,
+        issueTitle: issue.title,
+        branch: 'feat/retry',
+        exitCode: 1,
+        scrollback: 'crash output',
+        diagnosticsBase: testDiagBase,
+      });
+
+      const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+      expect(res.status).toBe(200);
+      expect(res.body.previousAttempts).toHaveLength(1);
+      expect(res.body.previousAttempts[0].exitCode).toBe(1);
+      expect(res.body.previousAttempts[0].timestamp).toBeGreaterThan(0);
+      expect(res.body.previousAttempts[0].logFile).toContain(issue.id);
+    } finally {
+      config.diagnosticsBase = savedBase;
+      try { rmSync(testDiagBase, { recursive: true, force: true }); } catch { /* */ }
+    }
   });
 
   it('GET /agent/:id/info returns null reworkFeedback when no reviews', async () => {

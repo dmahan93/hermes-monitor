@@ -4,6 +4,8 @@ import type { WorktreeManager } from './worktree-manager.js';
 import type { PRManager } from './pr-manager.js';
 import type { Store } from './store.js';
 import { getPreset } from './agents.js';
+import { saveDiagnostics } from './diagnostics.js';
+import { config } from './config.js';
 
 // Re-export shared types so existing server imports continue to work.
 export type { Issue, IssueStatus } from '@hermes-monitor/shared/types';
@@ -427,6 +429,24 @@ export class IssueManager {
     // Only auto-resume in_progress issues
     if (issue.status !== 'in_progress') return;
 
+    // Capture scrollback before any cleanup — needed for both diagnostics and logging
+    const scrollback = this.terminalManager.getScrollback(terminalId);
+
+    // Save diagnostic log for post-mortem analysis (always, regardless of resume)
+    try {
+      const logPath = saveDiagnostics({
+        issueId: issue.id,
+        issueTitle: issue.title,
+        branch: issue.branch,
+        exitCode,
+        scrollback: scrollback || '',
+        diagnosticsBase: config.diagnosticsBase,
+      });
+      console.log(`[diagnostics] Saved exit log: ${logPath}`);
+    } catch (err) {
+      console.error('[diagnostics] Failed to save exit log:', err);
+    }
+
     // Check resume attempts (with sliding window)
     const attempts = this.getOrCreateResumeAttempts(issue.id);
     if (Date.now() - attempts.lastAttempt > this.resumeWindowMs) {
@@ -441,7 +461,6 @@ export class IssueManager {
     }
 
     // Log last few lines of terminal output for debugging
-    const scrollback = this.terminalManager.getScrollback(terminalId);
     if (scrollback) {
       const lastLines = scrollback.split('\n').filter(Boolean).slice(-10).join('\n');
       if (lastLines) {
