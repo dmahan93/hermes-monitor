@@ -5,6 +5,7 @@ import {
   useState,
   useEffect,
   useMemo,
+  useRef,
   type ReactNode,
   type Dispatch,
   type SetStateAction,
@@ -21,8 +22,8 @@ import type {
   IssueStatus,
   GridItem,
 } from '../types';
-import type { ViewMode } from '../components/ViewSwitcher';
-import { VALID_VIEWS } from '../components/ViewSwitcher';
+import type { ViewMode } from '../routeConstants';
+import { VALID_VIEWS, DEFAULT_VIEW } from '../routeConstants';
 import { type AgentListSelection, selectionKey } from '../components/AgentTerminalList';
 import { API_BASE } from '../config';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -35,12 +36,17 @@ import { useErrorToast, type ErrorEntry } from '../hooks/useErrorToast';
 
 // ── URL parsing helpers ──
 
+/** Encode a dynamic URL segment safely */
+function encodeSegment(s: string): string {
+  return encodeURIComponent(s);
+}
+
 /** Parse the URL segments after /:repoId/ to derive view and detail IDs */
 function parseRouteState(pathname: string) {
   const segments = pathname.split('/').filter(Boolean);
   // segments[0] = repoId, segments[1] = resource, segments[2] = detail id
 
-  let view: ViewMode = 'kanban';
+  let view: ViewMode = DEFAULT_VIEW;
   let issueId: string | null = null;
   let prId: string | null = null;
   let gitRoute = false;
@@ -48,11 +54,11 @@ function parseRouteState(pathname: string) {
   const resource = segments[1];
 
   if (resource === 'issues' && segments[2]) {
-    issueId = segments[2];
-    // Issue detail is a modal — default underlying view is kanban
+    issueId = decodeURIComponent(segments[2]);
+    // Issue detail is a modal — underlying view is tracked by returnViewRef
   } else if (resource === 'prs' && segments[2]) {
     view = 'prs';
-    prId = segments[2];
+    prId = decodeURIComponent(segments[2]);
   } else if (resource === 'git') {
     gitRoute = true;
     // git route opens the git panel sidebar, underlying view is kanban
@@ -119,6 +125,10 @@ export interface AppContextValue {
   // View routing (now derived from URL)
   view: ViewMode;
   setView: (mode: ViewMode) => void;
+  // TODO: repoId is extracted from the URL but not yet passed to data hooks
+  // (useIssues, useTerminals, usePRs, useGitGraph, useAgents). All repos
+  // currently share the same backend data. When multi-repo support is added,
+  // each hook should accept repoId and include it in API calls.
   repoId: string;
 
   // Git panel sidebar
@@ -226,29 +236,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [location.pathname],
   );
 
+  // ── Track the "return" view for closing detail modals ──
+  // When we navigate to /repo/issues/:id, the URL no longer contains the
+  // originating view. This ref remembers the last active view so we can
+  // return to it when the detail is closed.
+  const returnViewRef = useRef<ViewMode>(view);
+
+  useEffect(() => {
+    // Only update returnViewRef when we're on a real view (not issue detail)
+    if (!urlIssueId) {
+      returnViewRef.current = view;
+    }
+  }, [view, urlIssueId]);
+
   // ── Navigation-based setters ──
+
+  // View switches use replace to avoid history pollution (#4).
+  // Tab switches are lateral navigation, not forward/back.
   const setView = useCallback((mode: ViewMode) => {
-    navigate(`/${repoId}/${mode}`);
+    navigate(`/${encodeSegment(repoId)}/${mode}`, { replace: true });
   }, [navigate, repoId]);
 
+  // Opening detail pushes to history (so back button closes it).
+  // Closing detail replaces (returns to view without adding history).
   const setDetailIssueId = useCallback((id: string | null) => {
     if (id) {
-      navigate(`/${repoId}/issues/${id}`);
+      navigate(`/${encodeSegment(repoId)}/issues/${encodeSegment(id)}`);
     } else {
-      navigate(`/${repoId}/${view}`);
+      // Navigate back to the view we came from, not the URL-derived view
+      navigate(`/${encodeSegment(repoId)}/${returnViewRef.current}`, { replace: true });
     }
-  }, [navigate, repoId, view]);
+  }, [navigate, repoId]);
 
   const closeDetail = useCallback(() => {
     setDetailEditing(false);
-    navigate(`/${repoId}/${view}`);
-  }, [navigate, repoId, view]);
+    // Navigate back to the view we came from (stored in returnViewRef)
+    navigate(`/${encodeSegment(repoId)}/${returnViewRef.current}`, { replace: true });
+  }, [navigate, repoId]);
 
   const setSelectedPrId = useCallback((id: string | null) => {
     if (id) {
-      navigate(`/${repoId}/prs/${id}`);
+      navigate(`/${encodeSegment(repoId)}/prs/${encodeSegment(id)}`);
     } else {
-      navigate(`/${repoId}/prs`);
+      // Clearing PR selection replaces history (lateral navigation)
+      navigate(`/${encodeSegment(repoId)}/prs`, { replace: true });
     }
   }, [navigate, repoId]);
 

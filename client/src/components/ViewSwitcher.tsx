@@ -1,26 +1,24 @@
 import { useNavigate, useParams } from 'react-router-dom';
+import type { ViewMode } from '../routeConstants';
 import './ViewSwitcher.css';
 
-export type ViewMode = 'kanban' | 'terminals' | 'prs' | 'research' | 'config' | 'manager';
-
-export const VALID_VIEWS: readonly ViewMode[] = ['kanban', 'terminals', 'prs', 'research', 'config', 'manager'];
+// Re-export for backward compat (some tests may import from here)
+export type { ViewMode } from '../routeConstants';
+export { VALID_VIEWS } from '../routeConstants';
 
 interface ViewSwitcherProps {
   mode: ViewMode;
-  onChange?: (mode: ViewMode) => void;
   prCount?: number;
   activeAgentCount?: number;
 }
 
-export function ViewSwitcher({ mode, onChange, prCount, activeAgentCount }: ViewSwitcherProps) {
+export function ViewSwitcher({ mode, prCount, activeAgentCount }: ViewSwitcherProps) {
   const navigate = useNavigate();
   const { repoId } = useParams<{ repoId: string }>();
 
   const handleChange = (newMode: ViewMode) => {
-    if (onChange) {
-      onChange(newMode);
-    }
-    navigate(`/${repoId}/${newMode}`);
+    // Use replace to avoid polluting history — tab switches are not page navigations
+    navigate(`/${encodeURIComponent(repoId || 'default')}/${newMode}`, { replace: true });
   };
 
   return (

@@ -10,6 +10,14 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<HubLanding />} />
+        {/*
+          NOTE: /:repoId/* matches any single path segment, so an unknown repoId
+          like /nonexistent-repo/kanban will render App rather than NotFound.
+          Proper repoId validation requires either:
+            1. A loader/guard that checks the repo exists via /api/repos
+            2. Enumerating known repos as explicit routes
+          TODO: Add repoId validation once the /api/repos endpoint exists.
+        */}
         <Route path="/:repoId/*" element={<App />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

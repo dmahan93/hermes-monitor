@@ -490,6 +490,32 @@ describe('AppContext', () => {
       expect(result.current.detailIssueId).toBeNull();
       expect(result.current.detailEditing).toBe(false);
     });
+
+    it('returns to the originating view, not the default', () => {
+      const issue = makeIssue({ id: 'issue-1' });
+      mockIssuesReturn = createMockIssuesReturn([issue]);
+
+      // Start on terminals view
+      const terminalsWrapper = createWrapper('/test-repo/terminals');
+      const { result } = renderHook(() => useApp(), { wrapper: terminalsWrapper });
+
+      expect(result.current.view).toBe('terminals');
+
+      // Open issue detail (URL changes to /test-repo/issues/issue-1)
+      act(() => {
+        result.current.setDetailIssueId('issue-1');
+      });
+
+      expect(result.current.detailIssueId).toBe('issue-1');
+
+      // Close detail — should return to terminals, not kanban
+      act(() => {
+        result.current.closeDetail();
+      });
+
+      expect(result.current.detailIssueId).toBeNull();
+      expect(result.current.view).toBe('terminals');
+    });
   });
 
   // ── 8. View state ──
@@ -590,13 +616,10 @@ describe('AppContext', () => {
       expect(result.current.repoId).toBe('test-repo');
     });
 
-    it('defaults to "default" when no repoId in params', () => {
-      // This shouldn't happen with proper routing, but test the fallback
-      const fallbackWrapper = createWrapper('/');
-      // This won't match /:repoId/* route, so it won't render at all
-      // Instead, test with a valid route
-      const { result } = renderHook(() => useApp(), { wrapper });
-      expect(result.current.repoId).toBeDefined();
+    it('uses the repoId from the matched route segment', () => {
+      const customWrapper = createWrapper('/my-custom-repo/kanban');
+      const { result } = renderHook(() => useApp(), { wrapper: customWrapper });
+      expect(result.current.repoId).toBe('my-custom-repo');
     });
   });
 });

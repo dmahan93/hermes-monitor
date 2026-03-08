@@ -11,6 +11,14 @@ interface RepoInfo {
   prCount?: number;
 }
 
+/**
+ * Landing page showing a list of repos to manage.
+ *
+ * TODO: The /api/repos endpoint does not exist yet on the server.
+ * This component is scaffolding for future multi-repo support.
+ * Currently it always falls back to a single "default" entry.
+ * When the endpoint is added, remove the fallback logic below.
+ */
 export function HubLanding() {
   const [repos, setRepos] = useState<RepoInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,11 +33,14 @@ export function HubLanding() {
       })
       .then((data: RepoInfo[]) => {
         setRepos(data);
+        setError(null);
         setLoading(false);
       })
       .catch((err) => {
         if (err.name === 'AbortError') return;
-        // Fallback: if /api/repos doesn't exist, show a default entry
+        // TODO: Remove this fallback once /api/repos is implemented on the server.
+        // For now, silently degrade to a single default repo entry.
+        console.warn('HubLanding: /api/repos unavailable, using default fallback.', err.message);
         setRepos([{ id: 'default', name: 'default', path: '.' }]);
         setError(null);
         setLoading(false);
@@ -57,7 +68,7 @@ export function HubLanding() {
           <div className="hub-empty">No repositories found.</div>
         ) : (
           repos.map((repo) => (
-            <Link key={repo.id} to={`/${repo.id}`} className="hub-repo-card">
+            <Link key={repo.id} to={`/${encodeURIComponent(repo.id)}`} className="hub-repo-card">
               <span className="hub-repo-icon">⎇</span>
               <div className="hub-repo-info">
                 <span className="hub-repo-name">{repo.name}</span>

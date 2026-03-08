@@ -1,14 +1,21 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { useState, type ReactElement } from 'react';
 import { ViewSwitcher } from '../../src/components/ViewSwitcher';
 
+/** Track location changes to verify navigation */
+function LocationDisplay() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
+
 /** Wrap ViewSwitcher in a MemoryRouter with a /:repoId/* route so useParams/useNavigate work */
-function renderWithRouter(ui: React.ReactElement, { route = '/test-repo/kanban' } = {}) {
+function renderWithRouter(ui: ReactElement, { route = '/test-repo/kanban' } = {}) {
   return render(
     <MemoryRouter initialEntries={[route]}>
       <Routes>
-        <Route path="/:repoId/*" element={ui} />
+        <Route path="/:repoId/*" element={<>{ui}<LocationDisplay /></>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -31,11 +38,10 @@ describe('ViewSwitcher', () => {
     expect(screen.getByText('[TERMINALS]').className).not.toContain('view-switcher-active');
   });
 
-  it('navigates when clicking inactive mode', () => {
-    const onChange = vi.fn();
-    renderWithRouter(<ViewSwitcher mode="kanban" onChange={onChange} />);
+  it('navigates to the clicked view', () => {
+    renderWithRouter(<ViewSwitcher mode="kanban" />);
     fireEvent.click(screen.getByText('[TERMINALS]'));
-    expect(onChange).toHaveBeenCalledWith('terminals');
+    expect(screen.getByTestId('location').textContent).toBe('/test-repo/terminals');
   });
 
   it('shows PR count when provided', () => {
@@ -44,10 +50,9 @@ describe('ViewSwitcher', () => {
   });
 
   it('navigates to prs when clicking PRs tab', () => {
-    const onChange = vi.fn();
-    renderWithRouter(<ViewSwitcher mode="kanban" onChange={onChange} />);
+    renderWithRouter(<ViewSwitcher mode="kanban" />);
     fireEvent.click(screen.getByText(/PRs/));
-    expect(onChange).toHaveBeenCalledWith('prs');
+    expect(screen.getByTestId('location').textContent).toBe('/test-repo/prs');
   });
 
   it('highlights config when active', () => {
@@ -57,10 +62,9 @@ describe('ViewSwitcher', () => {
   });
 
   it('navigates to config when clicking CONFIG tab', () => {
-    const onChange = vi.fn();
-    renderWithRouter(<ViewSwitcher mode="kanban" onChange={onChange} />);
+    renderWithRouter(<ViewSwitcher mode="kanban" />);
     fireEvent.click(screen.getByText('[CONFIG]'));
-    expect(onChange).toHaveBeenCalledWith('config');
+    expect(screen.getByTestId('location').textContent).toBe('/test-repo/config');
   });
 
   it('highlights research when active', () => {
@@ -70,10 +74,9 @@ describe('ViewSwitcher', () => {
   });
 
   it('navigates to research when clicking RESEARCH tab', () => {
-    const onChange = vi.fn();
-    renderWithRouter(<ViewSwitcher mode="kanban" onChange={onChange} />);
+    renderWithRouter(<ViewSwitcher mode="kanban" />);
     fireEvent.click(screen.getByText('[RESEARCH]'));
-    expect(onChange).toHaveBeenCalledWith('research');
+    expect(screen.getByTestId('location').textContent).toBe('/test-repo/research');
   });
 
   it('highlights manager when active', () => {
@@ -83,10 +86,9 @@ describe('ViewSwitcher', () => {
   });
 
   it('navigates to manager when clicking MANAGER tab', () => {
-    const onChange = vi.fn();
-    renderWithRouter(<ViewSwitcher mode="kanban" onChange={onChange} />);
+    renderWithRouter(<ViewSwitcher mode="kanban" />);
     fireEvent.click(screen.getByText(/MANAGER/));
-    expect(onChange).toHaveBeenCalledWith('manager');
+    expect(screen.getByTestId('location').textContent).toBe('/test-repo/manager');
   });
 
   it('shows active agent count when provided', () => {

@@ -153,12 +153,17 @@ describe('Routing integration', () => {
       expect(result.current.location.pathname).toBe('/test-repo/issues/my-issue');
     });
 
-    it('closeDetail navigates back to view URL', () => {
+    it('closeDetail navigates back to the originating view', () => {
       const issue = makeIssue({ id: 'my-issue' });
       mockIssuesReturn = createMockIssuesReturn([issue]);
 
-      const wrapper = createWrapper('/test-repo/issues/my-issue');
+      // Start on kanban, open issue detail
+      const wrapper = createWrapper('/test-repo/kanban');
       const { result } = renderHook(() => useAppWithLocation(), { wrapper });
+
+      act(() => {
+        result.current.setDetailIssueId('my-issue');
+      });
 
       expect(result.current.detailIssueId).toBe('my-issue');
 
@@ -168,6 +173,33 @@ describe('Routing integration', () => {
 
       expect(result.current.detailIssueId).toBeNull();
       expect(result.current.location.pathname).toBe('/test-repo/kanban');
+    });
+
+    it('closeDetail returns to terminals when issue was opened from terminals view', () => {
+      const issue = makeIssue({ id: 'my-issue' });
+      mockIssuesReturn = createMockIssuesReturn([issue]);
+
+      // Start on terminals view
+      const wrapper = createWrapper('/test-repo/terminals');
+      const { result } = renderHook(() => useAppWithLocation(), { wrapper });
+
+      expect(result.current.view).toBe('terminals');
+
+      // Open issue detail
+      act(() => {
+        result.current.setDetailIssueId('my-issue');
+      });
+
+      expect(result.current.location.pathname).toBe('/test-repo/issues/my-issue');
+
+      // Close detail — should return to terminals, NOT kanban
+      act(() => {
+        result.current.closeDetail();
+      });
+
+      expect(result.current.detailIssueId).toBeNull();
+      expect(result.current.view).toBe('terminals');
+      expect(result.current.location.pathname).toBe('/test-repo/terminals');
     });
 
     it('handleIssueClick navigates to issue URL', () => {
