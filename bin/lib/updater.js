@@ -1,8 +1,8 @@
 'use strict';
 
 const { execSync, exec } = require('child_process');
-const { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } = require('fs');
-const { resolve, join } = require('path');
+const { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, statSync } = require('fs');
+const { resolve, join, dirname } = require('path');
 const os = require('os');
 
 // Resolve hermes-monitor root directory (two levels up from bin/lib/)
@@ -144,7 +144,7 @@ function acquireLock({ dir = CACHE_DIR, file = LOCK_FILE } = {}) {
     }
     if (existsSync(file)) {
       // Check if lock is stale (older than 10 minutes)
-      const stat = require('fs').statSync(file);
+      const stat = statSync(file);
       const age = Date.now() - stat.mtimeMs;
       if (age > 10 * 60 * 1000) {
         // Stale lock, remove it
@@ -208,8 +208,21 @@ function showVersion({ cacheFile } = {}) {
 // ────────────────────────────────────────────────────────────
 
 /**
+ * Custom error for update failures inside _performUpdateInner.
+ * Thrown instead of calling process.exit() so that the finally block
+ * in performUpdate can release the lock file.
+ */
+class UpdateError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'UpdateError';
+  }
+}
+
+/**
  * Perform a full update: git pull, npm install, npm run build.
- * Reports what changed. Exits with non-zero code on build failure.
+ * Reports what changed. Sets process.exitCode on failure (does NOT call
+ * process.exit() — the caller in hermes-monitor.js does that).
  *
  * Safety checks:
  * - Refuses to run if not on the default branch (master/main)
@@ -232,7 +245,8 @@ function performUpdate({ root = ROOT, lockDir, lockFile } = {}) {
     if (branchCheck.currentBranch) {
       console.error(`Switch to ${branch} first: git checkout ${branch}`);
     }
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   // Safety: ensure working tree is clean
@@ -241,18 +255,24 @@ function performUpdate({ root = ROOT, lockDir, lockFile } = {}) {
     console.error(`Error: ${dirtyCheck.error}`);
     console.error('Stash or commit your changes first:');
     console.error('  git stash && hermes-monitor update && git stash pop');
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   // Safety: prevent concurrent updates
   if (!acquireLock({ dir: effectiveLockDir, file: effectiveLockFile })) {
     console.error('Error: Another update is already in progress.');
     console.error('If this is stale, remove the lock file: rm ~/.hermes-monitor/update.lock');
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   try {
     _performUpdateInner(branch, root);
+  } catch (err) {
+    // Errors are already logged inside _performUpdateInner.
+    // Just ensure exit code is non-zero.
+    process.exitCode = 1;
   } finally {
     releaseLock({ file: effectiveLockFile });
   }
@@ -260,8 +280,12 @@ function performUpdate({ root = ROOT, lockDir, lockFile } = {}) {
 
 /**
  * Inner update logic (called after safety checks and lock acquisition).
+ * Throws UpdateError on fatal failures instead of calling process.exit(),
+ * so the caller's finally block can release the lock file.
+ *
  * @param {string} branch - the default branch name
  * @param {string} [root] - repo root directory (defaults to ROOT)
+ * @throws {UpdateError} on git or npm failures
  */
 function _performUpdateInner(branch, root = ROOT) {
   const oldHash = getCommitHash(root);
@@ -274,7 +298,7 @@ function _performUpdateInner(branch, root = ROOT) {
   } catch (err) {
     console.error('Error: Failed to fetch from remote.');
     console.error(err.message);
-    process.exit(1);
+    throw new UpdateError('Failed to fetch from remote');
   }
 
   // 2. Check how many commits behind
@@ -285,12 +309,12 @@ function _performUpdateInner(branch, root = ROOT) {
   } catch (err) {
     console.error(`Error: Failed to check for updates on origin/${branch}.`);
     console.error(err.message);
-    process.exit(1);
+    throw new UpdateError(`Failed to check for updates on origin/${branch}`);
   }
 
   if (isNaN(commitCount)) {
     console.error('Error: Could not determine number of new commits.');
-    process.exit(1);
+    throw new UpdateError('Could not determine number of new commits');
   }
 
   if (commitCount === 0) {
@@ -301,11 +325,11 @@ function _performUpdateInner(branch, root = ROOT) {
   // 3. git pull
   console.log(`  Pulling ${commitCount} commit${commitCount === 1 ? '' : 's'}...`);
   try {
-    execSync(`git pull origin '${shellescape(branch)}'`, { cwd: root, stdio: 'inherit' });
+    execSync(`git pull origin ${shellescape(branch)}`, { cwd: root, stdio: 'inherit' });
   } catch {
     console.error('\nError: git pull failed.');
     console.error('Try: git stash && hermes-monitor update && git stash pop');
-    process.exit(1);
+    throw new UpdateError('git pull failed');
   }
 
   // 4. npm install
@@ -314,10 +338,13 @@ function _performUpdateInner(branch, root = ROOT) {
     execSync('npm install', { cwd: root, stdio: 'inherit' });
   } catch {
     console.error('\nError: npm install failed.');
-    process.exit(1);
+    throw new UpdateError('npm install failed');
   }
 
   // 5. npm run build (if build script exists)
+  // Build failure is a "soft" error — the update itself succeeded (code pulled,
+  // deps installed), so we set process.exitCode but don't throw. The caller
+  // still reports the update and releases the lock.
   let hasBuildScript = false;
   try {
     const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
@@ -349,11 +376,22 @@ function _performUpdateInner(branch, root = ROOT) {
 /**
  * Escape a string for safe use in shell commands.
  * Only allows alphanumeric, dash, underscore, dot, and slash.
+ * Best for git branch names; use shellQuotePath() for filesystem paths.
  * @param {string} str
  * @returns {string}
  */
 function shellescape(str) {
   return str.replace(/[^a-zA-Z0-9._\-\/]/g, '');
+}
+
+/**
+ * Shell-quote a filesystem path using single quotes.
+ * Handles paths with spaces, parens, and other special characters.
+ * @param {string} str
+ * @returns {string}
+ */
+function shellQuotePath(str) {
+  return "'" + str.replace(/'/g, "'\\''") + "'";
 }
 
 // ────────────────────────────────────────────────────────────
@@ -426,7 +464,7 @@ function checkForUpdatesInBackground({ cacheFile } = {}) {
   // so we don't block on synchronous getDefaultBranch() calls.
   // The shell command detects the default branch and counts commits in one shot.
   const script = [
-    'cd ' + shellescape(ROOT),
+    'cd ' + shellQuotePath(ROOT),
     // Detect default branch: try remote HEAD, then master, then main
     'branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed "s#refs/remotes/origin/##")',
     'if [ -z "$branch" ]; then',
@@ -446,7 +484,8 @@ function checkForUpdatesInBackground({ cacheFile } = {}) {
       const count = parseInt((stdout || '').trim(), 10);
       if (isNaN(count)) return;
 
-      writeCache(count);
+      const effectiveCacheFile = cacheFile || CACHE_FILE;
+      writeCache(count, { dir: dirname(effectiveCacheFile), file: effectiveCacheFile });
 
       if (count > 0) {
         printUpdateNotice(count);
@@ -471,6 +510,7 @@ module.exports = {
   showVersion,
   performUpdate,
   checkForUpdatesInBackground,
+  UpdateError,
   // Exported for testing
   getCommitHash,
   getPackageVersion,
@@ -484,6 +524,7 @@ module.exports = {
   clearCache,
   printUpdateNotice,
   shellescape,
+  shellQuotePath,
   ROOT,
   CACHE_DIR,
   CACHE_FILE,

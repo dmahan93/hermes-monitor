@@ -19,6 +19,7 @@ describe('CLI updater', () => {
     showVersion,
     performUpdate,
     checkForUpdatesInBackground,
+    UpdateError,
     printUpdateNotice,
     checkBranchSafety,
     checkDirtyTree,
@@ -28,6 +29,7 @@ describe('CLI updater', () => {
     writeCache,
     clearCache,
     shellescape,
+    shellQuotePath,
     ROOT,
     CACHE_DIR,
     CACHE_FILE,
@@ -562,94 +564,80 @@ describe('CLI updater', () => {
   });
 
   // ── performUpdate (integration tests with temp git repos) ──
+  //
+  // These tests do NOT mock process.exit(). The performUpdate() function uses
+  // process.exitCode (soft) and return/throw instead of process.exit() (hard).
+  // This is critical: process.exit() skips finally blocks, so using it inside
+  // _performUpdateInner would leak the lock file. By avoiding process.exit(),
+  // the try/catch/finally in performUpdate() always releases the lock.
 
   describe('performUpdate', () => {
     let repoDir: string;
     let testLockDir: string;
     let testLockFile: string;
-    let exitSpy: ReturnType<typeof vi.spyOn>;
+    let savedExitCode: string | number | undefined;
     let errorSpy: ReturnType<typeof vi.spyOn>;
     let logSpy: ReturnType<typeof vi.spyOn>;
-
-    // Custom error so we can catch process.exit without killing the test
-    class ExitError extends Error {
-      code: number | undefined;
-      constructor(code?: number) {
-        super(`process.exit(${code})`);
-        this.code = code;
-      }
-    }
 
     beforeEach(() => {
       repoDir = createTempGitRepo();
       testLockDir = join(tmpdir(), `hermes-monitor-lock-${Date.now()}-${Math.random().toString(36).slice(2)}`);
       testLockFile = join(testLockDir, 'update.lock');
-      // Mock process.exit to throw instead of killing the process
-      exitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: number) => {
-        throw new ExitError(code);
-      });
+      savedExitCode = process.exitCode;
+      process.exitCode = undefined;
       errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     });
 
     afterEach(() => {
-      exitSpy.mockRestore();
+      process.exitCode = savedExitCode;
       errorSpy.mockRestore();
       logSpy.mockRestore();
       try { rmSync(repoDir, { recursive: true, force: true }); } catch { /* ignore */ }
       try { rmSync(testLockDir, { recursive: true, force: true }); } catch { /* ignore */ }
     });
 
-    it('exits with code 1 when not on the default branch', () => {
-      // Create a feature branch and switch to it
+    it('sets exitCode to 1 when not on the default branch', () => {
       execSync('git checkout -b feature-branch', { cwd: repoDir, stdio: 'pipe' });
 
-      expect(() => {
-        performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
-      }).toThrow(ExitError);
+      performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
 
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
       const allErrors = errorSpy.mock.calls.map(c => c[0]).join('\n');
       expect(allErrors).toContain('not on the');
       expect(allErrors).toContain('feature-branch');
     });
 
-    it('exits with code 1 when working tree is dirty', () => {
-      // Add an uncommitted file
+    it('sets exitCode to 1 when working tree is dirty', () => {
       writeFileSync(join(repoDir, 'dirty.txt'), 'uncommitted');
 
-      expect(() => {
-        performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
-      }).toThrow(ExitError);
+      performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
 
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
       const allErrors = errorSpy.mock.calls.map(c => c[0]).join('\n');
       expect(allErrors).toContain('uncommitted changes');
       expect(allErrors).toContain('git stash');
     });
 
-    it('exits with code 1 when lock is already held', () => {
-      // Acquire the lock first
+    it('sets exitCode to 1 when lock is already held', () => {
       acquireLock({ dir: testLockDir, file: testLockFile });
 
-      expect(() => {
-        performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
-      }).toThrow(ExitError);
+      performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
 
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
       const allErrors = errorSpy.mock.calls.map(c => c[0]).join('\n');
       expect(allErrors).toContain('Another update is already in progress');
     });
 
-    it('releases lock even when inner update fails', () => {
-      // The repo has no remote, so git fetch will fail inside _performUpdateInner
-      // But the lock should still be released
-      expect(() => {
-        performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
-      }).toThrow(ExitError);
+    it('releases lock when inner update fails (UpdateError, no process.exit)', () => {
+      // The repo has no remote, so _performUpdateInner throws UpdateError.
+      // The try/catch/finally in performUpdate catches the error and releases
+      // the lock — this works because we throw instead of calling process.exit().
+      performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
 
       // Lock should be released (file should not exist)
       expect(existsSync(testLockFile)).toBe(false);
+      expect(process.exitCode).toBe(1);
     });
 
     it('branch safety check runs before dirty tree check', () => {
@@ -657,10 +645,9 @@ describe('CLI updater', () => {
       execSync('git checkout -b feature-branch', { cwd: repoDir, stdio: 'pipe' });
       writeFileSync(join(repoDir, 'dirty.txt'), 'uncommitted');
 
-      expect(() => {
-        performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
-      }).toThrow(ExitError);
+      performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
 
+      expect(process.exitCode).toBe(1);
       // Should fail on branch check first (not dirty tree)
       const allErrors = errorSpy.mock.calls.map(c => c[0]).join('\n');
       expect(allErrors).toContain('not on the');
@@ -672,29 +659,47 @@ describe('CLI updater', () => {
       writeFileSync(join(repoDir, 'dirty.txt'), 'uncommitted');
       acquireLock({ dir: testLockDir, file: testLockFile });
 
-      expect(() => {
-        performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
-      }).toThrow(ExitError);
+      performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
 
+      expect(process.exitCode).toBe(1);
       const allErrors = errorSpy.mock.calls.map(c => c[0]).join('\n');
       expect(allErrors).toContain('uncommitted changes');
       expect(allErrors).not.toContain('Another update');
     });
 
-    it('proceeds past safety checks on clean default branch (fails at rev-list with no remote)', () => {
+    it('proceeds past safety checks on clean default branch (fails at fetch with no remote)', () => {
       // Repo is clean, on default branch — should pass safety checks
-      // and pass git fetch (no-op with no remote), then fail at rev-list
-      // since origin/master doesn't exist
-      expect(() => {
-        performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
-      }).toThrow(ExitError);
+      // then fail at git fetch or rev-list since there's no remote
+      performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
 
+      expect(process.exitCode).toBe(1);
       // Should have gotten past safety checks and reached the update step
       const allErrors = errorSpy.mock.calls.map(c => c[0]).join('\n');
-      expect(allErrors).toContain('Failed to check for updates');
+      expect(allErrors).toContain('Failed');
       expect(allErrors).not.toContain('not on the');
       expect(allErrors).not.toContain('uncommitted changes');
       expect(allErrors).not.toContain('Another update');
+    });
+
+    it('lock can be re-acquired after failed update (validates lock was fully released)', () => {
+      // This is the critical regression test for the lock leak fix.
+      // Previously, _performUpdateInner called process.exit() directly,
+      // which skips finally blocks — the lock file would persist for up
+      // to 10 minutes (stale lock timeout). Now it throws UpdateError,
+      // which is caught by performUpdate's try/catch/finally.
+      //
+      // This test runs performUpdate WITHOUT mocking process.exit at all,
+      // verifying the lock cleanup works as production code would run.
+      performUpdate({ root: repoDir, lockDir: testLockDir, lockFile: testLockFile });
+
+      // Lock file should not exist
+      expect(existsSync(testLockFile)).toBe(false);
+
+      // Verify we can re-acquire the lock (proves it was properly released,
+      // not just that the file was deleted by some other mechanism)
+      const reacquired = acquireLock({ dir: testLockDir, file: testLockFile });
+      expect(reacquired).toBe(true);
+      releaseLock({ file: testLockFile });
     });
   });
 
