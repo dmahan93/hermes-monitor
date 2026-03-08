@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { TerminalView } from './TerminalView';
 import type { Issue, PullRequest, AgentPreset, IssueStatus, ClientMessage, ServerMessage } from '../types';
+import { API_BASE } from '../config';
 import './ManagerView.css';
 
 // ── Types ──
@@ -57,6 +59,24 @@ function getCardStatus(issue: Issue): CardStatus {
 
 const PREVIEW_LINES = 3;
 
+const MANAGER_TERMINAL_STORAGE_KEY = 'hermes:managerTerminalId';
+const MANAGER_TERMINAL_HEIGHT_KEY = 'hermes:managerTerminalHeight';
+const DEFAULT_TERMINAL_HEIGHT = 320;
+const MIN_TERMINAL_HEIGHT = 120;
+const MAX_TERMINAL_HEIGHT = 800;
+
+const MANAGER_TERMINAL_COMMAND =
+  'bash -c \'echo "=== Hermes Monitor Manager ==="; echo "See MANAGER.md for commands"; echo ""; exec bash\'';
+
+const STATUS_COMMAND =
+  'echo "=== ISSUES ===" && curl -s localhost:4000/api/issues | python3 -c "\nimport json,sys; issues=json.loads(sys.stdin.read(),strict=False)\ndone=len([i for i in issues if i[\'status\']==\'done\'])\nactive=[i for i in issues if i[\'status\'] not in (\'done\',)]\nprint(f\'Score: {done}/{len(issues)}, {len(active)} active\')\nfor i in active: print(f\'  [{i[\"status\"]:12}] {i[\"title\"][:55]}\')\n" && echo "" && echo "=== PRs ===" && curl -s localhost:4000/api/prs | python3 -c "\nimport json,sys; [print(f\'  {p[\"id\"][:8]} [{p[\"status\"]:18}] {p[\"verdict\"]:18} {p[\"title\"][:50]}\')\nfor p in json.loads(sys.stdin.read(),strict=False)\nif p[\'status\'] not in (\'merged\',)]\n" && echo "" && echo "=== TERMINALS ===" && curl -s localhost:4000/api/terminals | python3 -c "\nimport json,sys; terms=json.loads(sys.stdin.read())\nprint(f\'{len(terms)} alive\')\nfor t in terms: print(f\'  {t[\"title\"][:55]}\')\n"\n';
+
+const MERGE_ALL_COMMAND =
+  'curl -s localhost:4000/api/prs | python3 -c "import json,sys; [print(p[\'id\']) for p in json.loads(sys.stdin.read(),strict=False) if p[\'verdict\']==\'approved\' and p[\'status\'] not in (\'merged\',\'closed\')]" | while read id; do echo "Merging $id..."; curl -s -X POST "localhost:4000/api/prs/$id/merge"; echo ""; done\n';
+
+const RESTART_CRASHED_COMMAND =
+  'curl -s localhost:4000/api/issues | python3 -c "import json,sys; [print(i[\'id\']) for i in json.loads(sys.stdin.read(),strict=False) if i[\'status\']==\'in_progress\' and not i.get(\'terminalId\')]" | while read id; do echo "Restarting $id..."; curl -s -X PATCH "localhost:4000/api/issues/$id/status" -H \'Content-Type: application/json\' -d \'{\\"status\\":\\"todo\\"}\'; curl -s -X PATCH "localhost:4000/api/issues/$id/status" -H \'Content-Type: application/json\' -d \'{\\"status\\":\\"in_progress\\"}\'; echo ""; done\n';
+
 // ── Component ──
 
 export function ManagerView({
@@ -78,6 +98,20 @@ export function ManagerView({
   const [batchLoading, setBatchLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const replayedRef = useRef<Set<string>>(new Set());
+
+  // ── Manager Terminal State ──
+  const [managerTerminalId, setManagerTerminalId] = useState<string | null>(null);
+  const [managerTerminalOpen, setManagerTerminalOpen] = useState(false);
+  const [managerTerminalLoading, setManagerTerminalLoading] = useState(false);
+  const [managerTerminalError, setManagerTerminalError] = useState<string | null>(null);
+  const [terminalHeight, setTerminalHeight] = useState(() => {
+    const saved = localStorage.getItem(MANAGER_TERMINAL_HEIGHT_KEY);
+    return saved ? Math.max(MIN_TERMINAL_HEIGHT, Math.min(MAX_TERMINAL_HEIGHT, parseInt(saved, 10))) : DEFAULT_TERMINAL_HEIGHT;
+  });
+  const managerInitRef = useRef(false);
+  const managerCreatingRef = useRef(false);
+  const resizingRef = useRef(false);
+  const resizeStartRef = useRef({ y: 0, height: 0 });
 
   // Tick every 10s to update elapsed times
   useEffect(() => {
@@ -282,208 +316,441 @@ export function ManagerView({
     }
   }, [deadReviewers, onRelaunchReview]);
 
+  // ── Manager Terminal Helpers ──
+
+  const validateManagerTerminal = useCallback(async (id: string): Promise<boolean> => {
+    const res = await fetch(`${API_BASE}/terminals`);
+    if (!res.ok) throw new Error('Failed to fetch terminals');
+    const terminals = await res.json();
+    return terminals.some((t: { id: string }) => t.id === id);
+  }, []);
+
+  const createManagerTerminal = useCallback(async (): Promise<string | null> => {
+    try {
+      // Fetch config for repoPath
+      let cwd: string | undefined;
+      try {
+        const configRes = await fetch(`${API_BASE}/config`);
+        if (configRes.ok) {
+          const config = await configRes.json();
+          cwd = config.repoPath;
+        }
+      } catch {
+        // If config fetch fails, create terminal without cwd
+      }
+
+      const res = await fetch(`${API_BASE}/terminals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Manager Terminal',
+          command: MANAGER_TERMINAL_COMMAND,
+          ...(cwd ? { cwd } : {}),
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to create terminal');
+      const term = await res.json();
+      return term.id;
+    } catch (err: any) {
+      setManagerTerminalError(err.message || 'Failed to create manager terminal');
+      return null;
+    }
+  }, []);
+
+  // Initialize or restore manager terminal when first opened
+  const initManagerTerminal = useCallback(async () => {
+    if (managerInitRef.current || managerCreatingRef.current) return;
+    managerCreatingRef.current = true;
+    setManagerTerminalLoading(true);
+    setManagerTerminalError(null);
+
+    try {
+      // Try to restore from localStorage
+      const savedId = localStorage.getItem(MANAGER_TERMINAL_STORAGE_KEY);
+      if (savedId) {
+        try {
+          const exists = await validateManagerTerminal(savedId);
+          if (exists) {
+            setManagerTerminalId(savedId);
+            managerInitRef.current = true;
+            setManagerTerminalLoading(false);
+            managerCreatingRef.current = false;
+            return;
+          }
+        } catch {
+          // Network error — don't create a duplicate
+          setManagerTerminalError('Could not reach server to validate terminal.');
+          setManagerTerminalLoading(false);
+          managerCreatingRef.current = false;
+          return;
+        }
+        // Stale — clear it
+        localStorage.removeItem(MANAGER_TERMINAL_STORAGE_KEY);
+      }
+
+      // Create a new one
+      const newId = await createManagerTerminal();
+      if (newId) {
+        localStorage.setItem(MANAGER_TERMINAL_STORAGE_KEY, newId);
+        setManagerTerminalId(newId);
+        managerInitRef.current = true;
+      }
+    } finally {
+      setManagerTerminalLoading(false);
+      managerCreatingRef.current = false;
+    }
+  }, [validateManagerTerminal, createManagerTerminal]);
+
+  // Listen for terminal removal
+  useEffect(() => {
+    if (!managerTerminalId) return;
+    const unsub = subscribe((msg) => {
+      if (msg.type === 'terminal:removed' && msg.terminalId === managerTerminalId) {
+        localStorage.removeItem(MANAGER_TERMINAL_STORAGE_KEY);
+        setManagerTerminalId(null);
+        managerInitRef.current = false;
+      }
+    });
+    return unsub;
+  }, [managerTerminalId, subscribe]);
+
+  // Toggle terminal open/closed — initialize on first open
+  const handleToggleTerminal = useCallback(() => {
+    setManagerTerminalOpen((prev) => {
+      const next = !prev;
+      if (next && !managerInitRef.current) {
+        initManagerTerminal();
+      }
+      return next;
+    });
+  }, [initManagerTerminal]);
+
+  // Send a command string to the terminal via WS stdin
+  const sendToTerminal = useCallback((command: string) => {
+    if (!managerTerminalId) return;
+    send({ type: 'stdin', terminalId: managerTerminalId, data: command });
+  }, [managerTerminalId, send]);
+
+  // ── Resize Handlers ──
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    resizeStartRef.current = { y: e.clientY, height: terminalHeight };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizingRef.current) return;
+      // Dragging up increases height (y decreases)
+      const delta = resizeStartRef.current.y - e.clientY;
+      const newHeight = Math.max(MIN_TERMINAL_HEIGHT, Math.min(MAX_TERMINAL_HEIGHT, resizeStartRef.current.height + delta));
+      setTerminalHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      resizingRef.current = false;
+      setTerminalHeight((h) => {
+        localStorage.setItem(MANAGER_TERMINAL_HEIGHT_KEY, String(h));
+        return h;
+      });
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+  }, [terminalHeight]);
+
   // ── Render ──
 
   return (
     <div className="manager-view">
-      {/* Stats Bar */}
-      <div className="manager-stats">
-        <div className="manager-stat">
-          <span className="manager-stat-label">TICKETS</span>
-          <span className="manager-stat-value">{stats.done}/{stats.total}</span>
-        </div>
-        <div className="manager-stat">
-          <span className="manager-stat-label">ACTIVE</span>
-          <span className="manager-stat-value manager-stat-active">{stats.activeAgents}</span>
-        </div>
-        {stats.crashedAgents > 0 && (
+      {/* Scrollable dashboard content */}
+      <div className="manager-content">
+        {/* Stats Bar */}
+        <div className="manager-stats">
           <div className="manager-stat">
-            <span className="manager-stat-label">CRASHED</span>
-            <span className="manager-stat-value manager-stat-crashed">{stats.crashedAgents}</span>
+            <span className="manager-stat-label">TICKETS</span>
+            <span className="manager-stat-value">{stats.done}/{stats.total}</span>
+          </div>
+          <div className="manager-stat">
+            <span className="manager-stat-label">ACTIVE</span>
+            <span className="manager-stat-value manager-stat-active">{stats.activeAgents}</span>
+          </div>
+          {stats.crashedAgents > 0 && (
+            <div className="manager-stat">
+              <span className="manager-stat-label">CRASHED</span>
+              <span className="manager-stat-value manager-stat-crashed">{stats.crashedAgents}</span>
+            </div>
+          )}
+          <div className="manager-stat">
+            <span className="manager-stat-label">AWAIT MERGE</span>
+            <span className="manager-stat-value manager-stat-merge">{stats.prsAwaitingMerge}</span>
+          </div>
+          <div className="manager-stat">
+            <span className="manager-stat-label">AVG ROUNDS</span>
+            <span className="manager-stat-value">{stats.avgRounds}</span>
+          </div>
+        </div>
+
+        {/* Batch Actions */}
+        <div className="manager-batch">
+          <button
+            className="manager-batch-btn manager-batch-merge"
+            onClick={handleMergeAllApproved}
+            disabled={stats.prsAwaitingMerge === 0 || batchLoading}
+            title="Merge all approved PRs"
+          >
+            ⎇ MERGE ALL APPROVED ({stats.prsAwaitingMerge})
+          </button>
+          <button
+            className="manager-batch-btn manager-batch-restart"
+            onClick={handleRestartAllCrashed}
+            disabled={stats.crashedAgents === 0 || batchLoading}
+            title="Restart all crashed agents"
+          >
+            ↻ RESTART ALL CRASHED ({stats.crashedAgents})
+          </button>
+          <button
+            className="manager-batch-btn manager-batch-relaunch"
+            onClick={handleRelaunchDeadReviewers}
+            disabled={deadReviewers.length === 0 || batchLoading}
+            title="Relaunch all dead reviewer terminals"
+          >
+            ⚗ RELAUNCH DEAD REVIEWERS ({deadReviewers.length})
+          </button>
+        </div>
+
+        {actionError && (
+          <div className="manager-error" onClick={() => setActionError(null)}>
+            ✗ {actionError}
           </div>
         )}
-        <div className="manager-stat">
-          <span className="manager-stat-label">AWAIT MERGE</span>
-          <span className="manager-stat-value manager-stat-merge">{stats.prsAwaitingMerge}</span>
-        </div>
-        <div className="manager-stat">
-          <span className="manager-stat-label">AVG ROUNDS</span>
-          <span className="manager-stat-value">{stats.avgRounds}</span>
-        </div>
-      </div>
 
-      {/* Batch Actions */}
-      <div className="manager-batch">
-        <button
-          className="manager-batch-btn manager-batch-merge"
-          onClick={handleMergeAllApproved}
-          disabled={stats.prsAwaitingMerge === 0 || batchLoading}
-          title="Merge all approved PRs"
-        >
-          ⎇ MERGE ALL APPROVED ({stats.prsAwaitingMerge})
-        </button>
-        <button
-          className="manager-batch-btn manager-batch-restart"
-          onClick={handleRestartAllCrashed}
-          disabled={stats.crashedAgents === 0 || batchLoading}
-          title="Restart all crashed agents"
-        >
-          ↻ RESTART ALL CRASHED ({stats.crashedAgents})
-        </button>
-        <button
-          className="manager-batch-btn manager-batch-relaunch"
-          onClick={handleRelaunchDeadReviewers}
-          disabled={deadReviewers.length === 0 || batchLoading}
-          title="Relaunch all dead reviewer terminals"
-        >
-          ⚗ RELAUNCH DEAD REVIEWERS ({deadReviewers.length})
-        </button>
-      </div>
+        {/* Agent Status Dashboard */}
+        <div className="manager-section">
+          <div className="manager-section-title">AGENT STATUS</div>
+          {activeIssues.length === 0 ? (
+            <div className="manager-empty">No active agents.</div>
+          ) : (
+            <div className="manager-grid">
+              {activeIssues.map((issue) => {
+                const cardStatus = getCardStatus(issue);
+                const elapsed = formatElapsed(now - issue.updatedAt);
+                const preview = issue.terminalId ? terminalPreviews.get(issue.terminalId) : undefined;
+                const pr = prs.find((p) => p.issueId === issue.id);
 
-      {actionError && (
-        <div className="manager-error" onClick={() => setActionError(null)}>
-          ✗ {actionError}
-        </div>
-      )}
-
-      {/* Agent Status Dashboard */}
-      <div className="manager-section">
-        <div className="manager-section-title">AGENT STATUS</div>
-        {activeIssues.length === 0 ? (
-          <div className="manager-empty">No active agents.</div>
-        ) : (
-          <div className="manager-grid">
-            {activeIssues.map((issue) => {
-              const cardStatus = getCardStatus(issue);
-              const elapsed = formatElapsed(now - issue.updatedAt);
-              const preview = issue.terminalId ? terminalPreviews.get(issue.terminalId) : undefined;
-              const pr = prs.find((p) => p.issueId === issue.id);
-
-              return (
-                <div key={issue.id} className={`manager-card manager-card-${cardStatus}`}>
-                  <div className="manager-card-header">
-                    <span className="manager-card-icon">{getAgentIcon(agents, issue.agent)}</span>
-                    <span className="manager-card-title" title={issue.title}>
-                      {issue.title}
-                    </span>
-                    <span className={`manager-card-status manager-status-${cardStatus}`}>
-                      {cardStatus === 'working' ? '●' : cardStatus === 'review' ? '◎' : cardStatus === 'crashed' ? '✗' : '○'}
-                    </span>
-                  </div>
-                  <div className="manager-card-meta">
-                    <span className="manager-card-agent">{getAgentName(agents, issue.agent)}</span>
-                    <span className="manager-card-elapsed">{elapsed}</span>
-                  </div>
-                  {issue.progressMessage && (
-                    <div className="manager-card-progress">
-                      {issue.progressPercent != null && `[${issue.progressPercent}%] `}
-                      {issue.progressMessage}
+                return (
+                  <div key={issue.id} className={`manager-card manager-card-${cardStatus}`}>
+                    <div className="manager-card-header">
+                      <span className="manager-card-icon">{getAgentIcon(agents, issue.agent)}</span>
+                      <span className="manager-card-title" title={issue.title}>
+                        {issue.title}
+                      </span>
+                      <span className={`manager-card-status manager-status-${cardStatus}`}>
+                        {cardStatus === 'working' ? '●' : cardStatus === 'review' ? '◎' : cardStatus === 'crashed' ? '✗' : '○'}
+                      </span>
                     </div>
-                  )}
-                  {preview && preview.length > 0 && (
-                    <div className="manager-card-preview">
-                      {preview.map((line, i) => (
-                        <div key={i} className="manager-card-preview-line">
-                          {line.length > 80 ? line.slice(0, 80) + '…' : line}
-                        </div>
-                      ))}
+                    <div className="manager-card-meta">
+                      <span className="manager-card-agent">{getAgentName(agents, issue.agent)}</span>
+                      <span className="manager-card-elapsed">{elapsed}</span>
                     </div>
-                  )}
-                  <div className="manager-card-actions">
-                    {issue.status === 'in_progress' && (
-                      <button
-                        className="manager-action manager-action-kill"
-                        onClick={() => handleKill(issue.id)}
-                        title="Stop agent"
-                      >
-                        KILL
-                      </button>
+                    {issue.progressMessage && (
+                      <div className="manager-card-progress">
+                        {issue.progressPercent != null && `[${issue.progressPercent}%] `}
+                        {issue.progressMessage}
+                      </div>
                     )}
-                    {(cardStatus === 'crashed' || issue.status === 'review') && (
-                      <button
-                        className="manager-action manager-action-restart"
-                        onClick={() => handleRestart(issue.id)}
-                        title="Restart agent"
-                      >
-                        RESTART
-                      </button>
+                    {preview && preview.length > 0 && (
+                      <div className="manager-card-preview">
+                        {preview.map((line, i) => (
+                          <div key={i} className="manager-card-preview-line">
+                            {line.length > 80 ? line.slice(0, 80) + '…' : line}
+                          </div>
+                        ))}
+                      </div>
                     )}
-                    {issue.terminalId && (
-                      <button
-                        className="manager-action manager-action-terminal"
-                        onClick={() => onViewTerminal(issue.id)}
-                        title="View terminal"
-                      >
-                        TERMINAL
-                      </button>
-                    )}
-                    {pr && (
+                    <div className="manager-card-actions">
+                      {issue.status === 'in_progress' && (
+                        <button
+                          className="manager-action manager-action-kill"
+                          onClick={() => handleKill(issue.id)}
+                          title="Stop agent"
+                        >
+                          KILL
+                        </button>
+                      )}
+                      {(cardStatus === 'crashed' || issue.status === 'review') && (
+                        <button
+                          className="manager-action manager-action-restart"
+                          onClick={() => handleRestart(issue.id)}
+                          title="Restart agent"
+                        >
+                          RESTART
+                        </button>
+                      )}
+                      {issue.terminalId && (
+                        <button
+                          className="manager-action manager-action-terminal"
+                          onClick={() => onViewTerminal(issue.id)}
+                          title="View terminal"
+                        >
+                          TERMINAL
+                        </button>
+                      )}
+                      {pr && (
+                        <button
+                          className="manager-action manager-action-pr"
+                          onClick={onViewPR}
+                          title="View PR"
+                        >
+                          PR
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* PR Review Queue */}
+        <div className="manager-section">
+          <div className="manager-section-title">PR REVIEW QUEUE</div>
+          {reviewQueue.length === 0 ? (
+            <div className="manager-empty">No PRs awaiting action.</div>
+          ) : (
+            <div className="manager-pr-queue">
+              {reviewQueue.map((pr) => {
+                const issue = issues.find((i) => i.id === pr.issueId);
+                return (
+                  <div key={pr.id} className={`manager-pr-item manager-pr-${pr.verdict}`}>
+                    <div className="manager-pr-info">
+                      <span className={`manager-pr-verdict verdict-${pr.verdict}`}>
+                        {pr.verdict === 'approved' ? '✓' : '✗'}
+                      </span>
+                      <span className="manager-pr-title" title={pr.title}>{pr.title}</span>
+                      <span className="manager-pr-meta">
+                        ⎇ {pr.sourceBranch} · {pr.changedFiles.length} files
+                        {issue && <> · {issue.agent}</>}
+                      </span>
+                    </div>
+                    <div className="manager-pr-actions">
+                      {pr.verdict === 'approved' && (
+                        <button
+                          className="manager-action manager-action-merge"
+                          onClick={() => handleMerge(pr.id)}
+                          disabled={merging.has(pr.id)}
+                        >
+                          {merging.has(pr.id) ? 'MERGING…' : 'MERGE'}
+                        </button>
+                      )}
+                      {pr.verdict === 'changes_requested' && (
+                        <button
+                          className="manager-action manager-action-sendback"
+                          onClick={() => handleSendBack(pr.id)}
+                        >
+                          SEND BACK
+                        </button>
+                      )}
                       <button
                         className="manager-action manager-action-pr"
                         onClick={onViewPR}
-                        title="View PR"
                       >
-                        PR
+                        VIEW
                       </button>
-                    )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* PR Review Queue */}
-      <div className="manager-section">
-        <div className="manager-section-title">PR REVIEW QUEUE</div>
-        {reviewQueue.length === 0 ? (
-          <div className="manager-empty">No PRs awaiting action.</div>
-        ) : (
-          <div className="manager-pr-queue">
-            {reviewQueue.map((pr) => {
-              const issue = issues.find((i) => i.id === pr.issueId);
-              return (
-                <div key={pr.id} className={`manager-pr-item manager-pr-${pr.verdict}`}>
-                  <div className="manager-pr-info">
-                    <span className={`manager-pr-verdict verdict-${pr.verdict}`}>
-                      {pr.verdict === 'approved' ? '✓' : '✗'}
-                    </span>
-                    <span className="manager-pr-title" title={pr.title}>{pr.title}</span>
-                    <span className="manager-pr-meta">
-                      ⎇ {pr.sourceBranch} · {pr.changedFiles.length} files
-                      {issue && <> · {issue.agent}</>}
-                    </span>
-                  </div>
-                  <div className="manager-pr-actions">
-                    {pr.verdict === 'approved' && (
-                      <button
-                        className="manager-action manager-action-merge"
-                        onClick={() => handleMerge(pr.id)}
-                        disabled={merging.has(pr.id)}
-                      >
-                        {merging.has(pr.id) ? 'MERGING…' : 'MERGE'}
-                      </button>
-                    )}
-                    {pr.verdict === 'changes_requested' && (
-                      <button
-                        className="manager-action manager-action-sendback"
-                        onClick={() => handleSendBack(pr.id)}
-                      >
-                        SEND BACK
-                      </button>
-                    )}
-                    <button
-                      className="manager-action manager-action-pr"
-                      onClick={onViewPR}
-                    >
-                      VIEW
-                    </button>
-                  </div>
+      {/* Manager Terminal Section */}
+      <div className={`manager-terminal-section ${managerTerminalOpen ? 'manager-terminal-open' : ''}`}>
+        {/* Toggle bar */}
+        <button
+          className="manager-terminal-toggle"
+          onClick={handleToggleTerminal}
+        >
+          <span className="manager-terminal-toggle-icon">
+            {managerTerminalOpen ? '▾' : '▸'}
+          </span>
+          <span className="manager-terminal-toggle-label">MANAGER TERMINAL</span>
+          {managerTerminalLoading && (
+            <span className="manager-terminal-toggle-status">spawning…</span>
+          )}
+        </button>
+
+        {managerTerminalOpen && (
+          <>
+            {/* Resize Handle */}
+            <div
+              className="manager-terminal-resize-handle"
+              onMouseDown={handleResizeStart}
+              title="Drag to resize"
+            />
+
+            {/* Quick Actions Toolbar */}
+            <div className="manager-terminal-toolbar">
+              <button
+                className="manager-terminal-action"
+                onClick={() => sendToTerminal(STATUS_COMMAND)}
+                disabled={!managerTerminalId}
+                title="Check status of all issues, PRs, and terminals"
+              >
+                ◉ CHECK STATUS
+              </button>
+              <button
+                className="manager-terminal-action"
+                onClick={() => sendToTerminal(MERGE_ALL_COMMAND)}
+                disabled={!managerTerminalId}
+                title="Merge all approved PRs via CLI"
+              >
+                ⎇ MERGE ALL
+              </button>
+              <button
+                className="manager-terminal-action"
+                onClick={() => sendToTerminal(RESTART_CRASHED_COMMAND)}
+                disabled={!managerTerminalId}
+                title="Restart all crashed agents via CLI"
+              >
+                ↻ RESTART CRASHED
+              </button>
+            </div>
+
+            {/* Terminal Pane */}
+            <div className="manager-terminal-pane" style={{ height: terminalHeight }}>
+              {managerTerminalLoading && (
+                <div className="manager-terminal-loading">Spawning manager terminal…</div>
+              )}
+              {managerTerminalError && (
+                <div className="manager-terminal-error">
+                  <span>{managerTerminalError}</span>
+                  <button
+                    className="manager-terminal-retry"
+                    onClick={() => { managerInitRef.current = false; initManagerTerminal(); }}
+                  >
+                    [RETRY]
+                  </button>
                 </div>
-              );
-            })}
-          </div>
+              )}
+              {managerTerminalId && !managerTerminalLoading && (
+                <TerminalView
+                  terminalId={managerTerminalId}
+                  send={send}
+                  subscribe={subscribe}
+                  reconnectCount={reconnectCount}
+                />
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>
