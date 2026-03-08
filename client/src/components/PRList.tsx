@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { PRDetail } from './PRDetail';
 import type { PullRequest, Issue, MergeMode } from '../types';
+import { useConfirm } from '../hooks/useConfirm';
 import './PRList.css';
 
 type PRView = 'open' | 'closed' | 'all';
@@ -56,6 +57,7 @@ export function PRList({ prs = [], issues, mergeMode = 'local', onComment, onVer
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<PRView>('open');
   const [closingAll, setClosingAll] = useState(false);
+  const { confirm, ConfirmDialogElement } = useConfirm();
 
   const counts = useMemo(() => {
     const result = {} as Record<PRView, number>;
@@ -79,13 +81,25 @@ export function PRList({ prs = [], issues, mergeMode = 'local', onComment, onVer
 
   const handleClosePR = async (e: React.MouseEvent, prId: string, prTitle: string) => {
     e.stopPropagation();
-    if (!window.confirm(`Close this PR? It will be marked as closed.\n\n"${prTitle}"`)) return;
+    const confirmed = await confirm({
+      title: 'CLOSE PR',
+      message: `Close this PR? It will be marked as closed.\n\n"${prTitle}"`,
+      confirmText: '[CLOSE]',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     await onClosePR(prId);
   };
 
   const handleCloseAllStale = async () => {
     if (!onCloseAllStale || closingAll) return;
-    if (!window.confirm(`Close all ${stalePRCount} stale PR${stalePRCount !== 1 ? 's' : ''}? These are open PRs whose linked issue is already done or deleted.`)) return;
+    const confirmed = await confirm({
+      title: 'CLOSE STALE PRS',
+      message: `Close all ${stalePRCount} stale PR${stalePRCount !== 1 ? 's' : ''}? These are open PRs whose linked issue is already done or deleted.`,
+      confirmText: '[CLOSE ALL]',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
     setClosingAll(true);
     try {
       await onCloseAllStale();
@@ -115,6 +129,7 @@ export function PRList({ prs = [], issues, mergeMode = 'local', onComment, onVer
 
   return (
     <div className="pr-list">
+      {ConfirmDialogElement}
       <div className="pr-list-header">
         <div className="pr-list-header-left">
           <span className="pr-list-title">PULL REQUESTS</span>

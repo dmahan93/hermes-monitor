@@ -252,30 +252,38 @@ describe('PRList component', () => {
   });
 
   it('calls onClosePR with confirmation when close button is clicked', async () => {
-    window.confirm = vi.fn(() => true);
     const props = defaultProps();
     props.prs = [makePR({ id: 'pr-close-1', status: 'open', title: 'PR to close' })];
     render(<PRList {...props} />);
     const closeBtn = screen.getByLabelText(/Close PR: PR to close/);
     fireEvent.click(closeBtn);
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Close this PR?'));
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Close this PR/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('[CLOSE]'));
     await waitFor(() => {
       expect(props.onClosePR).toHaveBeenCalledWith('pr-close-1');
     });
   });
 
-  it('does not call onClosePR when confirmation is cancelled', () => {
-    window.confirm = vi.fn(() => false);
+  it('does not call onClosePR when confirmation is cancelled', async () => {
     const props = defaultProps();
     props.prs = [makePR({ id: 'pr-close-2', status: 'open', title: 'PR no close' })];
     render(<PRList {...props} />);
     const closeBtn = screen.getByLabelText(/Close PR: PR no close/);
     fireEvent.click(closeBtn);
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('[CANCEL]'));
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    });
     expect(props.onClosePR).not.toHaveBeenCalled();
   });
 
   it('close button does not navigate to PR detail', async () => {
-    window.confirm = vi.fn(() => true);
     const props = defaultProps();
     props.prs = [makePR({ status: 'open', title: 'Click Test PR' })];
     render(<PRList {...props} />);
@@ -311,13 +319,15 @@ describe('PRList component', () => {
   });
 
   it('calls onCloseAllStale with confirmation when stale button is clicked', async () => {
-    window.confirm = vi.fn(() => true);
     const props = defaultProps();
     props.prs = [makePR({ issueId: 'done-issue', status: 'open', title: 'Stale PR' })];
     props.issues = [makeIssue('done-issue', 'done')];
     render(<PRList {...props} />);
     fireEvent.click(screen.getByText(/CLOSE 1 STALE/));
-    expect(window.confirm).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('[CLOSE ALL]'));
     await waitFor(() => {
       expect(props.onCloseAllStale).toHaveBeenCalled();
     });
