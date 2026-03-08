@@ -20,6 +20,10 @@ describe('CLI parseArgs', () => {
       browser: true,
       build: false,
       help: false,
+      foreground: false,
+      list: false,
+      add: null,
+      remove: null,
     });
   });
 
@@ -159,6 +163,12 @@ describe('CLI parseArgs', () => {
       const opts = parseArgs(['-h'], { cwd: CWD });
       expect(opts.help).toBe(true);
     });
+
+    it('--foreground sets foreground flag', () => {
+      const opts = parseArgs(['hub', '--foreground'], { cwd: CWD });
+      expect(opts.foreground).toBe(true);
+      expect(opts.command).toBe('hub');
+    });
   });
 
   // ── Unknown flags ──
@@ -242,6 +252,11 @@ describe('CLI parseArgs', () => {
       const opts = parseArgs(['--port', '4000', '--help'], { cwd: CWD });
       expect(opts.help).toBe(true);
     });
+
+    it('skips collision check when --list is set', () => {
+      const opts = parseArgs(['--port', '4000', '--list'], { cwd: CWD });
+      expect(opts.list).toBe(true);
+    });
   });
 
   // ── requireArg edge cases ──
@@ -286,15 +301,26 @@ describe('CLI parseArgs', () => {
     it('documents subcommands', () => {
       expect(HELP_TEXT).toContain('update');
       expect(HELP_TEXT).toContain('version');
+      expect(HELP_TEXT).toContain('hub');
+      expect(HELP_TEXT).toContain('stop');
+    });
+
+    it('documents hub management flags', () => {
+      expect(HELP_TEXT).toContain('--list');
+      expect(HELP_TEXT).toContain('--add');
+      expect(HELP_TEXT).toContain('--remove');
+      expect(HELP_TEXT).toContain('--foreground');
     });
   });
 
   // ── Subcommands ──
 
   describe('subcommands', () => {
-    it('SUBCOMMANDS includes update and version', () => {
+    it('SUBCOMMANDS includes update, version, hub, and stop', () => {
       expect(SUBCOMMANDS).toContain('update');
       expect(SUBCOMMANDS).toContain('version');
+      expect(SUBCOMMANDS).toContain('hub');
+      expect(SUBCOMMANDS).toContain('stop');
     });
 
     it('parses "update" as a command', () => {
@@ -305,6 +331,16 @@ describe('CLI parseArgs', () => {
     it('parses "version" as a command', () => {
       const opts = parseArgs(['version'], { cwd: CWD });
       expect(opts.command).toBe('version');
+    });
+
+    it('parses "hub" as a command', () => {
+      const opts = parseArgs(['hub'], { cwd: CWD });
+      expect(opts.command).toBe('hub');
+    });
+
+    it('parses "stop" as a command', () => {
+      const opts = parseArgs(['stop'], { cwd: CWD });
+      expect(opts.command).toBe('stop');
     });
 
     it('command is null when no subcommand is given', () => {
@@ -330,6 +366,72 @@ describe('CLI parseArgs', () => {
       const opts = parseArgs(['update', '--help'], { cwd: CWD });
       expect(opts.command).toBe('update');
       expect(opts.help).toBe(true);
+    });
+
+    it('allows --foreground with hub command', () => {
+      const opts = parseArgs(['hub', '--foreground'], { cwd: CWD });
+      expect(opts.command).toBe('hub');
+      expect(opts.foreground).toBe(true);
+    });
+  });
+
+  // ── Hub management flags ──
+
+  describe('hub management flags', () => {
+    it('--list sets list flag', () => {
+      const opts = parseArgs(['--list'], { cwd: CWD });
+      expect(opts.list).toBe(true);
+    });
+
+    it('-l sets list flag', () => {
+      const opts = parseArgs(['-l'], { cwd: CWD });
+      expect(opts.list).toBe(true);
+    });
+
+    it('--add parses an absolute path', () => {
+      const opts = parseArgs(['--add', '/some/repo'], { cwd: CWD });
+      expect(opts.add).toBe('/some/repo');
+    });
+
+    it('--add resolves a relative path against cwd', () => {
+      const opts = parseArgs(['--add', 'relative/repo'], { cwd: CWD });
+      expect(opts.add).toBe(resolve(CWD, 'relative/repo'));
+    });
+
+    it('--add rejects missing value', () => {
+      expect(() => parseArgs(['--add'], { cwd: CWD }))
+        .toThrow('--add requires a value');
+    });
+
+    it('--add rejects when next arg is a flag', () => {
+      expect(() => parseArgs(['--add', '--build'], { cwd: CWD }))
+        .toThrow('--add requires a value');
+    });
+
+    it('--remove parses an ID', () => {
+      const opts = parseArgs(['--remove', 'abc-123'], { cwd: CWD });
+      expect(opts.remove).toBe('abc-123');
+    });
+
+    it('--remove rejects missing value', () => {
+      expect(() => parseArgs(['--remove'], { cwd: CWD }))
+        .toThrow('--remove requires a value');
+    });
+
+    it('--list skips port collision check', () => {
+      // --list sets both ports equal via defaults, but should skip validation
+      const opts = parseArgs(['--list'], { cwd: CWD });
+      expect(opts.list).toBe(true);
+    });
+
+    it('--add skips port collision check', () => {
+      const opts = parseArgs(['--add', '/some/path'], { cwd: CWD });
+      expect(opts.add).toBe('/some/path');
+    });
+
+    it('--remove skips port collision check', () => {
+      const opts = parseArgs(['--remove', 'some-id'], { cwd: CWD });
+      expect(opts.remove).toBe('some-id');
     });
   });
 });

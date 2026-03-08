@@ -12,6 +12,59 @@ hermes-monitor                    # start from any repo
 
 Server: localhost:4000 | Client: localhost:3000
 
+## Multi-Repo Hub Mode
+
+Manage multiple repos simultaneously through the hub:
+
+```bash
+# Start monitoring multiple repos
+cd ~/projects/frontend && hermes-monitor    # auto-starts hub, opens dashboard
+cd ~/projects/backend && hermes-monitor     # registers with existing hub
+
+# Hub management
+hermes-monitor hub                  # start hub only (landing page at :3000)
+hermes-monitor hub --foreground     # run hub in foreground (see logs)
+hermes-monitor --list               # list all registered repos + status
+hermes-monitor --add ~/projects/api # register repo without starting it
+hermes-monitor --remove <id>        # unregister a repo
+hermes-monitor stop                 # stop hub + all repo instances
+```
+
+The hub runs as a background process (PID stored in `~/.hermes/hub.pid`).
+Each repo gets auto-assigned a unique port starting from 4001.
+The hub landing page at `http://localhost:3000` shows all repos with links.
+
+### Hub Architecture
+
+```
+Hub (:3000)                    Per-Repo Instances
+┌──────────────────┐          ┌────────────────────────┐
+│ Landing page     │          │ Repo A (:4001 / :5001) │
+│ Registry API     │          │ Repo B (:4002 / :5002) │
+│ ~/.hermes/       │          │ Repo C (:4003 / :5003) │
+│   hub.pid        │          │                        │
+│   hermes-hub.db  │          │ Each has full server +  │
+│   hub.log        │          │ client + worktrees     │
+└──────────────────┘          └────────────────────────┘
+```
+
+### Hub API Cheat Sheet
+
+```bash
+# List repos via hub API
+curl -s localhost:3000/api/hub/repos | python3 -c "
+import json,sys; [print(f'[{r[\"status\"]:8}] {r[\"name\"]:20} :{ r[\"port\"]} {r[\"path\"]}')
+for r in json.loads(sys.stdin.read())]"
+
+# Register a repo
+curl -s -X POST localhost:3000/api/hub/repos \
+  -H 'Content-Type: application/json' \
+  -d '{"path": "/home/user/projects/myapp"}'
+
+# Unregister a repo (must be stopped first)
+curl -s -X DELETE localhost:3000/api/hub/repos/{id}
+```
+
 ## The Loop
 
 The core workflow is a loop:
@@ -145,6 +198,15 @@ Worktrees accumulate in /tmp/hermes-worktrees/. Clean periodically:
 rm -rf /tmp/hermes-worktrees/*
 cd ~/github/hermes-monitor && git worktree prune
 git branch | grep "issue/" | xargs git branch -D
+```
+
+### Hub Issues
+If the hub becomes unresponsive:
+```bash
+hermes-monitor stop           # kill hub + all repos
+hermes-monitor hub            # restart fresh
+# Or check logs:
+cat ~/.hermes/hub.log
 ```
 
 ## Optimal Batch Size
