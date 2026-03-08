@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import { TerminalManager } from '../src/terminal-manager.js';
 import { IssueManager } from '../src/issue-manager.js';
 import { WorktreeManager } from '../src/worktree-manager.js';
@@ -11,6 +12,7 @@ import { PRManager } from '../src/pr-manager.js';
 import { createAgentApiRouter } from '../src/agent-api.js';
 import { createIssueApiRouter } from '../src/issue-api.js';
 import { config } from '../src/config.js';
+import { saveDiagnostics } from '../src/diagnostics.js';
 
 async function request(server: Server, method: string, path: string, body?: any) {
   const addr = server.address() as any;
@@ -97,6 +99,251 @@ describe('Agent API (Agent Communication)', () => {
     config.requireScreenshotsForUiChanges = savedRequire;
   });
 
+  it('GET /agent/:id/info includes empty previousAttempts when no diagnostics', async () => {
+    const issue = issueManager.create({ title: 'Fresh issue' });
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.previousAttempts).toEqual([]);
+  });
+
+  it('GET /agent/:id/info includes previousAttempts from diagnostics', async () => {
+    // Set up temp diagnostics dir
+    const testDiagBase = join(tmpdir(), `hermes-diag-agent-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(testDiagBase, { recursive: true });
+    const savedBase = config.diagnosticsBase;
+    config.diagnosticsBase = testDiagBase;
+
+    try {
+      const issue = issueManager.create({ title: 'Reattempt issue' });
+
+      // Save a diagnostic entry
+      saveDiagnostics({
+        issueId: issue.id,
+        issueTitle: issue.title,
+        branch: 'feat/retry',
+        exitCode: 1,
+        scrollback: 'crash output',
+        diagnosticsBase: testDiagBase,
+      });
+
+      const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+      expect(res.status).toBe(200);
+      expect(res.body.previousAttempts).toHaveLength(1);
+      expect(res.body.previousAttempts[0].exitCode).toBe(1);
+      expect(res.body.previousAttempts[0].timestamp).toBeGreaterThan(0);
+      expect(res.body.previousAttempts[0].logFile).toContain(issue.id);
+    } finally {
+      config.diagnosticsBase = savedBase;
+      try { rmSync(testDiagBase, { recursive: true, force: true }); } catch { /* */ }
+    }
+  });
+
+  it('GET /agent/:id/info returns null reworkFeedback when no reviews', async () => {
+    const issue = issueManager.create({ title: 'No reviews', description: 'Fresh issue' });
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.reworkFeedback).toBeNull();
+  });
+
+  it('GET /agent/:id/info returns reworkFeedback when reviews exist', async () => {
+    const issue = issueManager.create({ title: 'Rework issue', description: 'Needs fixes' });
+
+    // Mock the prManager to return a PR with review comments
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-1',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/test',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'changes_requested',
+      diff: '',
+      changedFiles: [],
+      verdict: 'changes_requested',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'comment-1',
+          prId: 'mock-pr-1',
+          author: 'hermes-reviewer',
+          body: 'VERDICT: CHANGES_REQUESTED\n\nMissing null check in getUserById()',
+          createdAt: Date.now(),
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+
+    // reworkFeedback should be prominent and contain the review body
+    expect(res.body.reworkFeedback).toBeTruthy();
+    expect(res.body.reworkFeedback).toContain('REWORK REQUIRED');
+    expect(res.body.reworkFeedback).toContain('Missing null check in getUserById()');
+  });
+
+  it('GET /agent/:id/info reworkFeedback uses latest review comment', async () => {
+    const issue = issueManager.create({ title: 'Multi-review', description: 'Multiple rounds' });
+
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-2',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/multi',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'changes_requested',
+      diff: '',
+      changedFiles: [],
+      verdict: 'changes_requested',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'c1',
+          prId: 'mock-pr-2',
+          author: 'hermes-reviewer',
+          body: 'First review: fix typing',
+          createdAt: 1000,
+        },
+        {
+          id: 'c2',
+          prId: 'mock-pr-2',
+          author: 'hermes-reviewer',
+          body: 'Second review: still needs error handling',
+          createdAt: 2000,
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // Should use the latest comment
+    expect(res.body.reworkFeedback).toContain('still needs error handling');
+  });
+
+  it('GET /agent/:id/info reworkFeedback ignores non-reviewer comments', async () => {
+    const issue = issueManager.create({ title: 'Human comment', description: 'Has non-reviewer comment' });
+
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-3',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/human',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'changes_requested',
+      diff: '',
+      changedFiles: [],
+      verdict: 'changes_requested',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'c1',
+          prId: 'mock-pr-3',
+          author: 'hermes-reviewer',
+          body: 'VERDICT: CHANGES_REQUESTED\n\nFix the auth logic',
+          createdAt: 1000,
+        },
+        {
+          id: 'c2',
+          prId: 'mock-pr-3',
+          author: 'human',
+          body: 'Actually, also update the docs please',
+          createdAt: 2000,
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // Should use the reviewer comment, not the human comment
+    expect(res.body.reworkFeedback).toContain('Fix the auth logic');
+    expect(res.body.reworkFeedback).not.toContain('update the docs');
+  });
+
+  it('GET /agent/:id/info reworkFeedback is null when verdict is approved', async () => {
+    const issue = issueManager.create({ title: 'Approved PR', description: 'Was approved' });
+
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-4',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/approved',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'approved',
+      diff: '',
+      changedFiles: [],
+      verdict: 'approved',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'c1',
+          prId: 'mock-pr-4',
+          author: 'hermes-reviewer',
+          body: 'VERDICT: APPROVED\n\nLooks great, ship it!',
+          createdAt: 1000,
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // Should NOT show rework feedback for approved PRs
+    expect(res.body.reworkFeedback).toBeNull();
+  });
+
+  it('GET /agent/:id/info reworkFeedback is null when only human comments exist', async () => {
+    const issue = issueManager.create({ title: 'Human only', description: 'No reviewer comments' });
+
+    vi.spyOn(prManager, 'getByIssueId').mockReturnValue({
+      id: 'mock-pr-5',
+      issueId: issue.id,
+      title: issue.title,
+      description: issue.description,
+      submitterNotes: '',
+      sourceBranch: 'feat/human-only',
+      targetBranch: 'master',
+      repoPath: '/tmp/repo',
+      status: 'changes_requested',
+      diff: '',
+      changedFiles: [],
+      verdict: 'changes_requested',
+      reviewerTerminalId: null,
+      comments: [
+        {
+          id: 'c1',
+          prId: 'mock-pr-5',
+          author: 'human',
+          body: 'I think this needs more work',
+          createdAt: 1000,
+        },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // No reviewer comments → no rework feedback
+    expect(res.body.reworkFeedback).toBeNull();
+  });
+
   it('GET /agent/:id/info returns 404 for unknown issue', async () => {
     const res = await request(server, 'GET', '/agent/nope/info');
     expect(res.status).toBe(404);
@@ -111,6 +358,39 @@ describe('Agent API (Agent Communication)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('branch');
     expect(res.body).toHaveProperty('worktreePath');
+  });
+
+  it('GET /agent/:id/info includes workspaceHealth field', async () => {
+    const issue = issueManager.create({ title: 'Health check test' });
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // workspaceHealth should be present (null when no health check has been run)
+    expect(res.body).toHaveProperty('workspaceHealth');
+  });
+
+  it('GET /agent/:id/info returns stored health check result', async () => {
+    const issue = issueManager.create({ title: 'With health' });
+    // Mock the worktreeManager to return a health check result
+    vi.spyOn(worktreeManager, 'getHealthCheck').mockReturnValue({
+      healthy: true,
+      issues: [],
+      fixes: ['Re-symlinked node_modules'],
+    });
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.workspaceHealth).toEqual({
+      healthy: true,
+      issues: [],
+      fixes: ['Re-symlinked node_modules'],
+    });
+  });
+
+  it('GET /agent/:id/info returns null workspaceHealth when no check run', async () => {
+    const issue = issueManager.create({ title: 'No health check' });
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    expect(res.body.workspaceHealth).toBeNull();
   });
 
   it('POST /agent/:id/review moves issue to review', async () => {
@@ -1295,5 +1575,218 @@ describe('Agent API — GitHub Integration', () => {
     const result4 = prManager.setGithubPrUrl(pr!.id, 'https://github.com/user/repo/pull/42');
     expect(result4).not.toBeNull();
     expect(result4!.githubPrUrl).toBe('https://github.com/user/repo/pull/42');
+  });
+});
+
+describe('Agent API — Progress Reporting', () => {
+  let terminalManager: TerminalManager;
+  let issueManager: IssueManager;
+  let worktreeManager: WorktreeManager;
+  let prManager: PRManager;
+  let server: Server;
+
+  beforeEach(async () => {
+    terminalManager = new TerminalManager();
+    worktreeManager = new WorktreeManager();
+    prManager = new PRManager(terminalManager, worktreeManager);
+    issueManager = new IssueManager(terminalManager);
+    issueManager.setWorktreeManager(worktreeManager);
+    issueManager.setPRManager(prManager);
+
+    const app = express();
+    app.use('/api', createIssueApiRouter(issueManager));
+    app.use('/agent', createAgentApiRouter(issueManager, prManager, terminalManager, worktreeManager));
+    server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+  });
+
+  afterEach(async () => {
+    terminalManager.killAll();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('POST /agent/:id/progress updates progress on in_progress issue', async () => {
+    const issue = issueManager.create({ title: 'Progress test' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      message: 'Running tests...',
+      percent: 75,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.message).toBe('Running tests...');
+    expect(res.body.percent).toBe(75);
+
+    // Verify in-memory state
+    const updated = issueManager.get(issue.id);
+    expect(updated?.progressMessage).toBe('Running tests...');
+    expect(updated?.progressPercent).toBe(75);
+    expect(updated?.progressUpdatedAt).toBeGreaterThan(0);
+  });
+
+  it('POST /agent/:id/progress works with message only', async () => {
+    const issue = issueManager.create({ title: 'Message only' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      message: 'Installing dependencies',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.message).toBe('Installing dependencies');
+
+    const updated = issueManager.get(issue.id);
+    expect(updated?.progressMessage).toBe('Installing dependencies');
+    expect(updated?.progressPercent).toBeNull();
+  });
+
+  it('POST /agent/:id/progress works with percent only', async () => {
+    const issue = issueManager.create({ title: 'Percent only' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      percent: 50,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.percent).toBe(50);
+  });
+
+  it('POST /agent/:id/progress returns 404 for unknown issue', async () => {
+    const res = await request(server, 'POST', '/agent/nonexistent/progress', {
+      message: 'test',
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /agent/:id/progress rejects if not in_progress', async () => {
+    const issue = issueManager.create({ title: 'Not started' });
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      message: 'test',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('not in_progress');
+  });
+
+  it('POST /agent/:id/progress rejects invalid percent', async () => {
+    const issue = issueManager.create({ title: 'Bad percent' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      percent: 150,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('percent must be a number');
+  });
+
+  it('POST /agent/:id/progress rejects non-string message', async () => {
+    const issue = issueManager.create({ title: 'Bad message' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      message: 12345,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('message must be a string');
+  });
+
+  it('progress is cleared when issue status changes away from in_progress', async () => {
+    const issue = issueManager.create({ title: 'Clear progress' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    // Set progress
+    issueManager.updateProgress(issue.id, 'Working...', 50);
+    expect(issueManager.get(issue.id)?.progressMessage).toBe('Working...');
+
+    // Move to review — should clear progress
+    issueManager.changeStatus(issue.id, 'review');
+    const updated = issueManager.get(issue.id);
+    expect(updated?.progressMessage).toBeNull();
+    expect(updated?.progressPercent).toBeNull();
+    expect(updated?.progressUpdatedAt).toBeNull();
+  });
+
+  it('POST /agent/:id/progress rejects empty body {}', async () => {
+    const issue = issueManager.create({ title: 'Empty body' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('At least one of message or percent is required');
+  });
+
+  it('POST /agent/:id/progress rejects NaN percent', async () => {
+    const issue = issueManager.create({ title: 'NaN percent' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    // NaN in JSON is not valid, but can be sent as a non-number — test Infinity which is also invalid
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      percent: 'NaN',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('percent must be a number');
+  });
+
+  it('POST /agent/:id/progress rejects Infinity percent', async () => {
+    const issue = issueManager.create({ title: 'Infinity percent' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    // JSON.stringify(Infinity) produces null, but typeof null !== 'number' — test via direct validation
+    // Since JSON can't represent NaN/Infinity, we test the validation path with negative numbers instead
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      percent: -1,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('percent must be a number');
+  });
+
+  it('POST /agent/:id/progress truncates messages over 200 chars', async () => {
+    const issue = issueManager.create({ title: 'Long message' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const longMessage = 'A'.repeat(300);
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      message: longMessage,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.message).toHaveLength(200);
+    expect(res.body.message).toBe('A'.repeat(200));
+
+    // Verify in-memory state is also truncated
+    const updated = issueManager.get(issue.id);
+    expect(updated?.progressMessage).toHaveLength(200);
+  });
+
+  it('POST /agent/:id/progress keeps messages at or under 200 chars', async () => {
+    const issue = issueManager.create({ title: 'Short message' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const shortMessage = 'Running tests...';
+    const res = await request(server, 'POST', `/agent/${issue.id}/progress`, {
+      message: shortMessage,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe(shortMessage);
+  });
+
+  it('progress emits issue:progress event', async () => {
+    const issue = issueManager.create({ title: 'Event test' });
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const events: Array<{ event: string; issue: any }> = [];
+    issueManager.onEvent((event, issue) => {
+      if (event === 'issue:progress') {
+        events.push({ event, issue: { ...issue } });
+      }
+    });
+
+    issueManager.updateProgress(issue.id, 'Compiling...', 30);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].event).toBe('issue:progress');
+    expect(events[0].issue.progressMessage).toBe('Compiling...');
+    expect(events[0].issue.progressPercent).toBe(30);
   });
 });

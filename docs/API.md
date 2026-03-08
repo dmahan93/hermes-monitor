@@ -115,6 +115,46 @@ curl -X POST --data-binary @screenshot.png \
 
 List uploaded screenshots for an issue.
 
+### POST /agent/:id/progress
+
+Report structured progress during agent execution. Progress is transient
+(in-memory only, not persisted to SQLite) and automatically cleared when the
+issue leaves `in_progress` status.
+
+**Request body:**
+```json
+{ "message": "Running tests...", "percent": 75 }
+```
+
+Both fields are optional, but at least one must be provided. An empty body
+`{}` is rejected with 400.
+
+**Validation rules:**
+
+| Field | Type | Constraints |
+|-------|------|-------------|
+| `message` | `string` | Optional. Must be a string if provided. Truncated to 200 characters server-side. |
+| `percent` | `number` | Optional. Must be a finite number between 0 and 100 (inclusive). `NaN`, `Infinity`, and `-Infinity` are rejected. |
+
+**Response (200):**
+```json
+{ "ok": true, "message": "Running tests...", "percent": 75 }
+```
+
+**Errors:**
+
+| Status | Condition |
+|--------|-----------|
+| 404 | Issue not found |
+| 400 | Issue is not `in_progress` |
+| 400 | Empty body (neither `message` nor `percent` provided) |
+| 400 | `message` is not a string |
+| 400 | `percent` is not a finite number between 0–100 |
+
+**Side effects:**
+- Updates the in-memory `progressMessage`, `progressPercent`, and `progressUpdatedAt` fields on the issue
+- Broadcasts an `issue:progress` WebSocket event to all connected clients
+
 ---
 
 ## Issues API
@@ -366,6 +406,7 @@ On new connections, the server automatically replays scrollback for all active t
 { "type": "issue:created", "issue": Issue }
 { "type": "issue:updated", "issue": Issue }
 { "type": "issue:deleted", "issueId": "uuid" }
+{ "type": "issue:progress", "issueId": "uuid", "message": "string | null", "percent": "number | null" }
 
 { "type": "pr:created", "pr": PullRequest }
 { "type": "pr:updated", "pr": PullRequest }

@@ -3,11 +3,12 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { ViewSwitcher } from '../../src/components/ViewSwitcher';
 
 describe('ViewSwitcher', () => {
-  it('renders all five buttons', () => {
+  it('renders all six buttons', () => {
     render(<ViewSwitcher mode="kanban" onChange={() => {}} />);
     expect(screen.getByText('[KANBAN]')).toBeInTheDocument();
     expect(screen.getByText('[TERMINALS]')).toBeInTheDocument();
     expect(screen.getByText(/PRs/)).toBeInTheDocument();
+    expect(screen.getByText(/MANAGER/)).toBeInTheDocument();
     expect(screen.getByText('[RESEARCH]')).toBeInTheDocument();
     expect(screen.getByText('[CONFIG]')).toBeInTheDocument();
   });
@@ -61,5 +62,30 @@ describe('ViewSwitcher', () => {
     render(<ViewSwitcher mode="kanban" onChange={onChange} />);
     fireEvent.click(screen.getByText('[RESEARCH]'));
     expect(onChange).toHaveBeenCalledWith('research');
+  });
+
+  it('highlights manager when active', () => {
+    render(<ViewSwitcher mode="manager" onChange={() => {}} />);
+    expect(screen.getByText(/MANAGER/).className).toContain('view-switcher-active');
+    expect(screen.getByText('[KANBAN]').className).not.toContain('view-switcher-active');
+  });
+
+  it('calls onChange with manager when clicking MANAGER tab', () => {
+    const onChange = vi.fn();
+    render(<ViewSwitcher mode="kanban" onChange={onChange} />);
+    fireEvent.click(screen.getByText(/MANAGER/));
+    expect(onChange).toHaveBeenCalledWith('manager');
+  });
+
+  it('shows active agent count when provided', () => {
+    render(<ViewSwitcher mode="kanban" onChange={() => {}} activeAgentCount={5} />);
+    expect(screen.getByText(/MANAGER 5/)).toBeInTheDocument();
+  });
+
+  it('does not show agent count when zero', () => {
+    render(<ViewSwitcher mode="kanban" onChange={() => {}} activeAgentCount={0} />);
+    // Should just show [MANAGER] without a count
+    expect(screen.getByText(/MANAGER/)).toBeInTheDocument();
+    expect(screen.queryByText(/MANAGER 0/)).not.toBeInTheDocument();
   });
 });

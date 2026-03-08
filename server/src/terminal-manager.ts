@@ -1,6 +1,7 @@
 import * as pty from 'node-pty';
 import { v4 as uuidv4 } from 'uuid';
 import type { TerminalInfo, CreateTerminalOptions } from './types.js';
+import { stripAnsi } from './strip-ansi.js';
 
 export type DataCallback = (terminalId: string, data: string) => void;
 export type ExitCallback = (terminalId: string, exitCode: number) => void;
@@ -10,19 +11,6 @@ export type AwaitingInputCallback = (terminalId: string, awaitingInput: boolean)
 
 const SCROLLBACK_LIMIT = 50000; // chars to buffer per terminal
 const INPUT_CHECK_DELAY_MS = 1500; // wait this long after last output before checking for prompts
-
-// Strip ANSI escape sequences from terminal output
-function stripAnsi(str: string): string {
-  // ESC[ ... letter  (CSI sequences)
-  // ESC] ... BEL/ST  (OSC sequences)
-  // ESC followed by single char (simple escapes like ESC(B)
-  return str
-    .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
-    .replace(/\x1b[()][A-Z0-9]/g, '')
-    .replace(/\x1b[=>]/g, '')
-    .replace(/\r/g, '');
-}
 
 // Patterns that strongly indicate the terminal is awaiting user input.
 // Loose patterns are anchored to require prompt-like endings (?, :, ], ...)

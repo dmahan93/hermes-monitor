@@ -4,5 +4,6 @@ First run: curl -s http://localhost:4000/agent/{{id}}/info to get your task deta
 You should already be in your git worktree — verify with `git branch --show-current` that you are on the correct branch.
 If not, cd into the worktree directory from the /info response.
 Complete the task fully — write code, make changes, run tests, git add and git commit your work.
+To report progress, optionally call: curl -s -X POST http://localhost:4000/agent/{{id}}/progress -H Content-Type:application/json -d {"message": "Running tests"}.
 When you are completely done, run: curl -s -X POST http://localhost:4000/agent/{{id}}/review to submit for review.
 Do not stop until you have committed your changes and submitted for review.'

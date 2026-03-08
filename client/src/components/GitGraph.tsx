@@ -29,24 +29,40 @@ function laneColor(col: number): string {
   return LANE_COLORS[col % LANE_COLORS.length];
 }
 
-const LANE_W = 12;
-const NODE_R = 3;
-// Row height must exactly match .git-graph-row CSS height so that the SVG
-// fills each row with zero gap. The row uses a fixed height (not min-height)
-// to guarantee alignment between the SVG graph and the text content.
-const ROW_H = 28;
+// Virtual coordinate constants for the SVG viewBox.  The actual rendered size
+// is controlled by rem values so the graph scales with the root font-size
+// (see clamp() in App.css).  These stay as unitless numbers that define the
+// viewBox coordinate system — they don't set pixel sizes directly.
+const LANE_W = 12;     // virtual lane width
+const NODE_R = 3;      // virtual commit-dot radius
+const ROW_H  = 28;     // virtual row height (viewBox)
+const SVG_PAD = 4;     // virtual horizontal padding
 
-// Small extension past SVG boundaries to eliminate sub-pixel rendering gaps
-// between adjacent rows. Requires overflow:visible on .git-graph-svg.
-const LINE_EXT = 0.5;
+// The *actual* CSS row height in rem — must match .git-graph-row in
+// GitGraph.css.  Since the app's minimum root font-size is 12px, all rem
+// values are calculated as px / 12 (e.g. 28 / 12 ≈ 2.333rem).
+const ROW_H_REM = 2.333;
+
+// Extension past SVG boundaries to eliminate sub-pixel rendering gaps between
+// adjacent rows (in viewBox units). With the viewBox transform, rounding can
+// cause 1-2 device-pixel seams; 1.5 virtual-px gives ~2px overlap at typical
+// scale factors, which reliably closes them. Requires overflow:visible on
+// .git-graph-svg.
+const LINE_EXT = 1.5;
 
 function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
-  const w = (maxCols + 1) * LANE_W + 4;
+  const vW = (maxCols + 1) * LANE_W + SVG_PAD;
+  const wRem = vW / 12; // rem width matching the virtual coordinate system
   const cx = node.col * LANE_W + LANE_W / 2 + 2;
   const cy = ROW_H / 2;
 
   return (
-    <svg width={w} height={ROW_H} className="git-graph-svg">
+    <svg
+      viewBox={`0 0 ${vW} ${ROW_H}`}
+      preserveAspectRatio="none"
+      style={{ width: `${wRem}rem`, height: `${ROW_H_REM}rem` }}
+      className="git-graph-svg"
+    >
       {/* Pass-through and branch lines */}
       {node.lines.map((line, i) => {
         const x1 = line.fromCol * LANE_W + LANE_W / 2 + 2;
@@ -69,8 +85,13 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
         }
 
         // Curved merge/branch lines:
-        // Draw from the node (mid-height) curving down to the target lane at the bottom.
-        // Also draw a straight segment from the top to the node for the incoming lane.
+        // Smooth bezier from the node (mid-height) curving down to the target lane
+        // at the bottom edge. Also draw a straight segment from the top to the node
+        // for the incoming lane (the commit's own lane arriving from the row above).
+        //
+        // Control points: CP1 keeps the curve departing vertically downward from
+        // the commit dot; CP2 brings it into the target lane from above so it
+        // arrives going vertically.
         return (
           <g key={i}>
             {/* Straight segment from top to node center on the source lane */}
@@ -83,9 +104,9 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
               strokeWidth={1.5}
               opacity={0.6}
             />
-            {/* Curve from node center on source lane to bottom of target lane */}
+            {/* Bezier from commit dot to bottom of target lane */}
             <path
-              d={`M ${x1} ${cy} C ${x1} ${ROW_H * 0.75}, ${x2} ${ROW_H * 0.25}, ${x2} ${ROW_H + LINE_EXT}`}
+              d={`M ${x1} ${cy} C ${x1} ${ROW_H}, ${x2} ${cy}, ${x2} ${ROW_H + LINE_EXT}`}
               stroke={laneColor(line.toCol)}
               strokeWidth={1.5}
               fill="none"
@@ -106,6 +127,22 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
       />
     </svg>
   );
+}
+
+/** Classify a git ref string into a CSS modifier class. */
+function refClass(ref: string): string {
+  if (ref.startsWith('HEAD')) return 'git-ref-head';
+  if (ref.startsWith('tag:')) return 'git-ref-tag';
+  if (ref.startsWith('origin/')) return 'git-ref-remote';
+  return 'git-ref-branch';
+}
+
+/** Format a git ref string for display — strip prefixes and add icons. */
+function refLabel(ref: string): string {
+  if (ref.startsWith('tag: ')) return '⚑ ' + ref.slice(5);
+  if (ref.startsWith('tag:')) return '⚑ ' + ref.slice(4);
+  if (ref.startsWith('origin/')) return '○ ' + ref.slice(7);
+  return ref;
 }
 
 function statusIcon(status: string): string {
@@ -193,12 +230,9 @@ export function GitGraph({
                         {commit.refs.map((r) => (
                           <span
                             key={r}
-                            className={`git-graph-ref ${
-                              r.startsWith('HEAD') ? 'git-ref-head' : 
-                              r.startsWith('origin/') ? 'git-ref-remote' : 'git-ref-branch'
-                            }`}
+                            className={`git-graph-ref ${refClass(r)}`}
                           >
-                            {r.startsWith('origin/') ? '○ ' + r.slice(7) : r}
+                            {refLabel(r)}
                           </span>
                         ))}
                       </span>

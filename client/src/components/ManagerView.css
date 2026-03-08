@@ -1,0 +1,412 @@
+/* ═══════════════════════════════════════════
+   MANAGER — Tech Lead Dashboard
+   ═══════════════════════════════════════════ */
+
+.manager-view {
+  padding: 0.667rem;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* ── Stats Bar ── */
+
+.manager-stats {
+  display: flex;
+  gap: 0.167rem;
+  margin-bottom: 0.667rem;
+  flex-wrap: wrap;
+}
+
+.manager-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.167rem;
+  padding: 0.5rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  min-width: 5.5rem;
+}
+
+.manager-stat-label {
+  font-family: 'VT323', monospace;
+  font-size: 0.833rem;
+  color: var(--text-muted);
+  letter-spacing: 0.05rem;
+}
+
+.manager-stat-value {
+  font-family: 'VT323', monospace;
+  font-size: 1.333rem;
+  color: var(--text);
+}
+
+.manager-stat-active {
+  color: var(--accent);
+}
+
+.manager-stat-crashed {
+  color: var(--error);
+}
+
+.manager-stat-merge {
+  color: var(--warn);
+}
+
+/* ── Batch Actions ── */
+
+.manager-batch {
+  display: flex;
+  gap: 0.333rem;
+  margin-bottom: 0.667rem;
+  flex-wrap: wrap;
+}
+
+.manager-batch-btn {
+  font-family: 'VT323', monospace;
+  font-size: 1rem;
+  padding: 0.333rem 0.667rem;
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  letter-spacing: 0.05rem;
+}
+
+.manager-batch-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.manager-batch-btn:active:not(:disabled) {
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.manager-batch-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.manager-batch-merge:hover:not(:disabled) {
+  color: var(--link);
+  border-color: var(--link);
+}
+
+.manager-batch-restart:hover:not(:disabled) {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.manager-batch-relaunch:hover:not(:disabled) {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+/* ── Error Banner ── */
+
+.manager-error {
+  padding: 0.5rem 0.667rem;
+  margin-bottom: 0.667rem;
+  background: color-mix(in srgb, var(--error) 12.5%, transparent);
+  border: 1px solid var(--error);
+  color: var(--error);
+  font-family: 'VT323', monospace;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+/* ── Section ── */
+
+.manager-section {
+  margin-bottom: 1rem;
+}
+
+.manager-section-title {
+  font-family: 'VT323', monospace;
+  font-size: 1.167rem;
+  color: var(--text-muted);
+  letter-spacing: 0.083rem;
+  padding: 0.333rem 0;
+  margin-bottom: 0.333rem;
+  border-bottom: 1px solid var(--chrome);
+}
+
+.manager-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-family: 'VT323', monospace;
+  font-size: 1.167rem;
+  padding: 2rem 0;
+}
+
+/* ── Agent Grid ── */
+
+.manager-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: 0.5rem;
+}
+
+.manager-card {
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  padding: 0.667rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.333rem;
+}
+
+.manager-card-working {
+  border-left: 3px solid var(--accent);
+}
+
+.manager-card-review {
+  border-left: 3px solid var(--warn);
+}
+
+.manager-card-crashed {
+  border-left: 3px solid var(--error);
+}
+
+.manager-card-todo {
+  border-left: 3px solid var(--text-muted);
+}
+
+/* ── Card Header ── */
+
+.manager-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.manager-card-icon {
+  font-size: 1.167rem;
+  flex-shrink: 0;
+}
+
+.manager-card-title {
+  flex: 1;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.917rem;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-card-status {
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.manager-status-working { color: var(--accent); }
+.manager-status-review { color: var(--warn); }
+.manager-status-crashed { color: var(--error); }
+.manager-status-todo { color: var(--text-muted); }
+
+/* ── Card Meta ── */
+
+.manager-card-meta {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'VT323', monospace;
+  font-size: 0.917rem;
+  color: var(--text-muted);
+}
+
+.manager-card-agent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-card-elapsed {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+/* ── Progress Message ── */
+
+.manager-card-progress {
+  font-family: 'VT323', monospace;
+  font-size: 0.917rem;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Terminal Preview ── */
+
+.manager-card-preview {
+  background: var(--bg);
+  border: 1px solid var(--chrome-dark);
+  padding: 0.333rem 0.5rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  overflow: hidden;
+  max-height: 4.2em;
+}
+
+.manager-card-preview-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Card Actions ── */
+
+.manager-card-actions {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.167rem;
+}
+
+.manager-action {
+  font-family: 'VT323', monospace;
+  font-size: 0.917rem;
+  padding: 0.167rem 0.5rem;
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  letter-spacing: 0.03rem;
+}
+
+.manager-action:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.manager-action:active:not(:disabled) {
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.manager-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.manager-action-kill:hover:not(:disabled) {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.manager-action-restart:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.manager-action-terminal:hover:not(:disabled) {
+  color: var(--link);
+  border-color: var(--link);
+}
+
+.manager-action-pr:hover:not(:disabled) {
+  color: var(--link);
+  border-color: var(--link);
+}
+
+.manager-action-merge:hover:not(:disabled) {
+  color: var(--link);
+  border-color: var(--link);
+}
+
+.manager-action-sendback:hover:not(:disabled) {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+/* ── PR Review Queue ── */
+
+.manager-pr-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 0.167rem;
+}
+
+.manager-pr-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.667rem;
+  padding: 0.5rem 0.667rem;
+  background: var(--surface);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+}
+
+.manager-pr-approved {
+  border-left: 3px solid var(--accent);
+}
+
+.manager-pr-changes_requested {
+  border-left: 3px solid var(--error);
+}
+
+.manager-pr-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.manager-pr-verdict {
+  flex-shrink: 0;
+  font-size: 1.167rem;
+}
+
+.manager-pr-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.917rem;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-pr-meta {
+  font-family: 'VT323', monospace;
+  font-size: 0.833rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.manager-pr-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}

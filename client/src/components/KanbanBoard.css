@@ -251,3 +251,34 @@
   color: var(--text-muted);
   font-size: 9px;
 }
+
+/* ── Issue Card Progress ── */
+
+.issue-card-progress {
+  margin-top: 0.25rem;
+  padding: 3px 0;
+}
+
+.issue-card-progress-message {
+  font-size: 9px;
+  font-family: 'VT323', monospace;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.issue-card-progress-bar-container {
+  margin-top: 2px;
+  height: 3px;
+  background: var(--chrome-dark);
+  border: 1px solid var(--chrome);
+  overflow: hidden;
+}
+
+.issue-card-progress-bar {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
