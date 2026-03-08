@@ -9,7 +9,7 @@ import { Store } from './store.js';
 import { createApiRouter } from './terminal-api.js';
 import { createIssueApiRouter } from './issue-api.js';
 import { createPRApiRouter } from './pr-api.js';
-import { createTicketApiRouter } from './ticket-api.js';
+import { createAgentApiRouter } from './agent-api.js';
 import { createGitApiRouter } from './git-api.js';
 import { setupWebSocket, broadcastToAll } from './ws.js';
 import { config, isGitRepo } from './config.js';
@@ -69,7 +69,12 @@ app.use('/api', createApiRouter(terminalManager));
 app.use('/api', createIssueApiRouter(issueManager));
 app.use('/api', createPRApiRouter(prManager, issueManager));
 app.use('/api', createGitApiRouter());
-app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, worktreeManager));
+app.use('/agent', createAgentApiRouter(issueManager, prManager, terminalManager, worktreeManager));
+
+// Backward compatibility: redirect /ticket/:id/* → /agent/:id/*
+app.use('/ticket', (req, res) => {
+  res.redirect(307, `/agent${req.url}`);
+});
 
 // WebSocket
 const wss = setupWebSocket(server, terminalManager);

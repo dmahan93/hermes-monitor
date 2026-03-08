@@ -8,7 +8,7 @@ import { TerminalManager } from '../src/terminal-manager.js';
 import { IssueManager } from '../src/issue-manager.js';
 import { WorktreeManager } from '../src/worktree-manager.js';
 import { PRManager } from '../src/pr-manager.js';
-import { createTicketApiRouter } from '../src/ticket-api.js';
+import { createAgentApiRouter } from '../src/agent-api.js';
 import { createIssueApiRouter } from '../src/issue-api.js';
 import { config } from '../src/config.js';
 
@@ -43,7 +43,7 @@ const TINY_PNG = Buffer.from(
   'base64'
 );
 
-describe('Ticket API (Agent Communication)', () => {
+describe('Agent API (Agent Communication)', () => {
   let terminalManager: TerminalManager;
   let issueManager: IssueManager;
   let worktreeManager: WorktreeManager;
@@ -60,7 +60,7 @@ describe('Ticket API (Agent Communication)', () => {
 
     const app = express();
     app.use('/api', createIssueApiRouter(issueManager));
-    app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, worktreeManager));
+    app.use('/agent', createAgentApiRouter(issueManager, prManager, terminalManager, worktreeManager));
     server = createServer(app);
     await new Promise<void>((resolve) => server.listen(0, resolve));
   });
@@ -70,38 +70,38 @@ describe('Ticket API (Agent Communication)', () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  it('GET /ticket/:id/info returns issue context', async () => {
+  it('GET /agent/:id/info returns issue context', async () => {
     // Explicitly set config so test doesn't depend on env vars
     const savedRequire = config.requireScreenshotsForUiChanges;
     config.requireScreenshotsForUiChanges = true;
 
     const issue = issueManager.create({ title: 'Test task', description: 'Do the thing' });
-    const res = await request(server, 'GET', `/ticket/${issue.id}/info`);
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(issue.id);
     expect(res.body.title).toBe('Test task');
     expect(res.body.description).toBe('Do the thing');
-    expect(res.body.reviewUrl).toContain(`/ticket/${issue.id}/review`);
+    expect(res.body.reviewUrl).toContain(`/agent/${issue.id}/review`);
     expect(res.body.previousReviews).toEqual([]);
     expect(res.body.guidelines).toBeDefined();
     expect(res.body.guidelines.screenshots).toContain('screenshotUploadUrl');
     expect(res.body.guidelines.screenshots).toContain('REQUIRED');
     expect(res.body.guidelines.requireScreenshotsForUiChanges).toBe(true);
-    expect(res.body.screenshotUploadUrl).toContain(`/ticket/${issue.id}/screenshots`);
+    expect(res.body.screenshotUploadUrl).toContain(`/agent/${issue.id}/screenshots`);
     expect(res.body.screenshotUploadInstructions).toContain('curl');
 
     config.requireScreenshotsForUiChanges = savedRequire;
   });
 
-  it('GET /ticket/:id/info returns 404 for unknown issue', async () => {
-    const res = await request(server, 'GET', '/ticket/nope/info');
+  it('GET /agent/:id/info returns 404 for unknown issue', async () => {
+    const res = await request(server, 'GET', '/agent/nope/info');
     expect(res.status).toBe(404);
   });
 
-  it('GET /ticket/:id/info includes worktree path when in_progress', async () => {
+  it('GET /agent/:id/info includes worktree path when in_progress', async () => {
     const issue = issueManager.create({ title: 'WIP task' });
     issueManager.changeStatus(issue.id, 'in_progress');
-    const res = await request(server, 'GET', `/ticket/${issue.id}/info`);
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
     // branch and worktreePath may or may not be set depending on git repo availability
     // In test environments without a git repo, worktree creation fails gracefully
     expect(res.status).toBe(200);
@@ -109,10 +109,10 @@ describe('Ticket API (Agent Communication)', () => {
     expect(res.body).toHaveProperty('worktreePath');
   });
 
-  it('POST /ticket/:id/review moves issue to review', async () => {
+  it('POST /agent/:id/review moves issue to review', async () => {
     const issue = issueManager.create({ title: 'Review me' });
     issueManager.changeStatus(issue.id, 'in_progress');
-    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.status).toBe('review');
@@ -120,28 +120,28 @@ describe('Ticket API (Agent Communication)', () => {
     expect(updated?.status).toBe('review');
   });
 
-  it('POST /ticket/:id/review kills the agent terminal', async () => {
+  it('POST /agent/:id/review kills the agent terminal', async () => {
     const issue = issueManager.create({ title: 'Kill term' });
     issueManager.changeStatus(issue.id, 'in_progress');
     const termId = issueManager.get(issue.id)?.terminalId;
     expect(termId).toBeTruthy();
 
-    await request(server, 'POST', `/ticket/${issue.id}/review`);
+    await request(server, 'POST', `/agent/${issue.id}/review`);
     const updated = issueManager.get(issue.id);
     expect(updated?.terminalId).toBeNull();
   });
 
-  it('POST /ticket/:id/review rejects if not in_progress', async () => {
+  it('POST /agent/:id/review rejects if not in_progress', async () => {
     const issue = issueManager.create({ title: 'Not started' });
-    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('not in_progress');
   });
 
-  it('POST /ticket/:id/review accepts details in body', async () => {
+  it('POST /agent/:id/review accepts details in body', async () => {
     const issue = issueManager.create({ title: 'With details' });
     issueManager.changeStatus(issue.id, 'in_progress');
-    const res = await request(server, 'POST', `/ticket/${issue.id}/review`, {
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`, {
       details: 'I refactored the auth module and added edge case tests.',
     });
     expect(res.status).toBe(200);
@@ -152,18 +152,18 @@ describe('Ticket API (Agent Communication)', () => {
     expect(updated?.submitterNotes).toBe('I refactored the auth module and added edge case tests.');
   });
 
-  it('POST /ticket/:id/review works without details (backward compat)', async () => {
+  it('POST /agent/:id/review works without details (backward compat)', async () => {
     const issue = issueManager.create({ title: 'No details' });
     issueManager.changeStatus(issue.id, 'in_progress');
-    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
   });
 
-  it('POST /ticket/:id/review ignores non-string details', async () => {
+  it('POST /agent/:id/review ignores non-string details', async () => {
     const issue = issueManager.create({ title: 'Bad details' });
     issueManager.changeStatus(issue.id, 'in_progress');
-    const res = await request(server, 'POST', `/ticket/${issue.id}/review`, {
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`, {
       details: 12345,
     });
     expect(res.status).toBe(200);
@@ -173,7 +173,7 @@ describe('Ticket API (Agent Communication)', () => {
   });
 });
 
-describe('Ticket API — Screenshot Upload', () => {
+describe('Agent API — Screenshot Upload', () => {
   let terminalManager: TerminalManager;
   let issueManager: IssueManager;
   let worktreeManager: WorktreeManager;
@@ -190,7 +190,7 @@ describe('Ticket API — Screenshot Upload', () => {
 
     const app = express();
     app.use('/api', createIssueApiRouter(issueManager));
-    app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, worktreeManager));
+    app.use('/agent', createAgentApiRouter(issueManager, prManager, terminalManager, worktreeManager));
     server = createServer(app);
     await new Promise<void>((resolve) => server.listen(0, resolve));
   });
@@ -200,11 +200,11 @@ describe('Ticket API — Screenshot Upload', () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  it('POST /ticket/:id/screenshots uploads a PNG and returns markdown', async () => {
+  it('POST /agent/:id/screenshots uploads a PNG and returns markdown', async () => {
     const issue = issueManager.create({ title: 'UI task' });
     const res = await rawRequest(
       server, 'POST',
-      `/ticket/${issue.id}/screenshots?filename=homepage.png&description=Homepage+before`,
+      `/agent/${issue.id}/screenshots?filename=homepage.png&description=Homepage+before`,
       TINY_PNG, 'image/png'
     );
     expect(res.status).toBe(201);
@@ -222,22 +222,22 @@ describe('Ticket API — Screenshot Upload', () => {
     expect(written.equals(TINY_PNG)).toBe(true);
   });
 
-  it('POST /ticket/:id/screenshots auto-generates filename when none provided', async () => {
+  it('POST /agent/:id/screenshots auto-generates filename when none provided', async () => {
     const issue = issueManager.create({ title: 'Auto name' });
     const res = await rawRequest(
       server, 'POST',
-      `/ticket/${issue.id}/screenshots`,
+      `/agent/${issue.id}/screenshots`,
       TINY_PNG, 'image/png'
     );
     expect(res.status).toBe(201);
     expect(res.body.filename).toMatch(/^screenshot-[a-f0-9]+\.png$/);
   });
 
-  it('POST /ticket/:id/screenshots rejects unsupported content types', async () => {
+  it('POST /agent/:id/screenshots rejects unsupported content types', async () => {
     const issue = issueManager.create({ title: 'Bad type' });
     const res = await rawRequest(
       server, 'POST',
-      `/ticket/${issue.id}/screenshots`,
+      `/agent/${issue.id}/screenshots`,
       Buffer.from('not an image'), 'text/plain'
     );
     expect(res.status).toBe(400);
@@ -245,31 +245,31 @@ describe('Ticket API — Screenshot Upload', () => {
     expect(res.body.error).toContain('No image data received');
   });
 
-  it('POST /ticket/:id/screenshots returns 404 for unknown issue', async () => {
+  it('POST /agent/:id/screenshots returns 404 for unknown issue', async () => {
     const res = await rawRequest(
       server, 'POST',
-      '/ticket/nonexistent/screenshots',
+      '/agent/nonexistent/screenshots',
       TINY_PNG, 'image/png'
     );
     expect(res.status).toBe(404);
   });
 
-  it('POST /ticket/:id/screenshots supports JPEG content type', async () => {
+  it('POST /agent/:id/screenshots supports JPEG content type', async () => {
     const issue = issueManager.create({ title: 'JPEG test' });
     const res = await rawRequest(
       server, 'POST',
-      `/ticket/${issue.id}/screenshots`,
+      `/agent/${issue.id}/screenshots`,
       TINY_PNG, 'image/jpeg'  // Content says JPEG (the data doesn't matter for this test)
     );
     expect(res.status).toBe(201);
     expect(res.body.filename).toContain('.jpg');
   });
 
-  it('POST /ticket/:id/screenshots sanitizes filenames', async () => {
+  it('POST /agent/:id/screenshots sanitizes filenames', async () => {
     const issue = issueManager.create({ title: 'Sanitize' });
     const res = await rawRequest(
       server, 'POST',
-      `/ticket/${issue.id}/screenshots?filename=../../etc/passwd.png`,
+      `/agent/${issue.id}/screenshots?filename=../../etc/passwd.png`,
       TINY_PNG, 'image/png'
     );
     expect(res.status).toBe(201);
@@ -278,22 +278,22 @@ describe('Ticket API — Screenshot Upload', () => {
     expect(res.body.filename).not.toContain('/');
   });
 
-  it('GET /ticket/:id/screenshots lists uploaded screenshots', async () => {
+  it('GET /agent/:id/screenshots lists uploaded screenshots', async () => {
     const issue = issueManager.create({ title: 'List test' });
 
     // Upload two screenshots
     await rawRequest(
       server, 'POST',
-      `/ticket/${issue.id}/screenshots?filename=before.png`,
+      `/agent/${issue.id}/screenshots?filename=before.png`,
       TINY_PNG, 'image/png'
     );
     await rawRequest(
       server, 'POST',
-      `/ticket/${issue.id}/screenshots?filename=after.png`,
+      `/agent/${issue.id}/screenshots?filename=after.png`,
       TINY_PNG, 'image/png'
     );
 
-    const res = await request(server, 'GET', `/ticket/${issue.id}/screenshots`);
+    const res = await request(server, 'GET', `/agent/${issue.id}/screenshots`);
     expect(res.status).toBe(200);
     expect(res.body.screenshots).toHaveLength(2);
     expect(res.body.screenshots[0].filename).toBeTruthy();
@@ -301,20 +301,20 @@ describe('Ticket API — Screenshot Upload', () => {
     expect(res.body.screenshots[0].markdown).toContain('![');
   });
 
-  it('GET /ticket/:id/screenshots returns empty array when no screenshots', async () => {
+  it('GET /agent/:id/screenshots returns empty array when no screenshots', async () => {
     const issue = issueManager.create({ title: 'No screenshots' });
-    const res = await request(server, 'GET', `/ticket/${issue.id}/screenshots`);
+    const res = await request(server, 'GET', `/agent/${issue.id}/screenshots`);
     expect(res.status).toBe(200);
     expect(res.body.screenshots).toEqual([]);
   });
 
-  it('GET /ticket/:id/screenshots returns 404 for unknown issue', async () => {
-    const res = await request(server, 'GET', '/ticket/nonexistent/screenshots');
+  it('GET /agent/:id/screenshots returns 404 for unknown issue', async () => {
+    const res = await request(server, 'GET', '/agent/nonexistent/screenshots');
     expect(res.status).toBe(404);
   });
 });
 
-describe('Ticket API — Screenshot Requirement Enforcement', () => {
+describe('Agent API — Screenshot Requirement Enforcement', () => {
   let terminalManager: TerminalManager;
   let issueManager: IssueManager;
   let worktreeManager: WorktreeManager;
@@ -336,7 +336,7 @@ describe('Ticket API — Screenshot Requirement Enforcement', () => {
 
     const app = express();
     app.use('/api', createIssueApiRouter(issueManager));
-    app.use('/', createTicketApiRouter(issueManager, prManager, terminalManager, worktreeManager));
+    app.use('/agent', createAgentApiRouter(issueManager, prManager, terminalManager, worktreeManager));
     server = createServer(app);
     await new Promise<void>((resolve) => server.listen(0, resolve));
   });
@@ -350,7 +350,7 @@ describe('Ticket API — Screenshot Requirement Enforcement', () => {
 
   /**
    * Helper: create an issue, move to in_progress, mock getChangedFiles.
-   * Tests the ticket API's enforcement logic without requiring real git worktrees.
+   * Tests the agent API's enforcement logic without requiring real git worktrees.
    */
   function setupIssueWithChangedFiles(title: string, changedFiles: string[]): { issue: any } {
     const issue = issueManager.create({ title });
@@ -362,7 +362,7 @@ describe('Ticket API — Screenshot Requirement Enforcement', () => {
   it('rejects review when UI files changed but no screenshots uploaded', async () => {
     const { issue } = setupIssueWithChangedFiles('UI change no screenshot', ['Component.tsx']);
 
-    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Screenshots required for UI changes');
     expect(res.body.uiFilesChanged).toContain('Component.tsx');
@@ -379,11 +379,11 @@ describe('Ticket API — Screenshot Requirement Enforcement', () => {
     // Upload a screenshot first
     await rawRequest(
       server, 'POST',
-      `/ticket/${issue.id}/screenshots?filename=button-before.png`,
+      `/agent/${issue.id}/screenshots?filename=button-before.png`,
       TINY_PNG, 'image/png'
     );
 
-    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.status).toBe('review');
@@ -392,7 +392,7 @@ describe('Ticket API — Screenshot Requirement Enforcement', () => {
   it('allows review when UI files changed but agent passes no_ui_changes query param', async () => {
     const { issue } = setupIssueWithChangedFiles('UI refactor only', ['App.tsx']);
 
-    const res = await request(server, 'POST', `/ticket/${issue.id}/review?no_ui_changes=true`);
+    const res = await request(server, 'POST', `/agent/${issue.id}/review?no_ui_changes=true`);
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.status).toBe('review');
@@ -401,7 +401,7 @@ describe('Ticket API — Screenshot Requirement Enforcement', () => {
   it('allows review when UI files changed but agent sends noUiChanges in body', async () => {
     const { issue } = setupIssueWithChangedFiles('UI rename only', ['Header.tsx']);
 
-    const res = await request(server, 'POST', `/ticket/${issue.id}/review`, { noUiChanges: true });
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`, { noUiChanges: true });
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.status).toBe('review');
@@ -410,7 +410,7 @@ describe('Ticket API — Screenshot Requirement Enforcement', () => {
   it('allows review when only non-UI files changed (no screenshot needed)', async () => {
     const { issue } = setupIssueWithChangedFiles('Backend change', ['utils.ts']);
 
-    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.status).toBe('review');
@@ -420,7 +420,7 @@ describe('Ticket API — Screenshot Requirement Enforcement', () => {
     config.requireScreenshotsForUiChanges = false;
     const { issue } = setupIssueWithChangedFiles('UI change config off', ['Modal.tsx']);
 
-    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.status).toBe('review');
@@ -432,7 +432,7 @@ describe('Ticket API — Screenshot Requirement Enforcement', () => {
       'Page.tsx', 'styles.css', 'helper.ts',
     ]);
 
-    const res = await request(server, 'POST', `/ticket/${issue.id}/review`);
+    const res = await request(server, 'POST', `/agent/${issue.id}/review`);
     expect(res.status).toBe(400);
     expect(res.body.uiFilesChanged).toContain('Page.tsx');
     expect(res.body.uiFilesChanged).toContain('styles.css');
@@ -440,19 +440,19 @@ describe('Ticket API — Screenshot Requirement Enforcement', () => {
     expect(res.body.uiFilesChanged).not.toContain('helper.ts');
   });
 
-  it('GET /ticket/:id/info reflects requireScreenshotsForUiChanges in guidelines', async () => {
+  it('GET /agent/:id/info reflects requireScreenshotsForUiChanges in guidelines', async () => {
     const issue = issueManager.create({ title: 'Check guidelines' });
 
     // When enabled
     config.requireScreenshotsForUiChanges = true;
-    let res = await request(server, 'GET', `/ticket/${issue.id}/info`);
+    let res = await request(server, 'GET', `/agent/${issue.id}/info`);
     expect(res.body.guidelines.requireScreenshotsForUiChanges).toBe(true);
     expect(res.body.guidelines.screenshots).toContain('REQUIRED');
     expect(res.body.guidelines.screenshots).toContain('no_ui_changes=true');
 
     // When disabled
     config.requireScreenshotsForUiChanges = false;
-    res = await request(server, 'GET', `/ticket/${issue.id}/info`);
+    res = await request(server, 'GET', `/agent/${issue.id}/info`);
     expect(res.body.guidelines.requireScreenshotsForUiChanges).toBe(false);
     expect(res.body.guidelines.screenshots).not.toContain('REQUIRED');
   });

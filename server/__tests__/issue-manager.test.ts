@@ -337,9 +337,9 @@ describe('IssueManager', () => {
     issueManager.changeStatus(issue.id, 'in_progress');
     const termId = issueManager.get(issue.id)!.terminalId!;
 
-    // Simulate what ticket-api does on review: kill terminal, clear ref, change status.
+    // Simulate what agent-api does on review: kill terminal, clear ref, change status.
     // Direct mutation of issue.terminalId is intentional — create() returns the internal
-    // object reference, so this mirrors how ticket-api clears the terminal ref before
+    // object reference, so this mirrors how agent-api clears the terminal ref before
     // changing status. If create() ever returns a copy, this pattern would need a
     // dedicated clearTerminalRef(issueId) method.
     terminalManager.kill(termId);
@@ -567,7 +567,7 @@ describe('IssueManager', () => {
 
     // First cycle: todo → in_progress → review (creates PR + spawns reviewer)
     issueManager.changeStatus(issue.id, 'in_progress');
-    // Kill terminal so ticket-api path is simulated (it kills terminal before changeStatus).
+    // Kill terminal so agent-api path is simulated (it kills terminal before changeStatus).
     // Direct mutation of terminalId is intentional — see comment in "does NOT resume" test.
     const termId = issueManager.get(issue.id)!.terminalId;
     if (termId) terminalManager.kill(termId);
