@@ -414,7 +414,7 @@ export function createAgentApiRouter(
               pr.description || '',
               '',
               `---`,
-              `*Created by [hermes-monitor](http://localhost:${PORT}) — local PR review system*`,
+              `*Created by hermes-monitor — local PR review system*`,
             ].join('\n');
 
             const ghResult = await createGitHubPR(

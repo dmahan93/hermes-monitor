@@ -584,22 +584,27 @@ export class PRManager {
     this.persist(pr);
     this.emit('pr:updated', pr);
 
-    // GitHub integration: push merge and close GitHub PR (fire-and-forget)
+    // GitHub integration: push merge, close GitHub PR, and clean up remote branch.
+    // Operations are chained sequentially (fire-and-forget from caller's perspective)
+    // because they have hard ordering dependencies:
+    //   1. pushMerge must complete before closeGitHubPR (so merged state is visible on remote)
+    //   2. deleteRemoteBranch must run after closeGitHubPR (PR still references the branch)
     if (config.githubEnabled) {
       const sourceBranch = pr.sourceBranch;
       const githubPrUrl = pr.githubPrUrl;
       const repoPath = pr.repoPath;
 
-      // Push the merged target branch to the remote
-      pushMerge(pr.targetBranch, repoPath).catch(() => {});
-
-      // Close the GitHub PR if one was created
-      if (githubPrUrl) {
-        closeGitHubPR(githubPrUrl, repoPath).catch(() => {});
-      }
-
-      // Delete the remote branch (cleanup)
-      deleteRemoteBranch(sourceBranch, repoPath).catch(() => {});
+      (async () => {
+        try {
+          await pushMerge(pr.targetBranch, repoPath);
+          if (githubPrUrl) {
+            await closeGitHubPR(githubPrUrl, repoPath);
+          }
+          await deleteRemoteBranch(sourceBranch, repoPath);
+        } catch (err) {
+          console.error('[github] Error during merge cleanup:', err);
+        }
+      })();
     }
 
     return { pr };
@@ -608,10 +613,17 @@ export class PRManager {
   /**
    * Set the GitHub PR URL on a pull request.
    * Called after successfully creating a GitHub PR.
+   * Validates that the URL is a GitHub HTTPS URL to prevent XSS via href injection.
    */
   setGithubPrUrl(prId: string, url: string): PullRequest | null {
     const pr = this.prs.get(prId);
     if (!pr) return null;
+
+    // Validate URL — must be a GitHub HTTPS URL (prevents javascript: or other scheme injection)
+    if (!url.startsWith('https://github.com/')) {
+      console.warn(`[github] Rejected non-GitHub URL for PR ${prId}: ${url}`);
+      return null;
+    }
 
     pr.githubPrUrl = url;
     pr.updatedAt = Date.now();

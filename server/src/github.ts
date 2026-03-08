@@ -120,24 +120,26 @@ export async function createGitHubPR(
     return { success: true, prUrl };
   } catch (err: any) {
     const stderr = err.stderr?.toString() || '';
-    // gh returns "already exists" if a PR for this branch already exists
-    if (stderr.includes('already exists')) {
-      // Try to get the existing PR URL
-      try {
-        const { stdout } = await execFileAsync(
-          'gh',
-          ['pr', 'view', sourceBranch, '--json', 'url', '--jq', '.url'],
-          { cwd: repoPath, timeout: 15000 },
-        );
-        const prUrl = stdout.trim();
-        console.log(`[github] GitHub PR already exists: ${prUrl}`);
-        return { success: true, prUrl };
-      } catch {
-        // Can't get URL, just report success since the PR exists
-        return { success: false, error: 'PR already exists but could not retrieve URL' };
-      }
-    }
     const msg = stderr || err.message || 'Unknown gh error';
+
+    // If PR creation failed, check if a PR already exists for this branch.
+    // Instead of relying on locale-dependent error messages, we use `gh pr view`
+    // to definitively check — this works regardless of gh CLI language settings.
+    try {
+      const { stdout } = await execFileAsync(
+        'gh',
+        ['pr', 'view', sourceBranch, '--json', 'url', '--jq', '.url'],
+        { cwd: repoPath, timeout: 15000 },
+      );
+      const existingUrl = stdout.trim();
+      if (existingUrl) {
+        console.log(`[github] GitHub PR already exists: ${existingUrl}`);
+        return { success: true, prUrl: existingUrl };
+      }
+    } catch {
+      // No existing PR found — fall through to report the original error
+    }
+
     console.error(`[github] Failed to create GitHub PR: ${msg}`);
     return { success: false, error: msg };
   }
@@ -150,7 +152,6 @@ export async function createGitHubPR(
 export async function closeGitHubPR(
   prUrl: string,
   repoPath: string,
-  comment?: string,
 ): Promise<GitHubPRResult> {
   const ghAvailable = await isGhAvailable(repoPath);
   if (!ghAvailable) {
@@ -158,15 +159,6 @@ export async function closeGitHubPR(
   }
 
   try {
-    // Add a comment explaining the merge was done locally
-    if (comment) {
-      await execFileAsync(
-        'gh',
-        ['pr', 'comment', prUrl, '--body', comment],
-        { cwd: repoPath, timeout: 15000 },
-      );
-    }
-
     // Close the PR (not merge — the merge was done locally)
     await execFileAsync(
       'gh',

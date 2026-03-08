@@ -1265,4 +1265,35 @@ describe('Agent API — GitHub Integration', () => {
     const result = prManager.setGithubPrUrl('nonexistent', 'https://github.com/user/repo/pull/1');
     expect(result).toBeNull();
   });
+
+  it('PRManager.setGithubPrUrl rejects non-GitHub URLs', () => {
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: 'test-issue-xss',
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const pr = prManager.create({ issueId: 'test-issue-xss', title: 'XSS test' });
+    expect(pr).not.toBeNull();
+
+    // javascript: URL should be rejected
+    const result1 = prManager.setGithubPrUrl(pr!.id, 'javascript:alert(1)');
+    expect(result1).toBeNull();
+    expect(prManager.get(pr!.id)?.githubPrUrl).toBeUndefined();
+
+    // http URL should be rejected (not https)
+    const result2 = prManager.setGithubPrUrl(pr!.id, 'http://github.com/user/repo/pull/1');
+    expect(result2).toBeNull();
+
+    // Non-GitHub HTTPS URL should be rejected
+    const result3 = prManager.setGithubPrUrl(pr!.id, 'https://evil.com/user/repo/pull/1');
+    expect(result3).toBeNull();
+
+    // Valid GitHub URL should be accepted
+    const result4 = prManager.setGithubPrUrl(pr!.id, 'https://github.com/user/repo/pull/42');
+    expect(result4).not.toBeNull();
+    expect(result4!.githubPrUrl).toBe('https://github.com/user/repo/pull/42');
+  });
 });

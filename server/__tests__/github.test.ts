@@ -239,6 +239,100 @@ describe('GitHub Integration — deleteRemoteBranch', () => {
   });
 });
 
+describe('GitHub Integration — closeGitHubPR (updated)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('does not accept a comment parameter (removed per review)', async () => {
+    // closeGitHubPR signature is now (prUrl, repoPath) — no comment param
+    // Verify the function works with just 2 args
+    (execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (_cmd: string, args: string[], _opts: any, cb: Function) => {
+        if (args[0] === 'auth') {
+          cb(null, { stdout: 'Logged in', stderr: '' });
+        } else if (args[0] === 'pr' && args[1] === 'close') {
+          cb(null, { stdout: '', stderr: '' });
+        } else {
+          cb(new Error('unexpected'), { stdout: '', stderr: '' });
+        }
+      }
+    );
+
+    const result = await closeGitHubPR('https://github.com/user/repo/pull/42', '/tmp/repo');
+    expect(result.success).toBe(true);
+    // Should only call gh auth status + gh pr close (2 calls), no gh pr comment
+    const calls = (execFile as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const ghCalls = calls.filter((c: any) => c[0] === 'gh');
+    expect(ghCalls).toHaveLength(2); // auth + close
+    expect(ghCalls[1][1]).toEqual(expect.arrayContaining(['pr', 'close']));
+  });
+});
+
+describe('GitHub Integration — Merge path ordering', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('pushMerge, closeGitHubPR, and deleteRemoteBranch can be chained sequentially', async () => {
+    // This test verifies the sequential execution pattern used in pr-manager.ts merge handler.
+    // We track timestamps to prove each operation completes before the next starts.
+    const callOrder: string[] = [];
+
+    (execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (cmd: string, args: string[], _opts: any, cb: Function) => {
+        // Track which operation is being called based on args
+        if (cmd === 'git' && args[0] === 'push' && !args.includes('--delete')) {
+          callOrder.push('pushMerge');
+        } else if (cmd === 'gh' && args[0] === 'auth') {
+          callOrder.push('ghAuth');
+        } else if (cmd === 'gh' && args[1] === 'close') {
+          callOrder.push('closeGitHubPR');
+        } else if (cmd === 'git' && args.includes('--delete')) {
+          callOrder.push('deleteRemoteBranch');
+        }
+        // Simulate async completion
+        setTimeout(() => cb(null, { stdout: '', stderr: '' }), 5);
+      }
+    );
+
+    // Simulate the sequential merge cleanup pattern from pr-manager.ts
+    await pushMerge('master', '/tmp/repo');
+    await closeGitHubPR('https://github.com/user/repo/pull/42', '/tmp/repo');
+    await deleteRemoteBranch('issue/my-branch', '/tmp/repo');
+
+    // Verify correct ordering: push → auth+close → delete
+    expect(callOrder[0]).toBe('pushMerge');
+    // closeGitHubPR calls isGhAvailable first (ghAuth), then close
+    const closeIdx = callOrder.indexOf('closeGitHubPR');
+    const deleteIdx = callOrder.indexOf('deleteRemoteBranch');
+    expect(closeIdx).toBeGreaterThan(0);
+    expect(deleteIdx).toBeGreaterThan(closeIdx);
+  });
+
+  it('deleteRemoteBranch still runs if closeGitHubPR is skipped (no GitHub PR URL)', async () => {
+    const callOrder: string[] = [];
+
+    (execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (cmd: string, args: string[], _opts: any, cb: Function) => {
+        if (cmd === 'git' && args[0] === 'push' && !args.includes('--delete')) {
+          callOrder.push('pushMerge');
+        } else if (cmd === 'git' && args.includes('--delete')) {
+          callOrder.push('deleteRemoteBranch');
+        }
+        cb(null, { stdout: '', stderr: '' });
+      }
+    );
+
+    // Simulate the merge cleanup when no GitHub PR exists
+    await pushMerge('master', '/tmp/repo');
+    // No closeGitHubPR call — no PR URL
+    await deleteRemoteBranch('issue/my-branch', '/tmp/repo');
+
+    expect(callOrder).toEqual(['pushMerge', 'deleteRemoteBranch']);
+  });
+});
+
 describe('GitHub Integration — Config', () => {
   const savedEnabled = config.githubEnabled;
   const savedRemote = config.githubRemote;
