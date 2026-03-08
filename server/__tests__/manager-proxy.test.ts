@@ -323,11 +323,91 @@ describe('websocket proxy', () => {
     }
   });
 
-  it('destroys socket for unknown repoId', async () => {
+  it('proxies multiple messages in both directions', async () => {
+    const ws = await connectWs(proxyServer, '/test-repo/ws');
+    try {
+      const messages = ['first', 'second', 'third'];
+      for (const msg of messages) {
+        const msgPromise = waitForMessage(ws);
+        ws.send(msg);
+        const reply = await msgPromise;
+        expect(reply).toBe(`echo:${msg}`);
+      }
+    } finally {
+      ws.close();
+    }
+  });
+
+  it('routes WS to correct backend when multiple repos registered', async () => {
+    // Create a second backend with different echo behavior
+    const secondApp = express();
+    const secondServer = createServer(secondApp);
+    const secondWss = new WebSocketServer({ server: secondServer, path: '/ws' });
+    secondWss.on('connection', (ws) => {
+      ws.on('message', (msg) => ws.send(`second:${msg}`));
+    });
+    await new Promise<void>((resolve) => secondServer.listen(0, resolve));
+    const secondPort = (secondServer.address() as any).port;
+
+    registerRepo('other-repo', { port: secondPort, name: 'Other', path: '/other' });
+
+    try {
+      // First repo should echo with "echo:" prefix
+      const ws1 = await connectWs(proxyServer, '/test-repo/ws');
+      const msg1 = waitForMessage(ws1);
+      ws1.send('test');
+      expect(await msg1).toBe('echo:test');
+      ws1.close();
+
+      // Second repo should echo with "second:" prefix
+      const ws2 = await connectWs(proxyServer, '/other-repo/ws');
+      const msg2 = waitForMessage(ws2);
+      ws2.send('test');
+      expect(await msg2).toBe('second:test');
+      ws2.close();
+    } finally {
+      secondWss.close();
+      await new Promise<void>((resolve) => secondServer.close(() => resolve()));
+    }
+  });
+
+  it('rejects WS for unknown repoId', async () => {
     await expect(connectWs(proxyServer, '/unknown-repo/ws')).rejects.toThrow();
   });
 
-  it('destroys socket for reserved path', async () => {
+  it('rejects WS for reserved path', async () => {
     await expect(connectWs(proxyServer, '/api/something')).rejects.toThrow();
+  });
+
+  it('rejects WS when upstream instance is down', async () => {
+    registerRepo('dead-repo', { port: 59999, name: 'Dead', path: '/dead' });
+    await expect(connectWs(proxyServer, '/dead-repo/ws')).rejects.toThrow();
+  });
+
+  it('handles WS after repo is unregistered', async () => {
+    registerRepo('temp-repo', { port: backendPort, name: 'Temp', path: '/temp' });
+    // Verify it works
+    const ws = await connectWs(proxyServer, '/temp-repo/ws');
+    ws.close();
+    // Unregister and verify rejection
+    unregisterRepo('temp-repo');
+    await expect(connectWs(proxyServer, '/temp-repo/ws')).rejects.toThrow();
+  });
+
+  it('proxies WS with JSON payloads', async () => {
+    const ws = await connectWs(proxyServer, '/test-repo/ws');
+    try {
+      const payload = JSON.stringify({ type: 'stdin', terminalId: 't1', data: 'ls\n' });
+      const msgPromise = waitForMessage(ws);
+      ws.send(payload);
+      const reply = await msgPromise;
+      // Backend echoes with "echo:" prefix
+      expect(reply).toBe(`echo:${payload}`);
+      // Verify the echoed content is valid JSON after stripping prefix
+      const parsed = JSON.parse(reply.replace(/^echo:/, ''));
+      expect(parsed.type).toBe('stdin');
+    } finally {
+      ws.close();
+    }
   });
 });

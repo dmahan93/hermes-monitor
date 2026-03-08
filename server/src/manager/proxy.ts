@@ -23,6 +23,26 @@ const RESERVED_IDS = new Set(['api', 'static', 'health', 'ws']);
 const registry = new Map<string, RepoInstance>();
 const proxyCache = new Map<string, ReturnType<typeof createProxyMiddleware>>();
 
+/**
+ * Write an HTTP error response to a raw socket during WS upgrade, then destroy.
+ * This gives WebSocket clients a proper error instead of a silent disconnection.
+ */
+function rejectUpgrade(socket: Duplex, statusCode: number, reason: string): void {
+  if (socket.writable) {
+    const body = JSON.stringify({ error: reason });
+    socket.end(
+      `HTTP/1.1 ${statusCode} ${reason}\r\n` +
+      `Content-Type: application/json\r\n` +
+      `Content-Length: ${Buffer.byteLength(body)}\r\n` +
+      `Connection: close\r\n` +
+      `\r\n` +
+      body,
+    );
+  } else {
+    socket.destroy();
+  }
+}
+
 function createRepoProxy(port: number) {
   return createProxyMiddleware({
     target: `http://localhost:${port}`,
@@ -34,7 +54,7 @@ function createRepoProxy(port: number) {
           res.writeHead(502, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Upstream instance unavailable' }));
         } else if ('destroy' in res) {
-          (res as Duplex).destroy();
+          rejectUpgrade(res as Duplex, 502, 'Upstream instance unavailable');
         }
       },
     },
@@ -77,16 +97,26 @@ export function clearRegistry(): void {
 /**
  * WebSocket upgrade handler — attach to the HTTP server after creation.
  * Parses /{repoId}/... from the URL and delegates to the correct proxy.
+ * Sends proper HTTP error responses instead of silently destroying sockets.
  */
 export function setupWebSocketProxy(server: Server): void {
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     const url = req.url || '';
     const match = url.match(/^\/([^/]+)(\/.*)?$/);
-    if (!match) { socket.destroy(); return; }
+    if (!match) {
+      rejectUpgrade(socket, 400, 'Invalid WebSocket path');
+      return;
+    }
     const repoId = match[1];
-    if (RESERVED_IDS.has(repoId)) { socket.destroy(); return; }
+    if (RESERVED_IDS.has(repoId)) {
+      rejectUpgrade(socket, 400, 'Reserved path');
+      return;
+    }
     const proxy = proxyCache.get(repoId);
-    if (!proxy?.upgrade) { socket.destroy(); return; }
+    if (!proxy?.upgrade) {
+      rejectUpgrade(socket, 404, 'Repo not found');
+      return;
+    }
     // Strip /{repoId} prefix so the target sees the original path
     req.url = match[2] || '/';
     proxy.upgrade(req, socket, head);
