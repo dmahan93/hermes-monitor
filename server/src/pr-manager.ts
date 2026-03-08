@@ -8,6 +8,7 @@ import type { Store } from './store.js';
 import { config } from './config.js';
 import { buildScreenshotSection } from './screenshot-utils.js';
 import { loadTemplate, renderTemplate } from './agents.js';
+import { pushMerge, closeGitHubPR, deleteRemoteBranch } from './github.js';
 
 // Auto-relaunch constants
 const MAX_REVIEWER_RELAUNCH = 2;        // max retries before giving up
@@ -709,7 +710,59 @@ export class PRManager {
 
     this.persist(pr);
     this.emit('pr:updated', pr);
+
+    // GitHub integration: push merge, close GitHub PR, and clean up remote branch.
+    // Operations are chained sequentially (fire-and-forget from caller's perspective)
+    // because they have hard ordering dependencies:
+    //   1. pushMerge must complete before closeGitHubPR (so merged state is visible on remote)
+    //   2. deleteRemoteBranch must run after closeGitHubPR (PR still references the branch)
+    if (config.githubEnabled) {
+      const sourceBranch = pr.sourceBranch;
+      const githubPrUrl = pr.githubPrUrl;
+      const repoPath = pr.repoPath;
+
+      (async () => {
+        try {
+          const pushResult = await pushMerge(pr.targetBranch, repoPath);
+          if (!pushResult.success) {
+            console.warn(`[github] Push merge failed, skipping GitHub cleanup: ${pushResult.error}`);
+            return;
+          }
+          if (githubPrUrl) {
+            await closeGitHubPR(githubPrUrl, repoPath);
+            // Don't gate deleteRemoteBranch on close success —
+            // branch should be cleaned up even if closing the PR fails
+          }
+          await deleteRemoteBranch(sourceBranch, repoPath);
+        } catch (err) {
+          console.error('[github] Error during merge cleanup:', err);
+        }
+      })();
+    }
+
     return { pr };
+  }
+
+  /**
+   * Set the GitHub PR URL on a pull request.
+   * Called after successfully creating a GitHub PR.
+   * Validates that the URL is a GitHub HTTPS URL to prevent XSS via href injection.
+   */
+  setGithubPrUrl(prId: string, url: string): PullRequest | null {
+    const pr = this.prs.get(prId);
+    if (!pr) return null;
+
+    // Validate URL — must be a GitHub HTTPS URL (prevents javascript: or other scheme injection)
+    if (!url.startsWith('https://github.com/')) {
+      console.warn(`[github] Rejected non-GitHub URL for PR ${prId}: ${url}`);
+      return null;
+    }
+
+    pr.githubPrUrl = url;
+    pr.updatedAt = Date.now();
+    this.persist(pr);
+    this.emit('pr:updated', pr);
+    return pr;
   }
 
   get(id: string): PullRequest | undefined {

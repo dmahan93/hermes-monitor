@@ -55,6 +55,14 @@
   margin-bottom: 0;
 }
 
+.config-text code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.833rem;
+  background: var(--chrome);
+  padding: 0.125rem 0.333rem;
+  border-radius: 2px;
+}
+
 .config-link {
   display: inline-block;
   color: var(--link);
@@ -79,4 +87,142 @@
   border-left-color: var(--bevel-dark);
   border-bottom-color: var(--bevel-light);
   border-right-color: var(--bevel-light);
+}
+
+/* ── Form fields ── */
+
+.config-field {
+  margin-bottom: 0.75rem;
+}
+
+.config-field:last-child {
+  margin-bottom: 0;
+}
+
+.config-label {
+  display: block;
+  font-family: 'VT323', monospace;
+  font-size: 1rem;
+  color: var(--text-muted);
+  margin-bottom: 0.333rem;
+  letter-spacing: 0.05rem;
+}
+
+.config-value {
+  display: block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.833rem;
+  color: var(--text);
+  padding: 0.333rem 0.5rem;
+  background: var(--chrome);
+  border: 1px solid var(--bevel-dark);
+  user-select: all;
+}
+
+.config-input {
+  display: block;
+  width: 100%;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.833rem;
+  color: var(--text);
+  background: var(--bg);
+  padding: 0.333rem 0.5rem;
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.config-input:focus {
+  border-color: var(--accent);
+}
+
+.config-input:disabled {
+  opacity: 0.5;
+}
+
+.config-hint {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+  opacity: 0.7;
+}
+
+/* ── Toggle ── */
+
+.config-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.config-toggle input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+  background: var(--bg);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.config-toggle input[type="checkbox"]:checked {
+  background: var(--accent-dim);
+}
+
+.config-toggle input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  top: -2px;
+  left: 1px;
+  font-size: 0.833rem;
+  color: var(--accent);
+  font-weight: bold;
+}
+
+.config-toggle input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.config-toggle-label {
+  font-family: 'VT323', monospace;
+  font-size: 1rem;
+  color: var(--text);
+  letter-spacing: 0.05rem;
+}
+
+/* ── Save status ── */
+
+.config-save-status {
+  font-family: 'VT323', monospace;
+  font-size: 1rem;
+  padding: 0.333rem 0.667rem;
+  margin-bottom: 1rem;
+  text-align: center;
+  letter-spacing: 0.05rem;
+}
+
+.config-save-ok {
+  color: var(--green, #4ec9b0);
+  border: 1px solid var(--green, #4ec9b0);
+  background: rgba(78, 201, 176, 0.1);
+}
+
+.config-save-err {
+  color: var(--red, #f48771);
+  border: 1px solid var(--red, #f48771);
+  background: rgba(244, 135, 113, 0.1);
 }

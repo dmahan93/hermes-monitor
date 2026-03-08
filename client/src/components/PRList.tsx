@@ -123,6 +123,9 @@ export function PRList({ prs = [], issues, onComment, onVerdict, onMerge, onFixC
                   {(pr.screenshotCount ?? 0) > 0 && (
                     <> · 📷 {pr.screenshotCount}</>
                   )}
+                  {pr.githubPrUrl && (
+                    <> · 🐙 GitHub</>
+                  )}
                 </span>
               </div>
               <span className={`pr-list-verdict verdict-${pr.verdict}`}>

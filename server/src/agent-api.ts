@@ -16,6 +16,7 @@ import { config } from './config.js';
 import { ALLOWED_EXTENSIONS, getUploadedScreenshots, UI_EXTENSIONS } from './screenshot-utils.js';
 import { getDiagnostics } from './diagnostics.js';
 import { analyzeUiDiff } from './ui-change-analyzer.js';
+import { pushBranch, createGitHubPR } from './github.js';
 
 /** File extensions that indicate UI changes requiring screenshots (derived from screenshot-utils) */
 const UI_FILE_EXTENSIONS = new Set(UI_EXTENSIONS);
@@ -65,12 +66,6 @@ interface AgentInfoResponse {
   changedFiles: string[];
   previousReviews: ReviewInfo[];
   recentMerges: RecentMerge[];
-  previousReviews: Array<{
-    author: string;
-    verdict: string | null;
-    body: string;
-    createdAt: number;
-  }>;
   previousAttempts: Array<{
     exitCode: number;
     logFile: string;
@@ -479,6 +474,44 @@ export function createAgentApiRouter(
     if (!updated) {
       res.status(500).json({ error: 'Failed to change status' });
       return;
+    }
+
+    // GitHub integration: push branch and create GitHub PR (fire-and-forget, non-blocking)
+    if (config.githubEnabled) {
+      const pr = prManager.getByIssueId(issue.id);
+      if (pr && pr.sourceBranch) {
+        // Push branch to remote — don't await in the response, but do track errors
+        (async () => {
+          try {
+            const pushResult = await pushBranch(pr.sourceBranch, config.repoPath);
+            if (!pushResult.success) {
+              console.warn(`[github] Push warning for ${pr.sourceBranch}: ${pushResult.error}`);
+              return;
+            }
+
+            // Create GitHub PR
+            const body = [
+              pr.description || '',
+              '',
+              `---`,
+              `*Created by hermes-monitor — local PR review system*`,
+            ].join('\n');
+
+            const ghResult = await createGitHubPR(
+              pr.title,
+              body,
+              pr.sourceBranch,
+              pr.targetBranch,
+              config.repoPath,
+            );
+            if (ghResult.success && ghResult.prUrl) {
+              prManager.setGithubPrUrl(pr.id, ghResult.prUrl);
+            }
+          } catch (err) {
+            console.error('[github] Unexpected error during GitHub integration:', err);
+          }
+        })();
+      }
     }
 
     res.json({

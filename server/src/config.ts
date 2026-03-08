@@ -10,6 +10,8 @@ export interface AppConfig {
   diagnosticsBase: string;
   targetBranch: string;
   requireScreenshotsForUiChanges: boolean;
+  githubEnabled: boolean;
+  githubRemote: string;
 }
 
 // Detect the default branch name for a repo
@@ -36,6 +38,8 @@ export const config: AppConfig = {
   diagnosticsBase: process.env.HERMES_DIAGNOSTICS_BASE || '/tmp/hermes-diagnostics',
   targetBranch: detectDefaultBranch(defaultRepo),
   requireScreenshotsForUiChanges: process.env.HERMES_REQUIRE_SCREENSHOTS !== 'false',
+  githubEnabled: process.env.HERMES_GITHUB_ENABLED === 'true',
+  githubRemote: process.env.HERMES_GITHUB_REMOTE || 'origin',
 };
 
 export function updateConfig(updates: Partial<AppConfig>): void {
@@ -49,6 +53,16 @@ export function updateConfig(updates: Partial<AppConfig>): void {
   if (updates.diagnosticsBase !== undefined) config.diagnosticsBase = updates.diagnosticsBase;
   if (updates.targetBranch !== undefined) config.targetBranch = updates.targetBranch;
   if (updates.requireScreenshotsForUiChanges !== undefined) config.requireScreenshotsForUiChanges = updates.requireScreenshotsForUiChanges;
+  if (updates.githubEnabled !== undefined) config.githubEnabled = updates.githubEnabled;
+  if (updates.githubRemote !== undefined) {
+    const remote = updates.githubRemote.trim();
+    // Validate: must be non-empty, alphanumeric with hyphens/underscores/dots, no whitespace or special chars.
+    // This prevents confusing `git push "" branch` errors and rejects obviously invalid remote names.
+    if (remote && /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(remote)) {
+      config.githubRemote = remote;
+    }
+    // Silently ignore invalid values — the config stays at its previous valid value.
+  }
 }
 
 // Cache isGitRepo result per path — the repo status doesn't change during

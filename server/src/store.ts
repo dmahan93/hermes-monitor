@@ -97,6 +97,11 @@ export class Store {
       this.db.exec("ALTER TABLE issues ADD COLUMN parentId TEXT");
     }
 
+    // Migration: add githubPrUrl column to pull_requests if it doesn't exist
+    if (!prColumns.some((c: any) => c.name === 'githubPrUrl')) {
+      this.db.exec("ALTER TABLE pull_requests ADD COLUMN githubPrUrl TEXT");
+    }
+
     // Index for efficient subtask lookups by parentId
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_issues_parentId ON issues(parentId)");
   }
@@ -151,12 +156,12 @@ export class Store {
   savePR(pr: PullRequest): void {
     this.db.prepare(`
       INSERT OR REPLACE INTO pull_requests
-      (id, issueId, title, description, submitterNotes, sourceBranch, targetBranch, repoPath, status, diff, changedFiles, verdict, reviewerTerminalId, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, issueId, title, description, submitterNotes, sourceBranch, targetBranch, repoPath, status, diff, changedFiles, verdict, reviewerTerminalId, githubPrUrl, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(pr.id, pr.issueId, pr.title, pr.description, pr.submitterNotes,
            pr.sourceBranch, pr.targetBranch,
            pr.repoPath, pr.status, pr.diff, JSON.stringify(pr.changedFiles), pr.verdict,
-           pr.reviewerTerminalId, pr.createdAt, pr.updatedAt);
+           pr.reviewerTerminalId, pr.githubPrUrl || null, pr.createdAt, pr.updatedAt);
 
     // Save comments
     const deleteStmt = this.db.prepare('DELETE FROM pr_comments WHERE prId = ?');
@@ -207,6 +212,7 @@ export class Store {
       changedFiles: (() => { try { return JSON.parse(r.changedFiles); } catch { return []; } })(),
       verdict: r.verdict as Verdict,
       reviewerTerminalId: r.reviewerTerminalId,
+      githubPrUrl: r.githubPrUrl || undefined,
       comments: commentsByPr.get(r.id) || [],
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
