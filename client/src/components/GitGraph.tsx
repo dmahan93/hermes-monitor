@@ -50,7 +50,7 @@ const ROW_H_REM = 2.333;
 // .git-graph-svg.
 const LINE_EXT = 1.5;
 
-function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
+function GraphSvg({ node, maxCols, isFirstRow }: { node: GraphNode; maxCols: number; isFirstRow: boolean }) {
   const vW = (maxCols + 1) * LANE_W + SVG_PAD;
   const wRem = vW / 12; // rem width matching the virtual coordinate system
   const cx = node.col * LANE_W + LANE_W / 2 + 2;
@@ -74,7 +74,7 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
             <line
               key={i}
               x1={x1}
-              y1={-LINE_EXT}
+              y1={isFirstRow ? cy : -LINE_EXT}
               x2={x2}
               y2={ROW_H + LINE_EXT}
               stroke={color}
@@ -95,6 +95,7 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
         return (
           <g key={i}>
             {/* Straight segment from top to node center on the source lane */}
+            {!isFirstRow && (
             <line
               x1={x1}
               y1={-LINE_EXT}
@@ -104,6 +105,7 @@ function GraphSvg({ node, maxCols }: { node: GraphNode; maxCols: number }) {
               strokeWidth={1.5}
               opacity={0.6}
             />
+            )}
             {/* Bezier from commit dot to bottom of target lane */}
             <path
               d={`M ${x1} ${cy} C ${x1} ${ROW_H}, ${x2} ${cy}, ${x2} ${ROW_H + LINE_EXT}`}
@@ -222,7 +224,7 @@ export function GitGraph({
                 onClick={() => onSelectCommit(commit.hash)}
                 title={`${commit.hash}\n${commit.author}\n${commit.date}`}
               >
-                {node && <GraphSvg node={node} maxCols={maxCols} />}
+                {node && <GraphSvg node={node} maxCols={maxCols} isFirstRow={idx === 0} />}
                 <div className="git-graph-info">
                   <div className="git-graph-msg">
                     {hasRefs && (
