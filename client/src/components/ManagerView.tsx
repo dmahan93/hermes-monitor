@@ -113,7 +113,8 @@ export function ManagerView({
   const [managerTerminalError, setManagerTerminalError] = useState<string | null>(null);
   const [terminalHeight, setTerminalHeight] = useState(() => {
     const saved = localStorage.getItem(MANAGER_TERMINAL_HEIGHT_KEY);
-    return saved ? Math.max(MIN_TERMINAL_HEIGHT, Math.min(MAX_TERMINAL_HEIGHT, parseInt(saved, 10))) : DEFAULT_TERMINAL_HEIGHT;
+    const parsed = saved ? parseInt(saved, 10) : NaN;
+    return Number.isNaN(parsed) ? DEFAULT_TERMINAL_HEIGHT : Math.max(MIN_TERMINAL_HEIGHT, Math.min(MAX_TERMINAL_HEIGHT, parsed));
   });
   const managerInitRef = useRef(false);
   const managerCreatingRef = useRef(false);
@@ -328,6 +329,23 @@ export function ManagerView({
 
   // ── Manager Terminal Helpers ──
 
+  /** Fetch /config and update serverPortRef. Returns config or null on failure. */
+  const fetchServerConfig = useCallback(async (): Promise<{ repoPath?: string; serverPort?: number } | null> => {
+    try {
+      const configRes = await fetch(`${API_BASE}/config`);
+      if (configRes.ok) {
+        const cfg = await configRes.json();
+        if (cfg.serverPort) {
+          serverPortRef.current = cfg.serverPort;
+        }
+        return cfg;
+      }
+    } catch {
+      // Config fetch failure is non-fatal — port stays at default
+    }
+    return null;
+  }, []);
+
   const validateManagerTerminal = useCallback(async (id: string): Promise<boolean> => {
     const res = await fetch(`${API_BASE}/terminals`);
     if (!res.ok) throw new Error('Failed to fetch terminals');
@@ -337,19 +355,13 @@ export function ManagerView({
 
   const createManagerTerminal = useCallback(async (): Promise<string | null> => {
     try {
-      // Fetch config for repoPath and serverPort
+      // Fetch config for repoPath (serverPort already updated by fetchServerConfig in init)
       let cwd: string | undefined;
       try {
-        const configRes = await fetch(`${API_BASE}/config`);
-        if (configRes.ok) {
-          const config = await configRes.json();
-          cwd = config.repoPath;
-          if (config.serverPort) {
-            serverPortRef.current = config.serverPort;
-          }
-        }
+        const cfg = await fetchServerConfig();
+        cwd = cfg?.repoPath;
       } catch {
-        // If config fetch fails, create terminal without cwd (port stays at default)
+        // If config fetch fails, create terminal without cwd
       }
 
       const res = await fetch(`${API_BASE}/terminals`, {
@@ -368,7 +380,7 @@ export function ManagerView({
       setManagerTerminalError(err.message || 'Failed to create manager terminal');
       return null;
     }
-  }, []);
+  }, [fetchServerConfig]);
 
   // Initialize or restore manager terminal when first opened
   const initManagerTerminal = useCallback(async () => {
@@ -378,6 +390,10 @@ export function ManagerView({
     setManagerTerminalError(null);
 
     try {
+      // Always fetch config first so serverPortRef is current on both
+      // the restore path and the create path
+      await fetchServerConfig();
+
       // Try to restore from localStorage
       const savedId = localStorage.getItem(MANAGER_TERMINAL_STORAGE_KEY);
       if (savedId) {
@@ -412,7 +428,7 @@ export function ManagerView({
       setManagerTerminalLoading(false);
       managerCreatingRef.current = false;
     }
-  }, [validateManagerTerminal, createManagerTerminal]);
+  }, [fetchServerConfig, validateManagerTerminal, createManagerTerminal]);
 
   // Listen for terminal removal
   useEffect(() => {
@@ -702,7 +718,7 @@ export function ManagerView({
       </div>
 
       {/* Manager Terminal Section */}
-      <div className={`manager-terminal-section ${managerTerminalOpen ? 'manager-terminal-open' : ''}`}>
+      <div className="manager-terminal-section">
         {/* Toggle bar */}
         <button
           className="manager-terminal-toggle"

@@ -769,6 +769,9 @@ describe('ManagerView', () => {
 
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/config')) {
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
+        }
         if (urlStr.includes('/terminals')) {
           return new Response(JSON.stringify([{ id: 'existing-term', title: 'Manager Terminal' }]), { status: 200 });
         }
@@ -787,6 +790,47 @@ describe('ManagerView', () => {
       // Should NOT have called POST to create a new terminal
       const postCalls = fetchSpy.mock.calls.filter(([, opts]) => opts?.method === 'POST');
       expect(postCalls.length).toBe(0);
+    });
+
+    it('fetches config for serverPort on the restore path (not just create)', async () => {
+      localStorage.setItem('hermes:managerTerminalId', 'existing-term');
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/config')) {
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 5555 }), { status: 200 });
+        }
+        if (urlStr.includes('/terminals')) {
+          return new Response(JSON.stringify([{ id: 'existing-term', title: 'Manager Terminal' }]), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      });
+
+      const sendFn = vi.fn();
+      const props = defaultProps();
+      props.send = sendFn;
+      render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText('MANAGER TERMINAL'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('terminal-view')).toBeInTheDocument();
+      });
+
+      // Config should have been fetched on the restore path
+      const configCalls = fetchSpy.mock.calls.filter(([url]) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        return urlStr.includes('/config');
+      });
+      expect(configCalls.length).toBeGreaterThanOrEqual(1);
+
+      // Quick action should use the dynamic port (5555 not 4000)
+      fireEvent.click(screen.getByTitle('Check status of all issues, PRs, and terminals'));
+      expect(sendFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'stdin',
+          data: expect.stringContaining('localhost:5555'),
+        }),
+      );
     });
 
     it('creates new terminal if saved terminal no longer exists', async () => {
@@ -1040,8 +1084,11 @@ describe('ManagerView', () => {
     it('clears terminal ID from localStorage when terminal is removed', async () => {
       localStorage.setItem('hermes:managerTerminalId', 'doomed-term');
 
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/config')) {
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
+        }
         if (urlStr.includes('/terminals')) {
           return new Response(JSON.stringify([{ id: 'doomed-term', title: 'Manager Terminal' }]), { status: 200 });
         }
