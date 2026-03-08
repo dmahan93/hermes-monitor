@@ -4,15 +4,24 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  height: 100%;
+  min-height: 100%;
   background: var(--bg);
   padding: 2rem;
+  overflow-y: auto;
 }
+
+/* ── Header ── */
 
 .hub-header {
   text-align: center;
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.hub-logo {
+  font-size: 3rem;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+  line-height: 1;
 }
 
 .hub-title {
@@ -30,32 +39,152 @@
   font-size: 0.917rem;
 }
 
+/* ── Status messages ── */
+
 .hub-loading,
-.hub-empty,
-.hub-error {
+.hub-empty {
   color: var(--text-muted);
   font-size: 0.917rem;
   text-align: center;
+  padding: 2rem 0;
 }
 
 .hub-error {
   color: var(--error);
+  font-size: 0.917rem;
+  margin-bottom: 1rem;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.hub-error-dismiss {
+  background: none;
+  border: none;
+  color: var(--error);
+  opacity: 0.6;
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  font-family: inherit;
+}
+
+.hub-error-dismiss:hover,
+.hub-error-dismiss:focus-visible {
+  opacity: 1;
+}
+
+/* ── Toolbar ── */
+
+.hub-toolbar {
   margin-bottom: 1rem;
 }
 
-.hub-repos {
+.hub-add-btn {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 0.5rem 1.25rem;
+  font-family: inherit;
+  font-size: 0.917rem;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.hub-add-btn:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+/* ── Add Repo Form ── */
+
+.hub-add-form {
+  width: 100%;
+  max-width: 40rem;
+  background: var(--chrome-dark);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hub-add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.hub-add-label {
+  font-size: 0.833rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05rem;
+}
+
+.hub-add-input {
+  background: var(--bg);
+  border: 1px solid var(--chrome);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.917rem;
+  padding: 0.5rem 0.75rem;
+  outline: none;
+}
+
+.hub-add-input:focus {
+  border-color: var(--accent);
+}
+
+.hub-add-error {
+  color: var(--error);
+  font-size: 0.833rem;
+}
+
+.hub-add-submit {
+  align-self: flex-end;
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 0.5rem 1.25rem;
+  font-family: inherit;
+  font-size: 0.917rem;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.hub-add-submit:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.hub-add-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Repo Card Grid ── */
+
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: 1rem;
+  width: 100%;
+  max-width: 60rem;
+}
+
+.hub-card {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  width: 100%;
-  max-width: 40rem;
-}
-
-.hub-repo-card {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.25rem;
+  padding: 1.25rem;
   background: var(--chrome-dark);
   border: 1px solid var(--chrome);
   border-top-color: var(--bevel-light);
@@ -63,54 +192,147 @@
   border-bottom-color: var(--bevel-dark);
   border-right-color: var(--bevel-dark);
   color: var(--text);
-  text-decoration: none;
   cursor: pointer;
   transition: background 0.1s;
 }
 
-.hub-repo-card:hover {
+.hub-card:hover {
   background: var(--chrome);
 }
 
-.hub-repo-card:active {
+.hub-card:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.hub-card:active {
   border-top-color: var(--bevel-dark);
   border-left-color: var(--bevel-dark);
   border-bottom-color: var(--bevel-light);
   border-right-color: var(--bevel-light);
 }
 
-.hub-repo-icon {
-  font-size: 1.5rem;
-  color: var(--accent);
-}
+/* ── Card Header ── */
 
-.hub-repo-info {
+.hub-card-header {
   display: flex;
-  flex-direction: column;
-  flex: 1;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.hub-repo-name {
+.hub-status-dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.hub-status-running {
+  background: var(--accent);
+  box-shadow: 0 0 4px var(--accent);
+}
+
+.hub-status-starting {
+  background: var(--warn);
+  box-shadow: 0 0 4px var(--warn);
+}
+
+.hub-status-stopped {
+  background: var(--text-muted);
+}
+
+.hub-status-error {
+  background: var(--error);
+  box-shadow: 0 0 4px var(--error);
+}
+
+.hub-card-name {
+  font-size: 1.1rem;
   font-weight: 500;
   color: var(--text);
 }
 
-.hub-repo-path {
+.hub-card-path {
   font-size: 0.833rem;
   color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.hub-repo-stats {
+/* ── Card Stats ── */
+
+.hub-card-stats {
   display: flex;
   gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
-.hub-repo-stat {
+.hub-stat {
   font-size: 0.833rem;
   color: var(--text-muted);
+  background: var(--bg);
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--chrome);
 }
 
-.hub-repo-arrow {
+/* ── Card Actions ── */
+
+.hub-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.hub-action-btn {
+  background: var(--bg);
+  border: 1px solid var(--chrome);
   color: var(--text-muted);
-  font-size: 1.25rem;
+  font-family: inherit;
+  font-size: 0.833rem;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.hub-action-btn:hover:not(:disabled) {
+  background: var(--chrome);
+  color: var(--text);
+}
+
+.hub-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.hub-action-start {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.hub-action-start:hover:not(:disabled) {
+  background: var(--accent-dim);
+}
+
+.hub-action-stop {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.hub-action-stop:hover:not(:disabled) {
+  background: rgba(221, 170, 34, 0.15);
+}
+
+.hub-action-settings:hover {
+  color: var(--accent);
+}
+
+.hub-action-remove {
+  margin-left: auto;
+}
+
+.hub-action-remove:hover:not(:disabled) {
+  color: var(--error);
+  border-color: var(--error);
 }
