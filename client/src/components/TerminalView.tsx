@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { ServerMessage } from '../types';
 import '@xterm/xterm/css/xterm.css';
+import './TerminalView.css';
 
 interface TerminalViewProps {
   terminalId: string;
@@ -154,7 +155,6 @@ export function TerminalView({ terminalId, send, subscribe, onResize, reconnectC
     <div
       ref={containerRef}
       className="terminal-view"
-      style={{ width: '100%', height: '100%', overflow: 'hidden' }}
     />
   );
 }
