@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '../config';
 import { useConfirm } from '../hooks/useConfirm';
@@ -42,6 +42,12 @@ export function HubLanding() {
   // Per-repo mutation guard to prevent double-click / concurrent mutations
   const [mutatingRepos, setMutatingRepos] = useState<Set<string>>(new Set());
 
+  // Track whether user has manually edited the name field
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
+
+  // Track mounted state to avoid state updates after unmount
+  const mountedRef = useRef(true);
+
   const navigate = useNavigate();
   const { confirm, ConfirmDialogElement } = useConfirm();
 
@@ -63,20 +69,32 @@ export function HubLanding() {
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     const controller = new AbortController();
     fetchRepos(controller.signal);
-    return () => controller.abort();
+    return () => {
+      mountedRef.current = false;
+      controller.abort();
+    };
   }, [fetchRepos]);
 
   /** Auto-detect name from path (last segment of the directory) */
   const handlePathChange = (value: string) => {
     setAddPath(value);
     setAddError(null);
-    // Auto-detect name from directory basename
-    const trimmed = value.trim().replace(/\/+$/, '');
-    const segments = trimmed.split('/');
-    const detected = segments[segments.length - 1] || '';
-    setAddName(detected);
+    // Only auto-detect name if the user hasn't manually edited it
+    if (!nameManuallyEdited) {
+      const trimmed = value.trim().replace(/\/+$/, '');
+      const segments = trimmed.split('/');
+      const detected = segments[segments.length - 1] || '';
+      setAddName(detected);
+    }
+  };
+
+  /** Handle manual name edits — marks name as user-edited */
+  const handleNameChange = (value: string) => {
+    setAddName(value);
+    setNameManuallyEdited(true);
   };
 
   /** Register a new repo via POST /api/hub/repos */
@@ -112,8 +130,9 @@ export function HubLanding() {
       // Success — refresh list, reset form
       setAddPath('');
       setAddName('');
+      setNameManuallyEdited(false);
       setShowAddForm(false);
-      await fetchRepos();
+      if (mountedRef.current) await fetchRepos();
     } catch (err: any) {
       setAddError(err.message || 'Failed to register repo');
     } finally {
@@ -132,7 +151,7 @@ export function HubLanding() {
 
     setMutatingRepos(prev => new Set(prev).add(repo.id));
     try {
-      const res = await fetch(`${API_BASE}/hub/repos/${repo.id}`, {
+      const res = await fetch(`${API_BASE}/hub/repos/${encodeURIComponent(repo.id)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -141,9 +160,9 @@ export function HubLanding() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Failed to update (${res.status})`);
       }
-      await fetchRepos();
+      if (mountedRef.current) await fetchRepos();
     } catch (err: any) {
-      setError(err.message || 'Failed to toggle repo');
+      if (mountedRef.current) setError(err.message || 'Failed to toggle repo');
     } finally {
       setMutatingRepos(prev => { const next = new Set(prev); next.delete(repo.id); return next; });
     }
@@ -164,16 +183,16 @@ export function HubLanding() {
 
     setMutatingRepos(prev => new Set(prev).add(repo.id));
     try {
-      const res = await fetch(`${API_BASE}/hub/repos/${repo.id}`, {
+      const res = await fetch(`${API_BASE}/hub/repos/${encodeURIComponent(repo.id)}`, {
         method: 'DELETE',
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Failed to remove (${res.status})`);
       }
-      await fetchRepos();
+      if (mountedRef.current) await fetchRepos();
     } catch (err: any) {
-      setError(err.message || 'Failed to remove repo');
+      if (mountedRef.current) setError(err.message || 'Failed to remove repo');
     } finally {
       setMutatingRepos(prev => { const next = new Set(prev); next.delete(repo.id); return next; });
     }
@@ -216,7 +235,17 @@ export function HubLanding() {
         <p className="hub-subtitle">Select a repository to manage</p>
       </header>
 
-      {error && <div className="hub-error">{error}</div>}
+      {error && (
+        <div
+          className="hub-error"
+          onClick={() => setError(null)}
+          role="alert"
+          title="Click to dismiss"
+          style={{ cursor: 'pointer' }}
+        >
+          {error} <span className="hub-error-dismiss">✕</span>
+        </div>
+      )}
 
       <div className="hub-toolbar">
         <button
@@ -254,7 +283,7 @@ export function HubLanding() {
               type="text"
               placeholder="my-project"
               value={addName}
-              onChange={(e) => setAddName(e.target.value)}
+              onChange={(e) => handleNameChange(e.target.value)}
             />
           </div>
           {addError && <div className="hub-add-error">{addError}</div>}
@@ -276,67 +305,73 @@ export function HubLanding() {
 
       <div className="hub-grid">
         {repos.map((repo) => (
-            <div
-              key={repo.id}
-              className="hub-card"
-              onClick={() => handleCardClick(repo)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleCardClick(repo); } }}
-            >
-              <div className="hub-card-header">
-                <span
-                  className={`hub-status-dot hub-status-${repo.status}`}
-                  title={statusLabel(repo.status)}
-                  aria-label={statusLabel(repo.status)}
-                />
-                <span className="hub-card-name">{repo.name}</span>
-              </div>
-              <span className="hub-card-path">{repo.path}</span>
-
-              {repo.status === 'running' && (
-                <div className="hub-card-stats">
-                  {repo.issueCount !== undefined && (
-                    <span className="hub-stat">{repo.issueCount} issues</span>
-                  )}
-                  {repo.activeAgents !== undefined && (
-                    <span className="hub-stat">{repo.activeAgents} agents</span>
-                  )}
-                  {repo.prCount !== undefined && (
-                    <span className="hub-stat">{repo.prCount} PRs</span>
-                  )}
-                </div>
-              )}
-
-              <div className="hub-card-actions">
-                <button
-                  className={`hub-action-btn ${repo.status === 'running' || repo.status === 'starting' ? 'hub-action-stop' : 'hub-action-start'}`}
-                  onClick={(e) => handleToggle(repo, e)}
-                  disabled={mutatingRepos.has(repo.id)}
-                  title={repo.status === 'running' || repo.status === 'starting' ? 'Stop' : 'Start'}
-                  aria-label={repo.status === 'running' || repo.status === 'starting' ? 'Stop' : 'Start'}
-                >
-                  {repo.status === 'running' || repo.status === 'starting' ? '■ Stop' : '▶ Start'}
-                </button>
-                <button
-                  className="hub-action-btn hub-action-settings"
-                  onClick={(e) => handleSettings(repo, e)}
-                  title="Settings"
-                  aria-label="Settings"
-                >
-                  ⚙
-                </button>
-                <button
-                  className="hub-action-btn hub-action-remove"
-                  onClick={(e) => handleRemove(repo, e)}
-                  disabled={mutatingRepos.has(repo.id) || repo.status === 'running' || repo.status === 'starting'}
-                  title={repo.status === 'running' || repo.status === 'starting' ? 'Stop the repo before removing' : 'Remove'}
-                  aria-label="Remove"
-                >
-                  ✕
-                </button>
-              </div>
+          <div
+            key={repo.id}
+            className="hub-card"
+            onClick={() => handleCardClick(repo)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleCardClick(repo);
+              }
+            }}
+          >
+            <div className="hub-card-header">
+              <span
+                className={`hub-status-dot hub-status-${repo.status}`}
+                title={statusLabel(repo.status)}
+                aria-label={statusLabel(repo.status)}
+              />
+              <span className="hub-card-name">{repo.name}</span>
             </div>
+            <span className="hub-card-path">{repo.path}</span>
+
+            {repo.status === 'running' && (
+              <div className="hub-card-stats">
+                {repo.issueCount !== undefined && (
+                  <span className="hub-stat">{repo.issueCount} issues</span>
+                )}
+                {repo.activeAgents !== undefined && (
+                  <span className="hub-stat">{repo.activeAgents} agents</span>
+                )}
+                {repo.prCount !== undefined && (
+                  <span className="hub-stat">{repo.prCount} PRs</span>
+                )}
+              </div>
+            )}
+
+            <div className="hub-card-actions">
+              <button
+                className={`hub-action-btn ${repo.status === 'running' || repo.status === 'starting' ? 'hub-action-stop' : 'hub-action-start'}`}
+                onClick={(e) => handleToggle(repo, e)}
+                disabled={mutatingRepos.has(repo.id)}
+                title={repo.status === 'running' || repo.status === 'starting' ? 'Stop' : 'Start'}
+                aria-label={repo.status === 'running' || repo.status === 'starting' ? 'Stop' : 'Start'}
+              >
+                {repo.status === 'running' || repo.status === 'starting' ? '■ Stop' : '▶ Start'}
+              </button>
+              <button
+                className="hub-action-btn hub-action-settings"
+                onClick={(e) => handleSettings(repo, e)}
+                title="Settings"
+                aria-label="Settings"
+              >
+                ⚙
+              </button>
+              <button
+                className="hub-action-btn hub-action-remove"
+                onClick={(e) => handleRemove(repo, e)}
+                disabled={mutatingRepos.has(repo.id) || repo.status === 'running' || repo.status === 'starting'}
+                title={repo.status === 'running' || repo.status === 'starting' ? 'Stop the repo before removing' : 'Remove'}
+                aria-label="Remove"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
         ))}
       </div>
       {ConfirmDialogElement}

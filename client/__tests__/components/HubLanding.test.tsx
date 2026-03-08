@@ -571,4 +571,81 @@ describe('HubLanding', () => {
     const removeBtn = screen.getByLabelText('Remove');
     expect(removeBtn).not.toBeDisabled();
   });
+
+  // ── Keyboard bubbling fix ──
+
+  it('does not navigate when Enter is pressed on a child button', async () => {
+    const repo = makeRepo({ id: 'repo-1', status: 'stopped' });
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => [repo] } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...repo, status: 'running' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ ...repo, status: 'running' }] } as Response);
+
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByText('▶ Start')).toBeInTheDocument();
+    });
+
+    // Fire keyDown Enter on the Start button (child of card)
+    const startBtn = screen.getByText('▶ Start');
+    fireEvent.keyDown(startBtn, { key: 'Enter' });
+
+    // Should NOT navigate — the bubbling guard should prevent it
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  // ── Error dismissal ──
+
+  it('dismisses error when clicked', async () => {
+    const repo = makeRepo({ id: 'repo-1', status: 'stopped' });
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => [repo] } as Response)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: 'Server broke' }),
+      } as Response);
+
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByText('▶ Start')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('▶ Start'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Server broke/)).toBeInTheDocument();
+    });
+
+    // Click the error to dismiss it
+    fireEvent.click(screen.getByRole('alert'));
+
+    expect(screen.queryByText(/Server broke/)).not.toBeInTheDocument();
+  });
+
+  // ── Name manual edit preservation ──
+
+  it('does not override manually edited name when path changes', async () => {
+    mockFetchRepos([]);
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByText('+ Add Repo')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('+ Add Repo'));
+
+    // Set path first (auto-detects name)
+    const pathInput = screen.getByLabelText('Repository path');
+    fireEvent.change(pathInput, { target: { value: '/home/user/my-project' } });
+
+    const nameInput = screen.getByLabelText('Name (auto-detected)') as HTMLInputElement;
+    expect(nameInput.value).toBe('my-project');
+
+    // Manually edit the name
+    fireEvent.change(nameInput, { target: { value: 'custom-name' } });
+    expect(nameInput.value).toBe('custom-name');
+
+    // Change path again — name should NOT be overwritten
+    fireEvent.change(pathInput, { target: { value: '/home/user/other-project' } });
+    expect(nameInput.value).toBe('custom-name');
+  });
 });

@@ -54,6 +54,19 @@
   font-size: 0.917rem;
   margin-bottom: 1rem;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.hub-error-dismiss {
+  opacity: 0.6;
+  font-size: 0.75rem;
+}
+
+.hub-error:hover .hub-error-dismiss {
+  opacity: 1;
 }
 
 /* ── Toolbar ── */
@@ -178,6 +191,11 @@
 
 .hub-card:hover {
   background: var(--chrome);
+}
+
+.hub-card:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 .hub-card:active {
