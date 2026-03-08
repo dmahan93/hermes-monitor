@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { DragDropContext, Droppable } from '@hello-pangea/dnd';
 import { KanbanColumn } from '../../src/components/KanbanColumn';
 import type { Issue, AgentPreset } from '../../src/types';
 
 const mockAgents: AgentPreset[] = [
-  { id: 'hermes', name: 'Hermes', icon: '⚗', command: '', planningCommand: 'hermes chat', description: 'Hermes agent', installed: true },
+  { id: 'hermes', name: 'Hermes', icon: '⚗', command: '', planningCommand: 'hermes chat', description: 'Hermes agent' },
 ];
 
 const makeIssue = (id: string, title: string, status: Issue['status'] = 'todo'): Issue => ({
@@ -101,9 +101,9 @@ describe('KanbanColumn', () => {
     const parentIssue = makeIssue('parent-1', 'Parent Task');
     const childIssue = { ...makeIssue('child-1', 'Child Task'), parentId: 'parent-1' };
     renderColumn([childIssue], [parentIssue, childIssue]);
-    // The IssueCard receives parentTitle prop — the parent title lookup is done by KanbanColumn
-    // We verify KanbanColumn passes it correctly by checking the rendered output
+    // KanbanColumn resolves parentTitle and passes it to IssueCard which renders "↑ {parentTitle}"
     expect(screen.getByText('Child Task')).toBeInTheDocument();
+    expect(screen.getByText(/↑ Parent Task/)).toBeInTheDocument();
   });
 
   it('shows subtask info for parent issues', () => {
@@ -112,8 +112,44 @@ describe('KanbanColumn', () => {
     const childTodo = { ...makeIssue('child-2', 'Todo child', 'todo'), parentId: 'parent-1' };
     // parent is in the column, children are in allIssues
     renderColumn([parentIssue], [parentIssue, childDone, childTodo]);
-    // The KanbanColumn computes subtaskInfo = { total: 2, done: 1 }
-    // IssueCard renders this — verify the parent renders
+    // KanbanColumn computes subtaskInfo = { total: 2, done: 1 } and passes it to IssueCard
+    // IssueCard renders "◫ 1/2" with title "1/2 subtasks done"
     expect(screen.getByText('Parent Task')).toBeInTheDocument();
+    expect(screen.getByTitle('1/2 subtasks done')).toBeInTheDocument();
+  });
+
+  it('calls onDelete when delete button is clicked', () => {
+    const onDelete = vi.fn();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const issues = [makeIssue('1', 'Task to delete')];
+    renderColumn(issues, issues, { onDelete });
+
+    const deleteBtn = screen.getByLabelText('Delete issue');
+    fireEvent.click(deleteBtn);
+
+    expect(window.confirm).toHaveBeenCalled();
+    expect(onDelete).toHaveBeenCalledWith('1');
+    vi.mocked(window.confirm).mockRestore();
+  });
+
+  it('calls onEdit when edit button is clicked', () => {
+    const onEdit = vi.fn();
+    const issues = [makeIssue('1', 'Task to edit')];
+    renderColumn(issues, issues, { onEdit });
+
+    const editBtn = screen.getByLabelText('Edit issue');
+    fireEvent.click(editBtn);
+
+    expect(onEdit).toHaveBeenCalledWith('1');
+  });
+
+  it('calls onIssueClick when issue title is clicked', () => {
+    const onIssueClick = vi.fn();
+    const issues = [makeIssue('1', 'Clickable Task')];
+    renderColumn(issues, issues, { onIssueClick });
+
+    fireEvent.click(screen.getByText('Clickable Task'));
+
+    expect(onIssueClick).toHaveBeenCalledWith('1');
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useGitGraph } from '../../src/hooks/useGitGraph';
 import { API_BASE } from '../../src/config';
@@ -41,9 +41,15 @@ function mockFetchSuccess() {
   }) as any;
 }
 
+const originalFetch = globalThis.fetch;
+
 describe('useGitGraph', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   it('fetches git log on mount', async () => {
@@ -276,5 +282,55 @@ describe('useGitGraph', () => {
     expect(result.current.diffFile).toBeNull();
     expect(result.current.diffContent).toBe('');
     expect(result.current.diffSha).toBeNull();
+  });
+
+  it('viewDiff handles fetch error', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ commits: mockCommits, graph: mockGraph }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 500 }) as any;
+
+    const { result } = renderHook(() => useGitGraph());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.viewDiff('abc1234567890', 'src/index.ts');
+    });
+
+    expect(result.current.diffContent).toBe('Failed to load diff');
+    expect(result.current.diffLoading).toBe(false);
+  });
+
+  it('selectCommit with same SHA toggles deselection', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ commits: mockCommits, graph: mockGraph }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ sha: 'abc1234567890', files: mockFiles }),
+      }) as any;
+
+    const { result } = renderHook(() => useGitGraph());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Select a commit
+    await act(async () => {
+      await result.current.selectCommit('abc1234567890');
+    });
+
+    expect(result.current.selectedSha).toBe('abc1234567890');
+    expect(result.current.files).toHaveLength(1);
+
+    // Select the same commit again — should toggle deselection
+    await act(async () => {
+      await result.current.selectCommit('abc1234567890');
+    });
+
+    expect(result.current.selectedSha).toBeNull();
+    expect(result.current.files).toHaveLength(0);
   });
 });

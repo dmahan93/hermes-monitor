@@ -17,10 +17,14 @@ const makeCommit = (
   refs,
 });
 
-const makeNode = (hash: string, col = 0): GraphNode => ({
+const makeNode = (
+  hash: string,
+  col = 0,
+  lines: GraphNode['lines'] = [],
+): GraphNode => ({
   hash,
   col,
-  lines: [],
+  lines,
 });
 
 const defaultProps = {
@@ -223,5 +227,120 @@ describe('GitGraph', () => {
 
     fireEvent.click(screen.getByText('app.ts'));
     expect(onFileClick).toHaveBeenCalledWith('abc1234567890', 'src/app.ts');
+  });
+
+  it('renders SVG commit circle at correct column position', () => {
+    const commits = [makeCommit('abc1234567890', 'Commit on lane 2')];
+    const graph = [makeNode('abc1234567890', 2)];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} />,
+    );
+
+    const circle = container.querySelector('circle');
+    expect(circle).toBeInTheDocument();
+    // col=2, LANE_W=12, so cx = 2*12 + 12/2 + 2 = 32
+    expect(circle?.getAttribute('cx')).toBe('32');
+  });
+
+  it('renders SVG lane lines for straight type', () => {
+    const commits = [
+      makeCommit('abc1234567890', 'Commit with line'),
+    ];
+    const graph = [
+      makeNode('abc1234567890', 0, [{ fromCol: 0, toCol: 0, type: 'straight' }]),
+    ];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} />,
+    );
+
+    const svgLines = container.querySelectorAll('svg line');
+    expect(svgLines.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('renders SVG curved lines for merge types', () => {
+    const commits = [
+      makeCommit('abc1234567890', 'Merge commit'),
+    ];
+    const graph = [
+      makeNode('abc1234567890', 0, [{ fromCol: 1, toCol: 0, type: 'merge-left' }]),
+    ];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} />,
+    );
+
+    // Curved merge lines render a <g> with a <line> + <path>
+    const paths = container.querySelectorAll('svg path');
+    expect(paths.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('renders deleted file status icon and class', () => {
+    const commits = [makeCommit('abc1234567890', 'Delete file')];
+    const graph = [makeNode('abc1234567890')];
+    const files = [
+      { path: 'old-file.ts', status: 'D' as const, additions: 0, deletions: 15 },
+    ];
+
+    const { container } = render(
+      <GitGraph
+        {...defaultProps}
+        commits={commits}
+        graph={graph}
+        selectedSha="abc1234567890"
+        files={files}
+      />,
+    );
+
+    // statusIcon('D') = '−', statusClass('D') = 'git-file-deleted'
+    expect(screen.getByText('−')).toBeInTheDocument();
+    const statusEl = container.querySelector('.git-file-deleted');
+    expect(statusEl).toBeInTheDocument();
+    expect(screen.getByText('-15')).toBeInTheDocument();
+  });
+
+  it('renders renamed file status icon and class', () => {
+    const commits = [makeCommit('abc1234567890', 'Rename file')];
+    const graph = [makeNode('abc1234567890')];
+    const files = [
+      { path: 'src/new-name.ts', status: 'R' as const, additions: 0, deletions: 0 },
+    ];
+
+    const { container } = render(
+      <GitGraph
+        {...defaultProps}
+        commits={commits}
+        graph={graph}
+        selectedSha="abc1234567890"
+        files={files}
+      />,
+    );
+
+    // statusIcon('R') = '→', statusClass('R') = 'git-file-renamed'
+    expect(screen.getByText('→')).toBeInTheDocument();
+    const statusEl = container.querySelector('.git-file-renamed');
+    expect(statusEl).toBeInTheDocument();
+  });
+
+  it('renders unknown file status with fallback', () => {
+    const commits = [makeCommit('abc1234567890', 'Unknown status')];
+    const graph = [makeNode('abc1234567890')];
+    const files = [
+      { path: 'src/weird.ts', status: 'U' as const, additions: 0, deletions: 0 },
+    ];
+
+    render(
+      <GitGraph
+        {...defaultProps}
+        commits={commits}
+        graph={graph}
+        selectedSha="abc1234567890"
+        files={files}
+      />,
+    );
+
+    // statusIcon(unknown) = '?'
+    expect(screen.getByText('?')).toBeInTheDocument();
   });
 });
