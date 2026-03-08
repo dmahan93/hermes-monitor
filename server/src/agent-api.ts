@@ -70,8 +70,8 @@ interface AgentInfoResponse {
 
 /**
  * Extract action items from a review body.
- * Looks for bullet points, numbered lists, and lines after common
- * review headings that contain actionable feedback.
+ * Looks for bullet points (- or *) and numbered lists (1. 2. etc.).
+ * Filters out VERDICT: lines that happen to be on bullet points.
  */
 function extractActionItems(body: string): string[] {
   const items: string[] = [];
@@ -82,6 +82,10 @@ function extractActionItems(body: string): string[] {
     // Match bullet points (- or *) and numbered lists (1. 2. etc.)
     const match = trimmed.match(/^(?:[-*]|\d+\.)\s+(.+)/);
     if (match) {
+      // Skip VERDICT: lines — they're metadata, not action items
+      if (/VERDICT:\s*(APPROVED|CHANGES_REQUESTED)/i.test(match[1])) {
+        continue;
+      }
       items.push(match[1].trim());
     }
   }
@@ -122,33 +126,44 @@ export function createAgentApiRouter(
     // changedFiles: files the agent changed in its branch
     const changedFiles = worktreeManager.getChangedFiles(issue.id);
 
-    // attempt: number of review cycles (count of reviewer comments on the PR)
+    // attempt: number of review cycles (count of verdict-bearing comments on the PR)
+    // Counts all comments with a VERDICT: line, regardless of author
     const attempt = existingPr
-      ? existingPr.comments.filter((c) => c.author === 'hermes-reviewer').length + 1
+      ? existingPr.comments.filter((c) =>
+          /VERDICT:\s*(APPROVED|CHANGES_REQUESTED)/i.test(c.body)
+        ).length + 1
       : 1;
 
     // previousReviews: sorted latest-first with isLatest flag and extracted action items
+    // verdict is parsed per-comment from the body, not from the PR-level verdict
     const previousReviews: ReviewInfo[] = existingPr
       ? existingPr.comments
-          .map((c) => ({
-            author: c.author,
-            verdict: existingPr.verdict,
-            body: c.body,
-            createdAt: c.createdAt,
-            isLatest: false,
-            actionItems: extractActionItems(c.body),
-          }))
+          .map((c) => {
+            const verdictMatch = c.body.match(/VERDICT:\s*(APPROVED|CHANGES_REQUESTED)/i);
+            return {
+              author: c.author,
+              verdict: verdictMatch ? verdictMatch[1].toLowerCase() : null,
+              body: c.body,
+              createdAt: c.createdAt,
+              isLatest: false,
+              actionItems: extractActionItems(c.body),
+            };
+          })
           .sort((a, b) => b.createdAt - a.createdAt)
       : [];
-    // Mark the latest review
-    if (previousReviews.length > 0) {
-      previousReviews[0].isLatest = true;
+    // Mark the latest *reviewer* comment as isLatest (not just any comment)
+    const latestReviewerIdx = previousReviews.findIndex(
+      (r) => r.author === 'hermes-reviewer'
+    );
+    if (latestReviewerIdx >= 0) {
+      previousReviews[latestReviewerIdx].isLatest = true;
     }
 
     // recentMerges: last 5 merged PRs with titles and changed files
+    // Excludes the current issue's own PR (it would be nonsensical to list it)
     const recentMerges: RecentMerge[] = prManager
       .list()
-      .filter((pr) => pr.status === 'merged')
+      .filter((pr) => pr.status === 'merged' && pr.issueId !== issue.id)
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, 5)
       .map((pr) => ({

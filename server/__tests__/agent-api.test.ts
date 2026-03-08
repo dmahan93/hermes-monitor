@@ -466,7 +466,7 @@ describe('Agent API — Rework Context', () => {
     expect(res.body.attempt).toBe(3);
   });
 
-  it('GET /agent/:id/info does not count non-reviewer comments in attempt', async () => {
+  it('GET /agent/:id/info counts all verdict-bearing comments in attempt', async () => {
     const issue = issueManager.create({ title: 'Mixed comments task' });
 
     vi.spyOn(worktreeManager, 'get').mockReturnValue({
@@ -480,14 +480,39 @@ describe('Agent API — Rework Context', () => {
     const pr = prManager.create({ issueId: issue.id, title: issue.title });
     expect(pr).not.toBeNull();
 
-    // Add one reviewer comment and one human comment
+    // Add one reviewer comment with verdict and one human comment without verdict
     prManager.addComment(pr!.id, 'hermes-reviewer', 'VERDICT: CHANGES_REQUESTED\n- Fix it');
     prManager.addComment(pr!.id, 'human', 'Looks almost good, just one thing.');
 
     const res = await request(server, 'GET', `/agent/${issue.id}/info`);
     expect(res.status).toBe(200);
-    // Only 1 hermes-reviewer comment + 1 = attempt 2
+    // Only 1 verdict-bearing comment + 1 = attempt 2
+    // Human comment without VERDICT: line does not count
     expect(res.body.attempt).toBe(2);
+  });
+
+  it('GET /agent/:id/info counts human verdict-bearing comments in attempt', async () => {
+    const issue = issueManager.create({ title: 'Human verdict task' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: issue.id,
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const pr = prManager.create({ issueId: issue.id, title: issue.title });
+    expect(pr).not.toBeNull();
+
+    // Both comments have VERDICT: lines — both should count
+    prManager.addComment(pr!.id, 'hermes-reviewer', 'VERDICT: CHANGES_REQUESTED\n- Fix bug A');
+    prManager.addComment(pr!.id, 'human-reviewer', 'VERDICT: CHANGES_REQUESTED\n- Also fix bug B');
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+    // 2 verdict-bearing comments + 1 = attempt 3
+    expect(res.body.attempt).toBe(3);
   });
 
   it('GET /agent/:id/info sorts previousReviews latest-first with isLatest flag', async () => {
@@ -586,6 +611,169 @@ describe('Agent API — Rework Context', () => {
     const res = await request(server, 'GET', `/agent/${issue.id}/info`);
     expect(res.status).toBe(200);
     expect(res.body.previousReviews[0].actionItems).toEqual([]);
+  });
+
+  it('GET /agent/:id/info returns per-comment verdict parsed from body', async () => {
+    const issue = issueManager.create({ title: 'Per-verdict task' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: issue.id,
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const pr = prManager.create({ issueId: issue.id, title: issue.title });
+    expect(pr).not.toBeNull();
+
+    // Add reviews with different verdicts
+    prManager.addComment(pr!.id, 'hermes-reviewer', 'VERDICT: CHANGES_REQUESTED\n- Fix bug');
+    await new Promise((r) => setTimeout(r, 10));
+    prManager.addComment(pr!.id, 'hermes-reviewer', 'VERDICT: APPROVED\nLooks good now.');
+
+    // Update the PR-level verdict to approved (simulating the real flow)
+    prManager.setVerdict(pr!.id, 'approved');
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+
+    const reviews = res.body.previousReviews;
+    expect(reviews.length).toBe(2);
+    // Latest first (APPROVED), oldest second (CHANGES_REQUESTED)
+    // Each review has its OWN verdict, not the PR-level verdict
+    expect(reviews[0].verdict).toBe('approved');
+    expect(reviews[1].verdict).toBe('changes_requested');
+  });
+
+  it('GET /agent/:id/info returns null verdict for comments without VERDICT line', async () => {
+    const issue = issueManager.create({ title: 'No-verdict comment task' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: issue.id,
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const pr = prManager.create({ issueId: issue.id, title: issue.title });
+    expect(pr).not.toBeNull();
+
+    // A casual comment without a VERDICT: line
+    prManager.addComment(pr!.id, 'human', 'Just a casual observation.');
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+
+    const reviews = res.body.previousReviews;
+    expect(reviews.length).toBe(1);
+    expect(reviews[0].verdict).toBeNull();
+  });
+
+  it('GET /agent/:id/info sets isLatest on latest reviewer comment, not human comment', async () => {
+    const issue = issueManager.create({ title: 'Mixed author isLatest task' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: issue.id,
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const pr = prManager.create({ issueId: issue.id, title: issue.title });
+    expect(pr).not.toBeNull();
+
+    // Reviewer comment first, then a human comment after
+    prManager.addComment(pr!.id, 'hermes-reviewer', 'VERDICT: CHANGES_REQUESTED\n- Fix it');
+    await new Promise((r) => setTimeout(r, 10));
+    prManager.addComment(pr!.id, 'human', 'I agree with the reviewer, please fix.');
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+
+    const reviews = res.body.previousReviews;
+    expect(reviews.length).toBe(2);
+    // Latest comment is human (sorted latest-first)
+    expect(reviews[0].author).toBe('human');
+    expect(reviews[0].isLatest).toBe(false);
+    // The reviewer comment should have isLatest=true
+    expect(reviews[1].author).toBe('hermes-reviewer');
+    expect(reviews[1].isLatest).toBe(true);
+  });
+
+  it('GET /agent/:id/info filters VERDICT lines from action items', async () => {
+    const issue = issueManager.create({ title: 'Verdict in bullets task' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/test-branch',
+      path: '/tmp/test',
+      issueId: issue.id,
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const pr = prManager.create({ issueId: issue.id, title: issue.title });
+    expect(pr).not.toBeNull();
+
+    const reviewBody = [
+      '- VERDICT: APPROVED',
+      '- Good work on the refactor',
+      '* VERDICT: CHANGES_REQUESTED',
+      '1. Clean up the imports',
+    ].join('\n');
+
+    prManager.addComment(pr!.id, 'hermes-reviewer', reviewBody);
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+
+    const actionItems = res.body.previousReviews[0].actionItems;
+    // VERDICT: lines should be filtered out
+    expect(actionItems).toEqual([
+      'Good work on the refactor',
+      'Clean up the imports',
+    ]);
+  });
+
+  it('GET /agent/:id/info excludes current issue own PR from recentMerges', async () => {
+    const issue = issueManager.create({ title: 'Self-merge task' });
+
+    vi.spyOn(worktreeManager, 'get').mockReturnValue({
+      branch: 'issue/self-branch',
+      path: '/tmp/self',
+      issueId: issue.id,
+    });
+    vi.spyOn(worktreeManager, 'getDiff').mockReturnValue('diff');
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue(['self.ts']);
+
+    // Create PR for the current issue and mark it as merged
+    const selfPr = prManager.create({ issueId: issue.id, title: 'Self PR' });
+    expect(selfPr).not.toBeNull();
+    prManager.setVerdict(selfPr!.id, 'approved');
+    (selfPr as any).status = 'merged';
+    (selfPr as any).updatedAt = Date.now();
+
+    // Create a PR for a different issue and mark it as merged
+    const otherIssue = issueManager.create({ title: 'Other task' });
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue(['other.ts']);
+    const otherPr = prManager.create({ issueId: otherIssue.id, title: 'Other PR' });
+    expect(otherPr).not.toBeNull();
+    prManager.setVerdict(otherPr!.id, 'approved');
+    (otherPr as any).status = 'merged';
+    (otherPr as any).updatedAt = Date.now() + 1000;
+
+    // Reset mocks
+    vi.spyOn(worktreeManager, 'getChangedFiles').mockReturnValue([]);
+
+    const res = await request(server, 'GET', `/agent/${issue.id}/info`);
+    expect(res.status).toBe(200);
+
+    const merges = res.body.recentMerges;
+    // Only the other PR should appear, not the current issue's own PR
+    expect(merges.length).toBe(1);
+    expect(merges[0].title).toBe('Other PR');
   });
 
   it('GET /agent/:id/info returns recentMerges from merged PRs', async () => {

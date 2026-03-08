@@ -71,10 +71,10 @@ when the agent is on a subsequent review cycle.
 | Field | Type | Description |
 |-------|------|-------------|
 | `isRework` | `boolean` | `true` if the issue has been in review before (a PR exists) |
-| `attempt` | `number` | Which review cycle this is (1 = first attempt, 2 = first rework, etc.) |
+| `attempt` | `number` | Which review cycle this is (1 = first attempt, 2 = first rework, etc.). Counts all comments containing a `VERDICT:` line, regardless of author. |
 | `changedFiles` | `string[]` | Files the agent changed in its branch (from `git diff --name-only`) |
-| `previousReviews` | `ReviewInfo[]` | Past reviews sorted **latest first**, each with `isLatest` flag and extracted `actionItems` |
-| `recentMerges` | `RecentMerge[]` | Last 5 merged PRs with titles and changed files (warns about potential conflicts) |
+| `previousReviews` | `ReviewInfo[]` | All PR comments sorted **latest first**. Each has a `verdict` parsed from that comment's body (not the PR-level verdict — can be `null` for comments without a `VERDICT:` line). `isLatest` flag is set on the latest `hermes-reviewer` comment specifically. `actionItems` are extracted bullet/numbered items, excluding `VERDICT:` lines. |
+| `recentMerges` | `RecentMerge[]` | Last 5 merged PRs (excluding the current issue's own PR) with titles and changed files (warns about potential conflicts) |
 
 ### POST /agent/:id/review
 
