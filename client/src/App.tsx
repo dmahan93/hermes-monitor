@@ -46,7 +46,7 @@ function AppContent() {
   if (loading) {
     return (
       <div className="app">
-        <div className="loading">Loading...</div>
+        <div className="app-loading">Loading...</div>
       </div>
     );
   }
