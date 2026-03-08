@@ -163,6 +163,9 @@ export class IssueManager {
       terminalId: null,
       branch: options.branch || null,
       parentId: options.parentId || null,
+      progressMessage: null,
+      progressPercent: null,
+      progressUpdatedAt: null,
       createdAt: now,
       updatedAt: now,
     };

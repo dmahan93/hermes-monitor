@@ -1058,7 +1058,7 @@ describe('Agent API — Progress Reporting', () => {
 
     const updated = issueManager.get(issue.id);
     expect(updated?.progressMessage).toBe('Installing dependencies');
-    expect(updated?.progressPercent).toBeUndefined();
+    expect(updated?.progressPercent).toBeNull();
   });
 
   it('POST /agent/:id/progress works with percent only', async () => {
