@@ -22,7 +22,7 @@ function AppContent() {
     terminals, loading, updateLayout,
     issues, updateIssue, createSubtask,
     prs, addComment, setVerdict, mergePR, fixConflicts, relaunchReview,
-    agents,
+    agents, agentsLoading, agentsError,
     gitGraph,
     view, setView,
     gitPanelOpen, setGitPanelOpen,
@@ -161,6 +161,8 @@ function AppContent() {
                   <KanbanBoard
                     issues={issues}
                     agents={agents}
+                    agentsLoading={agentsLoading}
+                    agentsError={agentsError}
                     onStatusChange={handleStatusChange}
                     onCreateIssue={handleCreateIssue}
                     onDeleteIssue={handleDeleteIssue}

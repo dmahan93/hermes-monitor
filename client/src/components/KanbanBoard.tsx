@@ -12,6 +12,8 @@ const noop = () => {};
 interface KanbanBoardProps {
   issues: Issue[];
   agents: AgentPreset[];
+  agentsLoading?: boolean;
+  agentsError?: string | null;
   onStatusChange: (id: string, status: IssueStatus) => Promise<string | null>;
   onCreateIssue: (title: string, description: string, agent: string, command: string, branch: string) => void;
   onDeleteIssue: (id: string) => void;
@@ -21,7 +23,7 @@ interface KanbanBoardProps {
   onPlanClick?: (issueId: string) => void;
 }
 
-export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onDeleteIssue, onEditIssue, onTerminalClick, onIssueClick, onPlanClick }: KanbanBoardProps) {
+export function KanbanBoard({ issues, agents, agentsLoading, agentsError, onStatusChange, onCreateIssue, onDeleteIssue, onEditIssue, onTerminalClick, onIssueClick, onPlanClick }: KanbanBoardProps) {
   const [showModal, setShowModal] = useState(false);
   const [dragError, setDragError] = useState<string | null>(null);
 
@@ -104,6 +106,8 @@ export function KanbanBoard({ issues, agents, onStatusChange, onCreateIssue, onD
       {showModal && (
         <NewIssueModal
           agents={agents}
+          agentsLoading={agentsLoading}
+          agentsError={agentsError}
           onSubmit={handleCreate}
           onClose={() => setShowModal(false)}
         />

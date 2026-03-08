@@ -150,6 +150,13 @@
   font-family: 'VT323', monospace;
 }
 
+.modal-error {
+  font-size: 0.8rem;
+  color: var(--error, #ff6b6b);
+  font-family: 'VT323', monospace;
+  padding: 0.333rem 0;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

@@ -4,11 +4,13 @@ import './NewIssueModal.css';
 
 interface NewIssueModalProps {
   agents: AgentPreset[];
+  agentsLoading?: boolean;
+  agentsError?: string | null;
   onSubmit: (title: string, description: string, agent: string, command: string, branch: string) => void;
   onClose: () => void;
 }
 
-export function NewIssueModal({ agents, onSubmit, onClose }: NewIssueModalProps) {
+export function NewIssueModal({ agents, agentsLoading, agentsError, onSubmit, onClose }: NewIssueModalProps) {
   // Close on Escape key
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -68,18 +70,27 @@ export function NewIssueModal({ agents, onSubmit, onClose }: NewIssueModalProps)
           </label>
           <label className="modal-field">
             <span className="modal-label">agent</span>
-            <select
-              className="modal-select"
-              value={agent}
-              onChange={(e) => setAgent(e.target.value)}
-            >
-              {agents.map((a) => (
-                <option key={a.id} value={a.id} disabled={a.installed === false}>
-                  {a.icon} {a.name}{a.installed === false ? ' (not installed)' : ''}
-                </option>
-              ))}
-            </select>
-            {selectedAgent && (
+            {agentsError ? (
+              <span className="modal-error">⚠ Failed to load agents: {agentsError}</span>
+            ) : (
+              <select
+                className="modal-select"
+                value={agentsLoading ? '' : agent}
+                onChange={(e) => setAgent(e.target.value)}
+                disabled={agentsLoading}
+              >
+                {agentsLoading ? (
+                  <option value="">Loading agents...</option>
+                ) : (
+                  agents.map((a) => (
+                    <option key={a.id} value={a.id} disabled={a.installed === false}>
+                      {a.icon} {a.name}{a.installed === false ? ' (not installed)' : ''}
+                    </option>
+                  ))
+                )}
+              </select>
+            )}
+            {selectedAgent && !agentsLoading && !agentsError && (
               <span className="modal-hint">{selectedAgent.description}</span>
             )}
           </label>

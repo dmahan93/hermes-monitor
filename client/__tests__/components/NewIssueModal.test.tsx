@@ -106,4 +106,26 @@ describe('NewIssueModal', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it('shows loading placeholder and disables dropdown when agentsLoading is true', () => {
+    renderModal({ agentsLoading: true, agents: [] });
+    const select = screen.getByRole('combobox');
+    expect(select).toBeDisabled();
+    expect(screen.getByText('Loading agents...')).toBeInTheDocument();
+  });
+
+  it('shows error message when agentsError is set', () => {
+    renderModal({ agentsError: 'Network error', agents: [] });
+    expect(screen.getByText(/Failed to load agents: Network error/)).toBeInTheDocument();
+    // The select dropdown should not be present when there's an error
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
+
+  it('shows agent dropdown normally when not loading and no error', () => {
+    renderModal({ agentsLoading: false, agentsError: null });
+    const select = screen.getByRole('combobox');
+    expect(select).not.toBeDisabled();
+    expect(screen.queryByText('Loading agents...')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Failed to load agents/)).not.toBeInTheDocument();
+  });
 });
