@@ -15,7 +15,10 @@ export interface RepoEntry {
   status: RepoStatus;
   createdAt: number;
   updatedAt: number;
-  /** Optional stats populated by the hub when the repo is running */
+  // TODO: Stats enrichment not yet implemented on the server — these fields
+  // are forward-looking scaffolding. The client type is a superset of the
+  // server's RepoEntry (see registry.ts). Populate via /api/hub/repos when
+  // the server supports it.
   issueCount?: number;
   activeAgents?: number;
   prCount?: number;
@@ -78,6 +81,15 @@ export function HubLanding() {
     };
   }, [fetchRepos]);
 
+  /** Reset the add-repo form to pristine state */
+  const resetAddForm = () => {
+    setAddPath('');
+    setAddName('');
+    setAddError(null);
+    setNameManuallyEdited(false);
+    setShowAddForm(false);
+  };
+
   /** Auto-detect name from path (last segment of the directory) */
   const handlePathChange = (value: string) => {
     setAddPath(value);
@@ -128,10 +140,7 @@ export function HubLanding() {
       }
 
       // Success — refresh list, reset form
-      setAddPath('');
-      setAddName('');
-      setNameManuallyEdited(false);
-      setShowAddForm(false);
+      resetAddForm();
       if (mountedRef.current) await fetchRepos();
     } catch (err: any) {
       setAddError(err.message || 'Failed to register repo');
@@ -238,20 +247,25 @@ export function HubLanding() {
       {error && (
         <div
           className="hub-error"
-          onClick={() => setError(null)}
           role="alert"
-          title="Click to dismiss"
-          style={{ cursor: 'pointer' }}
         >
-          {error} <span className="hub-error-dismiss">✕</span>
+          {error}
+          <button
+            className="hub-error-dismiss"
+            onClick={() => setError(null)}
+            aria-label="Dismiss error"
+            title="Dismiss"
+          >
+            ✕
+          </button>
         </div>
       )}
 
       <div className="hub-toolbar">
         <button
           className="hub-add-btn"
-          onClick={() => setShowAddForm(!showAddForm)}
-          aria-label="Add repository"
+          onClick={() => showAddForm ? resetAddForm() : setShowAddForm(true)}
+          aria-label={showAddForm ? 'Cancel adding repository' : 'Add repository'}
         >
           {showAddForm ? '✕ Cancel' : '+ Add Repo'}
         </button>

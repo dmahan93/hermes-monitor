@@ -617,10 +617,46 @@ describe('HubLanding', () => {
       expect(screen.getByText(/Server broke/)).toBeInTheDocument();
     });
 
-    // Click the error to dismiss it
-    fireEvent.click(screen.getByRole('alert'));
+    // Click the dismiss button to dismiss the error
+    fireEvent.click(screen.getByLabelText('Dismiss error'));
 
     expect(screen.queryByText(/Server broke/)).not.toBeInTheDocument();
+  });
+
+  // ── Cancel resets form state ──
+
+  it('resets form state on cancel so auto-detect works on reopen', async () => {
+    mockFetchRepos([]);
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByText('+ Add Repo')).toBeInTheDocument();
+    });
+
+    // Open form, type a path (auto-detects name)
+    fireEvent.click(screen.getByText('+ Add Repo'));
+    const pathInput = screen.getByLabelText('Repository path');
+    fireEvent.change(pathInput, { target: { value: '/home/user/first-project' } });
+    const nameInput = screen.getByLabelText('Name (auto-detected)') as HTMLInputElement;
+    expect(nameInput.value).toBe('first-project');
+
+    // Manually edit the name
+    fireEvent.change(nameInput, { target: { value: 'custom-name' } });
+    expect(nameInput.value).toBe('custom-name');
+
+    // Cancel
+    fireEvent.click(screen.getByText('✕ Cancel'));
+    expect(screen.queryByTestId('add-repo-form')).not.toBeInTheDocument();
+
+    // Re-open the form — fields should be reset
+    fireEvent.click(screen.getByText('+ Add Repo'));
+    const pathInput2 = screen.getByLabelText('Repository path') as HTMLInputElement;
+    const nameInput2 = screen.getByLabelText('Name (auto-detected)') as HTMLInputElement;
+    expect(pathInput2.value).toBe('');
+    expect(nameInput2.value).toBe('');
+
+    // Type a new path — name should auto-detect (nameManuallyEdited was reset)
+    fireEvent.change(pathInput2, { target: { value: '/home/user/second-project' } });
+    expect(nameInput2.value).toBe('second-project');
   });
 
   // ── Name manual edit preservation ──

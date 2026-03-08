@@ -61,11 +61,18 @@
 }
 
 .hub-error-dismiss {
+  background: none;
+  border: none;
+  color: var(--error);
   opacity: 0.6;
   font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  font-family: inherit;
 }
 
-.hub-error:hover .hub-error-dismiss {
+.hub-error-dismiss:hover,
+.hub-error-dismiss:focus-visible {
   opacity: 1;
 }
 
