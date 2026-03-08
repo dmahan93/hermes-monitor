@@ -368,6 +368,73 @@ describe('GitGraph', () => {
     expect(subject?.classList.contains('git-graph-subject')).toBe(true);
   });
 
+  it('first row straight line starts at commit center, not above', () => {
+    // When the first commit has a straight line, the y1 should be cy (ROW_H/2 = 14)
+    // instead of -LINE_EXT (-1.5) to prevent a line from extending above the topmost row
+    const commits = [
+      makeCommit('abc1234567890', 'HEAD commit'),
+      makeCommit('def4567890123', 'Second commit'),
+    ];
+    const graph = [
+      makeNode('abc1234567890', 0, [{ fromCol: 0, toCol: 0, type: 'straight' }]),
+      makeNode('def4567890123', 0, [{ fromCol: 0, toCol: 0, type: 'straight' }]),
+    ];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} />,
+    );
+
+    const rows = container.querySelectorAll('.git-graph-row');
+    expect(rows.length).toBe(2);
+
+    // First row: line should start at cy=14 (not -1.5)
+    const firstRowLine = rows[0].querySelector('svg line');
+    expect(firstRowLine).toBeInTheDocument();
+    expect(firstRowLine?.getAttribute('y1')).toBe('14');
+
+    // Second row: line should start at -LINE_EXT = -1.5
+    const secondRowLine = rows[1].querySelector('svg line');
+    expect(secondRowLine).toBeInTheDocument();
+    expect(secondRowLine?.getAttribute('y1')).toBe('-1.5');
+  });
+
+  it('first row curved line omits the straight segment above the commit', () => {
+    // For merge/branch lines on the first row, the straight segment from
+    // -LINE_EXT to cy should be omitted entirely (no line going above the dot)
+    const commits = [
+      makeCommit('abc1234567890', 'Merge at HEAD'),
+      makeCommit('def4567890123', 'Normal merge'),
+    ];
+    const graph = [
+      makeNode('abc1234567890', 0, [{ fromCol: 1, toCol: 0, type: 'merge-left' }]),
+      makeNode('def4567890123', 0, [{ fromCol: 1, toCol: 0, type: 'merge-left' }]),
+    ];
+
+    const { container } = render(
+      <GitGraph {...defaultProps} commits={commits} graph={graph} />,
+    );
+
+    const rows = container.querySelectorAll('.git-graph-row');
+
+    // First row: should have a path (bezier) but NO line element inside the <g>
+    const firstRowG = rows[0].querySelector('svg g');
+    expect(firstRowG).toBeInTheDocument();
+    const firstRowLines = firstRowG!.querySelectorAll('line');
+    expect(firstRowLines.length).toBe(0);
+    // But should still have the bezier path
+    const firstRowPaths = firstRowG!.querySelectorAll('path');
+    expect(firstRowPaths.length).toBe(1);
+
+    // Second row: should have both a line and a path inside the <g>
+    const secondRowG = rows[1].querySelector('svg g');
+    expect(secondRowG).toBeInTheDocument();
+    const secondRowLines = secondRowG!.querySelectorAll('line');
+    expect(secondRowLines.length).toBe(1);
+    expect(secondRowLines[0].getAttribute('y1')).toBe('-1.5');
+    const secondRowPaths = secondRowG!.querySelectorAll('path');
+    expect(secondRowPaths.length).toBe(1);
+  });
+
   it('renders unknown file status with fallback', () => {
     const commits = [makeCommit('abc1234567890', 'Unknown status')];
     const graph = [makeNode('abc1234567890')];
