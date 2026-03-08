@@ -1,0 +1,42 @@
+/* ── Not Found ── */
+
+.not-found {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--bg);
+  gap: 0.5rem;
+}
+
+.not-found-title {
+  font-family: 'VT323', monospace;
+  font-size: 4rem;
+  font-weight: 400;
+  color: var(--error);
+  letter-spacing: 0.5rem;
+}
+
+.not-found-message {
+  color: var(--text-muted);
+  font-size: 1.25rem;
+}
+
+.not-found-link {
+  margin-top: 1rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.917rem;
+  border: 1px solid var(--chrome-light);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  padding: 0.333rem 1rem;
+  transition: background 0.1s;
+}
+
+.not-found-link:hover {
+  background: var(--accent-dim);
+}

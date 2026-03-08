@@ -9,6 +9,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import type {
   TerminalInfo,
   Issue,
@@ -21,6 +22,7 @@ import type {
   GridItem,
 } from '../types';
 import type { ViewMode } from '../components/ViewSwitcher';
+import { VALID_VIEWS } from '../components/ViewSwitcher';
 import { type AgentListSelection, selectionKey } from '../components/AgentTerminalList';
 import { API_BASE } from '../config';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -30,6 +32,36 @@ import { usePRs } from '../hooks/usePRs';
 import { useAgents } from '../hooks/useAgents';
 import { useGitGraph, type GitCommit, type GraphNode, type GitFileChange } from '../hooks/useGitGraph';
 import { useErrorToast, type ErrorEntry } from '../hooks/useErrorToast';
+
+// ── URL parsing helpers ──
+
+/** Parse the URL segments after /:repoId/ to derive view and detail IDs */
+function parseRouteState(pathname: string) {
+  const segments = pathname.split('/').filter(Boolean);
+  // segments[0] = repoId, segments[1] = resource, segments[2] = detail id
+
+  let view: ViewMode = 'kanban';
+  let issueId: string | null = null;
+  let prId: string | null = null;
+  let gitRoute = false;
+
+  const resource = segments[1];
+
+  if (resource === 'issues' && segments[2]) {
+    issueId = segments[2];
+    // Issue detail is a modal — default underlying view is kanban
+  } else if (resource === 'prs' && segments[2]) {
+    view = 'prs';
+    prId = segments[2];
+  } else if (resource === 'git') {
+    gitRoute = true;
+    // git route opens the git panel sidebar, underlying view is kanban
+  } else if (resource && (VALID_VIEWS as readonly string[]).includes(resource)) {
+    view = resource as ViewMode;
+  }
+
+  return { view, issueId, prId, gitRoute };
+}
 
 // ── Context value type ──
 
@@ -84,9 +116,10 @@ export interface AppContextValue {
     closeDiff: () => void;
   };
 
-  // View routing
+  // View routing (now derived from URL)
   view: ViewMode;
   setView: (mode: ViewMode) => void;
+  repoId: string;
 
   // Git panel sidebar
   gitPanelOpen: boolean;
@@ -102,7 +135,7 @@ export interface AppContextValue {
   termViewAgentIssue: Issue | null;
   handleTermViewSelect: (selection: AgentListSelection) => void;
 
-  // Issue detail modal
+  // Issue detail modal (now URL-driven)
   detailIssue: Issue | null;
   detailIssueId: string | null;
   setDetailIssueId: (id: string | null) => void;
@@ -111,6 +144,10 @@ export interface AppContextValue {
   detailSubtasks: Issue[];
   detailPR: PullRequest | undefined;
   closeDetail: () => void;
+
+  // PR detail (URL-driven)
+  selectedPrId: string | null;
+  setSelectedPrId: (id: string | null) => void;
 
   // Error toasts
   errors: ErrorEntry[];
@@ -177,6 +214,44 @@ function getWsUrl(): string {
 // ── Provider ──
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  // ── Router hooks ──
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { repoId: rawRepoId } = useParams<{ repoId: string }>();
+  const repoId = rawRepoId || 'default';
+
+  // ── Derive view and detail IDs from URL ──
+  const { view, issueId: urlIssueId, prId: urlPrId, gitRoute } = useMemo(
+    () => parseRouteState(location.pathname),
+    [location.pathname],
+  );
+
+  // ── Navigation-based setters ──
+  const setView = useCallback((mode: ViewMode) => {
+    navigate(`/${repoId}/${mode}`);
+  }, [navigate, repoId]);
+
+  const setDetailIssueId = useCallback((id: string | null) => {
+    if (id) {
+      navigate(`/${repoId}/issues/${id}`);
+    } else {
+      navigate(`/${repoId}/${view}`);
+    }
+  }, [navigate, repoId, view]);
+
+  const closeDetail = useCallback(() => {
+    setDetailEditing(false);
+    navigate(`/${repoId}/${view}`);
+  }, [navigate, repoId, view]);
+
+  const setSelectedPrId = useCallback((id: string | null) => {
+    if (id) {
+      navigate(`/${repoId}/prs/${id}`);
+    } else {
+      navigate(`/${repoId}/prs`);
+    }
+  }, [navigate, repoId]);
+
   // ── Hook calls ──
   const { connected, reconnectCount, send, subscribe } = useWebSocket(getWsUrl());
   const { errors, addError, removeError } = useErrorToast();
@@ -192,10 +267,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const stored = localStorage.getItem('hermes:gitPanelOpen');
     return stored !== null ? stored === 'true' : true;
   });
-  const [view, setView] = useState<ViewMode>('kanban');
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [termViewSelection, setTermViewSelection] = useState<AgentListSelection | null>(null);
-  const [detailIssueId, setDetailIssueId] = useState<string | null>(null);
   const [planningIssueId, setPlanningIssueId] = useState<string | null>(null);
   const [detailEditing, setDetailEditing] = useState(false);
   const [awaitingInputIds, setAwaitingInputIds] = useState<Set<string>>(new Set());
@@ -204,7 +277,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => localStorage.getItem('hermes:researchTerminalId'),
   );
 
+  // URL-derived detail IDs
+  const detailIssueId = urlIssueId;
+  const selectedPrId = urlPrId;
+
   // ── Side effects ──
+
+  // Open git panel when navigating to /git route
+  useEffect(() => {
+    if (gitRoute) {
+      setGitPanelOpen(true);
+    }
+  }, [gitRoute]);
 
   // Persist git panel state
   useEffect(() => {
@@ -397,12 +481,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const handleIssueClick = useCallback((issueId: string) => {
     setDetailIssueId(issueId);
     setDetailEditing(false);
-  }, []);
+  }, [setDetailIssueId]);
 
   const handleEditIssue = useCallback((issueId: string) => {
     setDetailIssueId(issueId);
     setDetailEditing(true);
-  }, []);
+  }, [setDetailIssueId]);
 
   const handlePlanClick = useCallback(async (issueId: string) => {
     const issue = issues.find((i) => i.id === issueId);
@@ -445,11 +529,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!detailIssueId) return null;
     return issues.find((i) => i.id === detailIssueId) || null;
   }, [detailIssueId, issues]);
-
-  const closeDetail = useCallback(() => {
-    setDetailIssueId(null);
-    setDetailEditing(false);
-  }, []);
 
   const detailSubtasks = useMemo(() => {
     if (!detailIssueId) return [];
@@ -516,9 +595,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Git Graph
     gitGraph,
 
-    // View
+    // View (URL-derived)
     view,
     setView,
+    repoId,
 
     // Git panel
     gitPanelOpen,
@@ -534,7 +614,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     termViewAgentIssue,
     handleTermViewSelect,
 
-    // Issue detail
+    // Issue detail (URL-driven)
     detailIssue,
     detailIssueId,
     setDetailIssueId,
@@ -543,6 +623,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     detailSubtasks,
     detailPR,
     closeDetail,
+
+    // PR detail (URL-driven)
+    selectedPrId,
+    setSelectedPrId,
 
     // Error toasts
     errors,
@@ -588,11 +672,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     prs, addComment, setVerdict, mergePR, confirmMerge, fixConflicts, relaunchReview, mergeMode,
     agents, agentsLoading, agentsError,
     gitGraph,
-    view,
+    view, setView, repoId,
     gitPanelOpen,
     expandedIssue,
     termViewSelection, termViewAgentIssue, handleTermViewSelect,
-    detailIssue, detailIssueId, detailEditing, detailSubtasks, detailPR, closeDetail,
+    detailIssue, detailIssueId, setDetailIssueId, detailEditing, detailSubtasks, detailPR, closeDetail,
+    selectedPrId, setSelectedPrId,
     planningIssue,
     awaitingInputIds,
     researchMounted,

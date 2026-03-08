@@ -31,6 +31,7 @@ function AppContent() {
     termViewAgentIssue, setTermViewSelection, handleTermViewSelect,
     detailIssue, detailIssueId, detailEditing, detailSubtasks, detailPR,
     setDetailIssueId, setDetailEditing,
+    selectedPrId, setSelectedPrId,
     planningIssue, setPlanningIssueId,
     awaitingInputIds,
     researchMounted, setResearchTerminalId,
@@ -60,7 +61,6 @@ function AppContent() {
       >
         <ViewSwitcher
           mode={view}
-          onChange={setView}
           prCount={prs.length}
           activeAgentCount={issues.filter((i) => i.status === 'in_progress' || i.status === 'review').length}
         />
@@ -197,6 +197,8 @@ function AppContent() {
               prs={prs}
               issues={issues}
               mergeMode={mergeMode}
+              selectedPrId={selectedPrId}
+              onSelectPr={setSelectedPrId}
               onComment={addComment}
               onVerdict={setVerdict}
               onMerge={mergePR}

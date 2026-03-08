@@ -1,0 +1,116 @@
+/* ── Hub Landing ── */
+
+.hub-landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--bg);
+  padding: 2rem;
+}
+
+.hub-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.hub-title {
+  font-family: 'VT323', monospace;
+  font-size: 2.5rem;
+  font-weight: 400;
+  letter-spacing: 0.25rem;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.hub-subtitle {
+  color: var(--text-muted);
+  font-size: 0.917rem;
+}
+
+.hub-loading,
+.hub-empty,
+.hub-error {
+  color: var(--text-muted);
+  font-size: 0.917rem;
+  text-align: center;
+}
+
+.hub-error {
+  color: var(--error);
+  margin-bottom: 1rem;
+}
+
+.hub-repos {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 40rem;
+}
+
+.hub-repo-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--chrome-dark);
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.hub-repo-card:hover {
+  background: var(--chrome);
+}
+
+.hub-repo-card:active {
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.hub-repo-icon {
+  font-size: 1.5rem;
+  color: var(--accent);
+}
+
+.hub-repo-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.hub-repo-name {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.hub-repo-path {
+  font-size: 0.833rem;
+  color: var(--text-muted);
+}
+
+.hub-repo-stats {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.hub-repo-stat {
+  font-size: 0.833rem;
+  color: var(--text-muted);
+}
+
+.hub-repo-arrow {
+  color: var(--text-muted);
+  font-size: 1.25rem;
+}
