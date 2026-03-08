@@ -119,7 +119,7 @@
 .manager-error {
   padding: 0.5rem 0.667rem;
   margin-bottom: 0.667rem;
-  background: #dd444420;
+  background: color-mix(in srgb, var(--error) 12.5%, transparent);
   border: 1px solid var(--error);
   color: var(--error);
   font-family: 'VT323', monospace;
@@ -241,6 +241,17 @@
 .manager-card-elapsed {
   flex-shrink: 0;
   color: var(--text-muted);
+}
+
+/* ── Progress Message ── */
+
+.manager-card-progress {
+  font-family: 'VT323', monospace;
+  font-size: 0.917rem;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Terminal Preview ── */

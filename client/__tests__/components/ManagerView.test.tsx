@@ -198,6 +198,40 @@ describe('ManagerView', () => {
       const { container } = render(<ManagerView {...props} />);
       expect(container.querySelector('.manager-card-review')).not.toBeNull();
     });
+
+    it('shows progress message when present', () => {
+      const props = defaultProps();
+      props.issues = [makeIssue({
+        status: 'in_progress',
+        terminalId: 'term-1',
+        progressMessage: 'Running tests...',
+      })];
+      render(<ManagerView {...props} />);
+      expect(screen.getByText('Running tests...')).toBeInTheDocument();
+    });
+
+    it('shows progress percent with message when present', () => {
+      const props = defaultProps();
+      props.issues = [makeIssue({
+        status: 'in_progress',
+        terminalId: 'term-1',
+        progressMessage: 'Building project',
+        progressPercent: 42,
+      })];
+      render(<ManagerView {...props} />);
+      expect(screen.getByText(/\[42%\] Building project/)).toBeInTheDocument();
+    });
+
+    it('does not show progress when progressMessage is null', () => {
+      const props = defaultProps();
+      props.issues = [makeIssue({
+        status: 'in_progress',
+        terminalId: 'term-1',
+        progressMessage: null,
+      })];
+      const { container } = render(<ManagerView {...props} />);
+      expect(container.querySelector('.manager-card-progress')).toBeNull();
+    });
   });
 
   // ── Quick Actions ──
@@ -399,6 +433,23 @@ describe('ManagerView', () => {
         expect(props.onStatusChange).toHaveBeenCalledWith('issue-1', 'todo');
         expect(props.onStatusChange).toHaveBeenCalledWith('issue-1', 'in_progress');
       });
+    });
+
+    it('Restart All Crashed stops if first onStatusChange (to todo) fails', async () => {
+      const props = defaultProps();
+      props.issues = [
+        makeIssue({ id: 'issue-1', title: 'Crashed Agent', status: 'in_progress', terminalId: null }),
+      ];
+      // First call (to 'todo') fails
+      props.onStatusChange.mockResolvedValueOnce('Cannot move to todo');
+      render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText(/RESTART ALL CRASHED/));
+      await waitFor(() => {
+        expect(props.onStatusChange).toHaveBeenCalledWith('issue-1', 'todo');
+        expect(screen.getByText(/Cannot move to todo/)).toBeInTheDocument();
+      });
+      // Should NOT have called the second onStatusChange (to in_progress)
+      expect(props.onStatusChange).toHaveBeenCalledTimes(1);
     });
 
     it('Relaunch Dead Reviewers is disabled when no dead reviewers', () => {

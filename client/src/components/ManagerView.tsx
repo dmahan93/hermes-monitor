@@ -250,10 +250,14 @@ export function ManagerView({
       const crashed = issues.filter((i) => i.status === 'in_progress' && !i.terminalId);
       for (const issue of crashed) {
         // Move to todo first then back to in_progress to re-trigger spawn
-        await onStatusChange(issue.id, 'todo');
-        const err = await onStatusChange(issue.id, 'in_progress');
-        if (err) {
-          setActionError(`Failed to restart ${issue.title}: ${err}`);
+        const err1 = await onStatusChange(issue.id, 'todo');
+        if (err1) {
+          setActionError(`Failed to restart ${issue.title}: ${err1}`);
+          break;
+        }
+        const err2 = await onStatusChange(issue.id, 'in_progress');
+        if (err2) {
+          setActionError(`Failed to restart ${issue.title}: ${err2}`);
           break;
         }
       }
@@ -370,6 +374,12 @@ export function ManagerView({
                     <span className="manager-card-agent">{getAgentName(agents, issue.agent)}</span>
                     <span className="manager-card-elapsed">{elapsed}</span>
                   </div>
+                  {issue.progressMessage && (
+                    <div className="manager-card-progress">
+                      {issue.progressPercent != null && `[${issue.progressPercent}%] `}
+                      {issue.progressMessage}
+                    </div>
+                  )}
                   {preview && preview.length > 0 && (
                     <div className="manager-card-preview">
                       {preview.map((line, i) => (
