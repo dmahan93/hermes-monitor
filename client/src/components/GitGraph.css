@@ -151,13 +151,14 @@
 .git-graph-info {
   flex: 1;
   min-width: 0;
-  padding: 0.167rem 0.333rem 0.167rem 0;
+  padding: 0.167rem 0.333rem 0.167rem 0.25rem;
   overflow: hidden;
   border-bottom: 1px solid var(--chrome-dark);
   /* Vertically center the two text lines within the fixed-height row */
   display: flex;
   flex-direction: column;
   justify-content: center;
+  gap: 0.083rem;
 }
 
 .git-graph-msg {
@@ -171,7 +172,10 @@
 .git-graph-refs {
   display: inline-flex;
   gap: 0.167rem;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 55%;
+  overflow: hidden;
 }
 
 .git-graph-ref {
@@ -201,6 +205,12 @@
   border: 1px solid var(--warn);
 }
 
+.git-ref-tag {
+  background: rgba(204, 102, 255, 0.12);
+  color: #cc66ff;
+  border: 1px solid #cc66ff;
+}
+
 .git-graph-subject {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -216,10 +226,14 @@
   font-family: 'VT323', monospace;
   margin-top: 0;
   line-height: 1.2;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .git-graph-hash {
   color: var(--warn);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .git-graph-author {
@@ -227,6 +241,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.git-graph-date {
+  flex-shrink: 0;
+  white-space: nowrap;
+  opacity: 0.8;
 }
 
 /* ── Expanded File List ── */
