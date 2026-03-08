@@ -6,6 +6,25 @@ import type { PullRequest, PRComment, PRStatus, Verdict } from './pr-manager.js'
 
 const DB_PATH = process.env.HERMES_DB_PATH || join(process.cwd(), '..', 'hermes-monitor.db');
 
+/**
+ * SQLite persistence layer for issues, pull requests, comments, and config.
+ *
+ * **Key responsibilities:**
+ * - Provides typed CRUD methods for all persistent entities (issues, PRs,
+ *   PR comments, config key-value pairs, screenshots).
+ * - Runs schema migrations on construction — creates tables if missing and
+ *   adds columns for newer schema versions (e.g., `submitterNotes`, `parentId`).
+ * - Cleans up stale terminal references on startup: any issue or PR that
+ *   references a terminal ID from a previous server session gets its
+ *   `terminalId` / `reviewerTerminalId` cleared so auto-resume can re-spawn.
+ *
+ * **Persistence:** Uses better-sqlite3 in WAL mode for concurrent read access.
+ * The database file defaults to `../hermes-monitor.db` relative to `cwd`,
+ * overridable via `HERMES_DB_PATH` env var.
+ *
+ * **Ephemeral state:** None — this class is purely a persistence adapter.
+ * All runtime coordination lives in the manager classes.
+ */
 export class Store {
   private db: Database.Database;
 

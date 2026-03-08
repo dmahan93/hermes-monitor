@@ -1,3 +1,8 @@
+/**
+ * @module terminal-api
+ * UI-facing REST API for terminal management.
+ * Exposes endpoints to list, create, resize, write to, and remove PTY terminals.
+ */
 import { Router, json } from 'express';
 import { existsSync } from 'fs';
 import type { TerminalManager } from './terminal-manager.js';

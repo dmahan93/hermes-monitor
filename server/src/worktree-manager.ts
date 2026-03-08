@@ -24,6 +24,25 @@ function git(args: string[], cwd?: string): string {
   }).toString().trim();
 }
 
+/**
+ * Manages git worktrees for per-issue branch isolation.
+ *
+ * **Key responsibilities:**
+ * - Creates a dedicated branch + worktree when an issue moves to `in_progress`,
+ *   using the naming convention `issue/<short-id>-<slugified-title>`.
+ * - Removes worktrees (and optionally deletes branches) when issues reach `done`.
+ * - Symlinks `node_modules` from the main repo into each worktree so that
+ *   tests and tooling can run immediately without a separate install step.
+ * - Provides lookup of worktree info (path, branch) by issue ID.
+ *
+ * **Persistence:** Worktree state is ephemeral (in-memory `Map`). The actual
+ * git worktrees on disk are the source of truth and survive server restarts;
+ * the map is only used for fast lookups during a session.
+ *
+ * **Key lifecycle events:**
+ * - `create(issueId, title)` — branch created, worktree checked out, deps symlinked.
+ * - `remove(issueId)` — worktree pruned, branch optionally deleted.
+ */
 export class WorktreeManager {
   private worktrees = new Map<string, WorktreeInfo>();
 

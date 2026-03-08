@@ -79,6 +79,28 @@ interface ManagedTerminal {
   inputCheckTimer: ReturnType<typeof setTimeout> | null;
 }
 
+/**
+ * Manages pseudo-terminal (PTY) sessions via node-pty.
+ *
+ * **Key responsibilities:**
+ * - Creates, lists, resizes, and destroys PTY processes.
+ * - Maintains a per-terminal scrollback buffer (capped at {@link SCROLLBACK_LIMIT} chars)
+ *   for replaying output to newly-connected UI clients.
+ * - Detects "awaiting input" state by running prompt-pattern heuristics against
+ *   the tail of each terminal's scrollback after an idle delay.
+ * - Emits lifecycle callbacks: data, exit, create, remove, and awaitingInput.
+ *
+ * **Persistence:** None — terminals are entirely ephemeral and die with the
+ * server process. The {@link Store} records terminal IDs on issues so that
+ * {@link IssueManager} can detect and auto-resume crashed agent sessions on restart.
+ *
+ * **Key lifecycle events:**
+ * - `onCreate` — fired when a new PTY is spawned.
+ * - `onData` — fired on every chunk of PTY output.
+ * - `onExit` — fired when the PTY process exits (with exit code).
+ * - `onRemove` — fired when a terminal is explicitly removed.
+ * - `onAwaitingInput` — fired when prompt detection flips state.
+ */
 export class TerminalManager {
   private terminals = new Map<string, ManagedTerminal>();
   private onDataCallbacks: DataCallback[] = [];

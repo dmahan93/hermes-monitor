@@ -23,6 +23,30 @@ export interface CreatePROptions {
 
 export type PREventCallback = (event: PREvent, pr: PullRequest) => void;
 
+/**
+ * Manages pull requests, adversarial code reviews, and merge operations.
+ *
+ * **Key responsibilities:**
+ * - Creates pull requests from issue worktree branches, capturing diffs and
+ *   changed file lists.
+ * - Spawns reviewer agent terminals for adversarial code review and processes
+ *   their verdicts (approve / request_changes / comment).
+ * - Handles review relaunching — if a reviewer terminal exits unexpectedly,
+ *   it can be re-spawned for another pass.
+ * - Detects merge conflicts and spawns conflict-fixer agent terminals to
+ *   resolve them automatically.
+ * - Performs the actual git merge into the target branch when a PR is approved.
+ * - Manages PR comments (review feedback, inline annotations).
+ *
+ * **Persistence:** PRs and comments are persisted to SQLite via {@link Store}.
+ * The in-memory `Map<string, PullRequest>` is the authoritative runtime copy;
+ * mutations are written through immediately. Reviewer and conflict-fixer
+ * terminal IDs are ephemeral — they reference live {@link TerminalManager} sessions.
+ *
+ * **Key lifecycle events:**
+ * - `pr:created` — new PR opened from an issue branch.
+ * - `pr:updated` — status, verdict, diff, or comment changes.
+ */
 export class PRManager {
   private prs = new Map<string, PullRequest>();
   private terminalManager: TerminalManager;

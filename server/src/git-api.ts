@@ -1,3 +1,9 @@
+/**
+ * @module git-api
+ * UI-facing REST API for git log, diff, and branch viewing.
+ * Exposes endpoints to browse commit history, view file diffs between
+ * branches, and list available branches in the monitored repository.
+ */
 import { Router } from 'express';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
