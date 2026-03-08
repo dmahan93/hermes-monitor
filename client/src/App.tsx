@@ -9,7 +9,6 @@ import { PRList } from './components/PRList';
 import { GitGraph } from './components/GitGraph';
 import { DiffViewer } from './components/DiffViewer';
 import { ConfigView } from './components/ConfigView';
-import { ResearchView } from './components/ResearchView';
 import { ManagerView } from './components/ManagerView';
 import { ViewSwitcher } from './components/ViewSwitcher';
 import { StatusBar } from './components/StatusBar';
@@ -34,8 +33,7 @@ function AppContent() {
     selectedPrId, setSelectedPrId,
     planningIssue, setPlanningIssueId,
     awaitingInputIds,
-    researchMounted, setResearchTerminalId,
-    gridTerminals, gridLayout,
+    layout,
     showTaskTerminal, showPlanning,
     handleAddTerminal, handleCloseTerminal,
     handleCreateIssue, handleStatusChange, handleDeleteIssue,
@@ -122,8 +120,8 @@ function AppContent() {
                   />
                 ) : (
                   <TerminalGrid
-                    terminals={gridTerminals}
-                    layout={gridLayout}
+                    terminals={terminals}
+                    layout={layout}
                     onLayoutChange={updateLayout}
                     send={send}
                     subscribe={subscribe}
@@ -213,18 +211,6 @@ function AppContent() {
               onMoveToInProgress={async (issueId) => { await handleStatusChange(issueId, 'in_progress'); }}
             />
           </div>
-
-          {/* Research view — lazy-mounted to avoid spawning a PTY until the tab is visited */}
-          {researchMounted && (
-            <div className={`view-panel ${view === 'research' ? 'view-active' : 'view-hidden'}`}>
-              <ResearchView
-                send={send}
-                subscribe={subscribe}
-                reconnectCount={reconnectCount}
-                onTerminalIdChange={setResearchTerminalId}
-              />
-            </div>
-          )}
 
           {/* Manager view */}
           <div className={`view-panel ${view === 'manager' ? 'view-active' : 'view-hidden'}`}>

@@ -48,12 +48,6 @@ export function ViewSwitcher({ mode, prCount, activeAgentCount }: ViewSwitcherPr
         [MANAGER{activeAgentCount ? ` ${activeAgentCount}` : ''}]
       </button>
       <button
-        className={`view-switcher-btn ${mode === 'research' ? 'view-switcher-active' : ''}`}
-        onClick={() => handleChange('research')}
-      >
-        [RESEARCH]
-      </button>
-      <button
         className={`view-switcher-btn ${mode === 'config' ? 'view-switcher-active' : ''}`}
         onClick={() => handleChange('config')}
       >

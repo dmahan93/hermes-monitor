@@ -772,17 +772,6 @@ describe('AppContext', () => {
       expect(result.current.view).toBe('terminals');
     });
 
-    it('lazy-mounts research view when research tab is visited', () => {
-      const { result } = renderHook(() => useApp(), { wrapper });
-
-      expect(result.current.researchMounted).toBe(false);
-
-      act(() => {
-        result.current.setView('research');
-      });
-
-      expect(result.current.researchMounted).toBe(true);
-    });
   });
 
   // ── 9. URL-driven issue detail ──
