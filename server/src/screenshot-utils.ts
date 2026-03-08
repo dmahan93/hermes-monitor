@@ -56,15 +56,17 @@ export function enrichPRWithScreenshots<T extends { issueId: string }>(
 /**
  * Build the screenshot section for a review context.md file.
  *
- * Three code paths:
+ * Four code paths:
  * 1. Screenshots present → embed markdown images
- * 2. No screenshots + UI files changed → warning to request screenshots
- * 3. No screenshots + no UI files → informational "not needed" message
+ * 2. No screenshots + UI files changed + bypass reason → informational bypass message
+ * 3. No screenshots + UI files changed → warning to request screenshots
+ * 4. No screenshots + no UI files → informational "not needed" message
  */
 export function buildScreenshotSection(
   issueId: string,
   changedFiles: string[],
-  port: string | number = '4000'
+  port: string | number = '4000',
+  screenshotBypassReason?: string
 ): string[] {
   const screenshotFiles = getUploadedScreenshots(issueId);
   const screenshotUrls = screenshotFiles.map(
@@ -94,7 +96,19 @@ export function buildScreenshotSection(
     const hasUiFiles = changedFiles.some((f) =>
       UI_EXTENSIONS.some((ext) => f.endsWith(ext))
     );
-    if (hasUiFiles) {
+    if (hasUiFiles && screenshotBypassReason) {
+      // Screenshots were bypassed (auto-detected non-visual or agent self-certified)
+      section.push(
+        '## Screenshots',
+        `ℹ Screenshots were bypassed: ${screenshotBypassReason}`,
+        'UI files changed: ' +
+          changedFiles
+            .filter((f) => UI_EXTENSIONS.some((ext) => f.endsWith(ext)))
+            .join(', '),
+        '',
+        'If these changes DO have visual impact, flag it in your review.',
+      );
+    } else if (hasUiFiles) {
       section.push(
         '## Screenshots',
         '⚠ WARNING: This PR modifies UI files but NO screenshots were uploaded.',

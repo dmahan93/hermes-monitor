@@ -20,6 +20,7 @@ export interface CreatePROptions {
   title: string;
   description?: string;
   submitterNotes?: string;
+  screenshotBypassReason?: string;
 }
 
 export type PREventCallback = (event: PREvent, pr: PullRequest) => void;
@@ -138,6 +139,7 @@ export class PRManager {
       title: options.title,
       description: options.description || '',
       submitterNotes: options.submitterNotes || '',
+      screenshotBypassReason: options.screenshotBypassReason,
       sourceBranch: worktree.branch,
       targetBranch: config.targetBranch,
       repoPath: config.repoPath,
@@ -170,7 +172,7 @@ export class PRManager {
 
     // Build screenshot section for the review context
     const port = process.env.PORT || '4000';
-    const screenshotSection = buildScreenshotSection(pr.issueId, pr.changedFiles, port);
+    const screenshotSection = buildScreenshotSection(pr.issueId, pr.changedFiles, port, pr.screenshotBypassReason);
 
     const contextSections = [
       `# PR Review: ${pr.title}`,
@@ -334,7 +336,7 @@ export class PRManager {
    * Relaunch a review — kill existing reviewer if any, re-spawn a new one.
    * Useful when the reviewer terminal crashed or the review was lost.
    */
-  relaunchReview(prId: string, submitterNotes?: string): PullRequest | null {
+  relaunchReview(prId: string, submitterNotes?: string, screenshotBypassReason?: string): PullRequest | null {
     const pr = this.prs.get(prId);
     if (!pr) return null;
 
@@ -350,9 +352,12 @@ export class PRManager {
     const reviewPath = join(config.reviewBase, prId, 'review.md');
     try { unlinkSync(reviewPath); } catch {}
 
-    // Update submitter notes if provided (e.g. agent resubmitting with new details)
+    // Update submitter notes and bypass reason if provided
     if (submitterNotes !== undefined) {
       pr.submitterNotes = submitterNotes;
+    }
+    if (screenshotBypassReason !== undefined) {
+      pr.screenshotBypassReason = screenshotBypassReason;
     }
 
     // Reset status to open so spawnReviewer can set it to reviewing
