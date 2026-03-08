@@ -688,7 +688,7 @@ describe('ManagerView', () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo' }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return new Response(JSON.stringify({ id: 'mgr-term-1', title: 'Manager Terminal' }), { status: 201 });
@@ -707,15 +707,13 @@ describe('ManagerView', () => {
       await waitFor(() => {
         expect(container.querySelector('.manager-terminal-toolbar')).not.toBeNull();
       });
-
-      fetchSpy.mockRestore();
     });
 
     it('creates terminal with title Manager Terminal on first open', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo' }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return new Response(JSON.stringify({ id: 'mgr-term-1' }), { status: 201 });
@@ -740,15 +738,13 @@ describe('ManagerView', () => {
         expect(body.title).toBe('Manager Terminal');
         expect(body.cwd).toBe('/test/repo');
       });
-
-      fetchSpy.mockRestore();
     });
 
     it('persists terminal ID in localStorage', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo' }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return new Response(JSON.stringify({ id: 'mgr-term-persist' }), { status: 201 });
@@ -766,8 +762,6 @@ describe('ManagerView', () => {
       await waitFor(() => {
         expect(localStorage.getItem('hermes:managerTerminalId')).toBe('mgr-term-persist');
       });
-
-      fetchSpy.mockRestore();
     });
 
     it('restores terminal from localStorage if it still exists', async () => {
@@ -793,8 +787,6 @@ describe('ManagerView', () => {
       // Should NOT have called POST to create a new terminal
       const postCalls = fetchSpy.mock.calls.filter(([, opts]) => opts?.method === 'POST');
       expect(postCalls.length).toBe(0);
-
-      fetchSpy.mockRestore();
     });
 
     it('creates new terminal if saved terminal no longer exists', async () => {
@@ -803,7 +795,7 @@ describe('ManagerView', () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo' }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return new Response(JSON.stringify({ id: 'new-term' }), { status: 201 });
@@ -822,15 +814,13 @@ describe('ManagerView', () => {
       await waitFor(() => {
         expect(localStorage.getItem('hermes:managerTerminalId')).toBe('new-term');
       });
-
-      fetchSpy.mockRestore();
     });
 
     it('renders TerminalView with correct terminal ID when open', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo' }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return new Response(JSON.stringify({ id: 'mgr-term-view' }), { status: 201 });
@@ -850,15 +840,13 @@ describe('ManagerView', () => {
         expect(termView).toBeInTheDocument();
         expect(termView.getAttribute('data-terminal-id')).toBe('mgr-term-view');
       });
-
-      fetchSpy.mockRestore();
     });
 
     it('shows quick action buttons when terminal is open', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo' }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return new Response(JSON.stringify({ id: 'mgr-term-1' }), { status: 201 });
@@ -878,15 +866,13 @@ describe('ManagerView', () => {
         expect(screen.getByTitle('Merge all approved PRs via CLI')).toBeInTheDocument();
         expect(screen.getByTitle('Restart all crashed agents via CLI')).toBeInTheDocument();
       });
-
-      fetchSpy.mockRestore();
     });
 
     it('CHECK STATUS button sends stdin to terminal', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo' }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return new Response(JSON.stringify({ id: 'mgr-term-stdin' }), { status: 201 });
@@ -913,17 +899,16 @@ describe('ManagerView', () => {
         expect.objectContaining({
           type: 'stdin',
           terminalId: 'mgr-term-stdin',
+          data: expect.stringContaining('ISSUES'),
         }),
       );
-
-      fetchSpy.mockRestore();
     });
 
     it('MERGE ALL button sends stdin to terminal', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo' }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return new Response(JSON.stringify({ id: 'mgr-term-merge' }), { status: 201 });
@@ -950,17 +935,16 @@ describe('ManagerView', () => {
         expect.objectContaining({
           type: 'stdin',
           terminalId: 'mgr-term-merge',
+          data: expect.stringContaining('merge'),
         }),
       );
-
-      fetchSpy.mockRestore();
     });
 
     it('RESTART CRASHED button sends stdin to terminal', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo' }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return new Response(JSON.stringify({ id: 'mgr-term-restart' }), { status: 201 });
@@ -987,10 +971,9 @@ describe('ManagerView', () => {
         expect.objectContaining({
           type: 'stdin',
           terminalId: 'mgr-term-restart',
+          data: expect.stringContaining('Restarting'),
         }),
       );
-
-      fetchSpy.mockRestore();
     });
 
     it('shows spawning status while terminal is being created', async () => {
@@ -1000,7 +983,7 @@ describe('ManagerView', () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo' }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return createPromise;
@@ -1027,15 +1010,13 @@ describe('ManagerView', () => {
       await waitFor(() => {
         expect(screen.queryByText('spawning…')).not.toBeInTheDocument();
       });
-
-      fetchSpy.mockRestore();
     });
 
     it('shows error and retry when terminal creation fails', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo' }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return new Response('{}', { status: 500 });
@@ -1054,8 +1035,6 @@ describe('ManagerView', () => {
         expect(screen.getByText('Failed to create terminal')).toBeInTheDocument();
         expect(screen.getByText('[RETRY]')).toBeInTheDocument();
       });
-
-      fetchSpy.mockRestore();
     });
 
     it('clears terminal ID from localStorage when terminal is removed', async () => {
@@ -1090,15 +1069,13 @@ describe('ManagerView', () => {
       });
 
       expect(localStorage.getItem('hermes:managerTerminalId')).toBeNull();
-
-      fetchSpy.mockRestore();
     });
 
     it('shows resize handle when terminal is open', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo' }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return new Response(JSON.stringify({ id: 'mgr-term-1' }), { status: 201 });
@@ -1116,15 +1093,13 @@ describe('ManagerView', () => {
       await waitFor(() => {
         expect(container.querySelector('.manager-terminal-resize-handle')).not.toBeNull();
       });
-
-      fetchSpy.mockRestore();
     });
 
     it('collapsing terminal hides the terminal pane', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();
         if (urlStr.includes('/config')) {
-          return new Response(JSON.stringify({ repoPath: '/test/repo' }), { status: 200 });
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
         }
         if (urlStr.includes('/terminals') && opts?.method === 'POST') {
           return new Response(JSON.stringify({ id: 'mgr-term-1' }), { status: 201 });
@@ -1147,8 +1122,6 @@ describe('ManagerView', () => {
       // Close
       fireEvent.click(screen.getByText('MANAGER TERMINAL'));
       expect(container.querySelector('.manager-terminal-pane')).toBeNull();
-
-      fetchSpy.mockRestore();
     });
 
     it('quick action buttons are disabled when terminal is not ready', () => {

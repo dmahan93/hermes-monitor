@@ -68,15 +68,22 @@ const MAX_TERMINAL_HEIGHT = 800;
 const MANAGER_TERMINAL_COMMAND =
   'bash -c \'echo "=== Hermes Monitor Manager ==="; echo "See MANAGER.md for commands"; echo ""; exec bash\'';
 
-const STATUS_COMMAND =
-  'echo "=== ISSUES ===" && curl -s localhost:4000/api/issues | python3 -c "\nimport json,sys; issues=json.loads(sys.stdin.read(),strict=False)\ndone=len([i for i in issues if i[\'status\']==\'done\'])\nactive=[i for i in issues if i[\'status\'] not in (\'done\',)]\nprint(f\'Score: {done}/{len(issues)}, {len(active)} active\')\nfor i in active: print(f\'  [{i[\"status\"]:12}] {i[\"title\"][:55]}\')\n" && echo "" && echo "=== PRs ===" && curl -s localhost:4000/api/prs | python3 -c "\nimport json,sys; [print(f\'  {p[\"id\"][:8]} [{p[\"status\"]:18}] {p[\"verdict\"]:18} {p[\"title\"][:50]}\')\nfor p in json.loads(sys.stdin.read(),strict=False)\nif p[\'status\'] not in (\'merged\',)]\n" && echo "" && echo "=== TERMINALS ===" && curl -s localhost:4000/api/terminals | python3 -c "\nimport json,sys; terms=json.loads(sys.stdin.read())\nprint(f\'{len(terms)} alive\')\nfor t in terms: print(f\'  {t[\"title\"][:55]}\')\n"\n';
+const DEFAULT_PORT = 4000;
 
-const MERGE_ALL_COMMAND =
-  'curl -s localhost:4000/api/prs | python3 -c "import json,sys; [print(p[\'id\']) for p in json.loads(sys.stdin.read(),strict=False) if p[\'verdict\']==\'approved\' and p[\'status\'] not in (\'merged\',\'closed\')]" | while read id; do echo "Merging $id..."; curl -s -X POST "localhost:4000/api/prs/$id/merge"; echo ""; done\n';
+// Shell command templates — port is replaced dynamically at call time via withPort()
+const STATUS_COMMAND_TEMPLATE =
+  'echo "=== ISSUES ===" && curl -s localhost:__PORT__/api/issues | python3 -c "\nimport json,sys; issues=json.loads(sys.stdin.read(),strict=False)\ndone=len([i for i in issues if i[\'status\']==\'done\'])\nactive=[i for i in issues if i[\'status\'] not in (\'done\',)]\nprint(f\'Score: {done}/{len(issues)}, {len(active)} active\')\nfor i in active: print(f\'  [{i[\"status\"]:12}] {i[\"title\"][:55]}\')\n" && echo "" && echo "=== PRs ===" && curl -s localhost:__PORT__/api/prs | python3 -c "\nimport json,sys; [print(f\'  {p[\"id\"][:8]} [{p[\"status\"]:18}] {p[\"verdict\"]:18} {p[\"title\"][:50]}\')\nfor p in json.loads(sys.stdin.read(),strict=False)\nif p[\'status\'] not in (\'merged\',)]\n" && echo "" && echo "=== TERMINALS ===" && curl -s localhost:__PORT__/api/terminals | python3 -c "\nimport json,sys; terms=json.loads(sys.stdin.read())\nprint(f\'{len(terms)} alive\')\nfor t in terms: print(f\'  {t[\"title\"][:55]}\')\n"\n';
 
-const RESTART_CRASHED_COMMAND =
-  'curl -s localhost:4000/api/issues | python3 -c "import json,sys; [print(i[\'id\']) for i in json.loads(sys.stdin.read(),strict=False) if i[\'status\']==\'in_progress\' and not i.get(\'terminalId\')]" | while read id; do echo "Restarting $id..."; curl -s -X PATCH "localhost:4000/api/issues/$id/status" -H \'Content-Type: application/json\' -d \'{\\"status\\":\\"todo\\"}\'; curl -s -X PATCH "localhost:4000/api/issues/$id/status" -H \'Content-Type: application/json\' -d \'{\\"status\\":\\"in_progress\\"}\'; echo ""; done\n';
+const MERGE_ALL_COMMAND_TEMPLATE =
+  'curl -s localhost:__PORT__/api/prs | python3 -c "import json,sys; [print(p[\'id\']) for p in json.loads(sys.stdin.read(),strict=False) if p[\'verdict\']==\'approved\' and p[\'status\'] not in (\'merged\',\'closed\')]" | while read id; do echo "Merging $id..."; curl -s -X POST "localhost:__PORT__/api/prs/$id/merge"; echo ""; done\n';
 
+const RESTART_CRASHED_COMMAND_TEMPLATE =
+  'curl -s localhost:__PORT__/api/issues | python3 -c "import json,sys; [print(i[\'id\']) for i in json.loads(sys.stdin.read(),strict=False) if i[\'status\']==\'in_progress\' and not i.get(\'terminalId\')]" | while read id; do echo "Restarting $id..."; curl -s -X PATCH "localhost:__PORT__/api/issues/$id/status" -H \'Content-Type: application/json\' -d \'{\\"status\\":\\"todo\\"}\'; curl -s -X PATCH "localhost:__PORT__/api/issues/$id/status" -H \'Content-Type: application/json\' -d \'{\\"status\\":\\"in_progress\\"}\'; echo ""; done\n';
+
+
+function withPort(template: string, port: number): string {
+  return template.replace(/__PORT__/g, String(port));
+}
 // ── Component ──
 
 export function ManagerView({
@@ -110,8 +117,11 @@ export function ManagerView({
   });
   const managerInitRef = useRef(false);
   const managerCreatingRef = useRef(false);
+  const serverPortRef = useRef(DEFAULT_PORT);
   const resizingRef = useRef(false);
   const resizeStartRef = useRef({ y: 0, height: 0 });
+  const terminalHeightRef = useRef(terminalHeight);
+  const resizeListenersRef = useRef<{ move: ((e: MouseEvent) => void) | null; up: (() => void) | null }>({ move: null, up: null });
 
   // Tick every 10s to update elapsed times
   useEffect(() => {
@@ -327,16 +337,19 @@ export function ManagerView({
 
   const createManagerTerminal = useCallback(async (): Promise<string | null> => {
     try {
-      // Fetch config for repoPath
+      // Fetch config for repoPath and serverPort
       let cwd: string | undefined;
       try {
         const configRes = await fetch(`${API_BASE}/config`);
         if (configRes.ok) {
           const config = await configRes.json();
           cwd = config.repoPath;
+          if (config.serverPort) {
+            serverPortRef.current = config.serverPort;
+          }
         }
       } catch {
-        // If config fetch fails, create terminal without cwd
+        // If config fetch fails, create terminal without cwd (port stays at default)
       }
 
       const res = await fetch(`${API_BASE}/terminals`, {
@@ -414,16 +427,17 @@ export function ManagerView({
     return unsub;
   }, [managerTerminalId, subscribe]);
 
-  // Toggle terminal open/closed — initialize on first open
+  // Toggle terminal open/closed
   const handleToggleTerminal = useCallback(() => {
-    setManagerTerminalOpen((prev) => {
-      const next = !prev;
-      if (next && !managerInitRef.current) {
-        initManagerTerminal();
-      }
-      return next;
-    });
-  }, [initManagerTerminal]);
+    setManagerTerminalOpen((prev) => !prev);
+  }, []);
+
+  // Initialize on first open — separated from state updater per React contract
+  useEffect(() => {
+    if (managerTerminalOpen && !managerInitRef.current) {
+      initManagerTerminal();
+    }
+  }, [managerTerminalOpen, initManagerTerminal]);
 
   // Send a command string to the terminal via WS stdin
   const sendToTerminal = useCallback((command: string) => {
@@ -431,38 +445,53 @@ export function ManagerView({
     send({ type: 'stdin', terminalId: managerTerminalId, data: command });
   }, [managerTerminalId, send]);
 
+  // Keep terminalHeightRef in sync for use in resize handler
+  useEffect(() => {
+    terminalHeightRef.current = terminalHeight;
+  }, [terminalHeight]);
+
   // ── Resize Handlers ──
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     resizingRef.current = true;
-    resizeStartRef.current = { y: e.clientY, height: terminalHeight };
+    resizeStartRef.current = { y: e.clientY, height: terminalHeightRef.current };
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!resizingRef.current) return;
       // Dragging up increases height (y decreases)
-      const delta = resizeStartRef.current.y - e.clientY;
+      const delta = resizeStartRef.current.y - moveEvent.clientY;
       const newHeight = Math.max(MIN_TERMINAL_HEIGHT, Math.min(MAX_TERMINAL_HEIGHT, resizeStartRef.current.height + delta));
       setTerminalHeight(newHeight);
     };
 
     const handleMouseUp = () => {
       resizingRef.current = false;
-      setTerminalHeight((h) => {
-        localStorage.setItem(MANAGER_TERMINAL_HEIGHT_KEY, String(h));
-        return h;
-      });
+      // Persist height directly — no side effect in state updater
+      localStorage.setItem(MANAGER_TERMINAL_HEIGHT_KEY, String(terminalHeightRef.current));
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      resizeListenersRef.current = { move: null, up: null };
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
 
+    resizeListenersRef.current = { move: handleMouseMove, up: handleMouseUp };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
     document.body.style.cursor = 'ns-resize';
     document.body.style.userSelect = 'none';
-  }, [terminalHeight]);
+  }, []);
+
+  // Clean up resize listeners if component unmounts mid-drag
+  useEffect(() => {
+    return () => {
+      const { move, up } = resizeListenersRef.current;
+      if (move) document.removeEventListener('mousemove', move);
+      if (up) document.removeEventListener('mouseup', up);
+      resizingRef.current = false;
+    };
+  }, []);
 
   // ── Render ──
 
@@ -701,7 +730,7 @@ export function ManagerView({
             <div className="manager-terminal-toolbar">
               <button
                 className="manager-terminal-action"
-                onClick={() => sendToTerminal(STATUS_COMMAND)}
+                onClick={() => sendToTerminal(withPort(STATUS_COMMAND_TEMPLATE, serverPortRef.current))}
                 disabled={!managerTerminalId}
                 title="Check status of all issues, PRs, and terminals"
               >
@@ -709,7 +738,7 @@ export function ManagerView({
               </button>
               <button
                 className="manager-terminal-action"
-                onClick={() => sendToTerminal(MERGE_ALL_COMMAND)}
+                onClick={() => sendToTerminal(withPort(MERGE_ALL_COMMAND_TEMPLATE, serverPortRef.current))}
                 disabled={!managerTerminalId}
                 title="Merge all approved PRs via CLI"
               >
@@ -717,7 +746,7 @@ export function ManagerView({
               </button>
               <button
                 className="manager-terminal-action"
-                onClick={() => sendToTerminal(RESTART_CRASHED_COMMAND)}
+                onClick={() => sendToTerminal(withPort(RESTART_CRASHED_COMMAND_TEMPLATE, serverPortRef.current))}
                 disabled={!managerTerminalId}
                 title="Restart all crashed agents via CLI"
               >
