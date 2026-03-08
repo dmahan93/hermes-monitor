@@ -14,9 +14,9 @@ const DB_PATH = process.env.HERMES_DB_PATH || join(process.cwd(), '..', 'hermes-
  *   PR comments, config key-value pairs, screenshots).
  * - Runs schema migrations on construction — creates tables if missing and
  *   adds columns for newer schema versions (e.g., `submitterNotes`, `parentId`).
- * - Cleans up stale terminal references on startup: any issue or PR that
- *   references a terminal ID from a previous server session gets its
- *   `terminalId` / `reviewerTerminalId` cleared so auto-resume can re-spawn.
+ * - Resets stale terminal state on startup: moves `in_progress` issues back
+ *   to `todo` (since their agent terminals did not survive the server restart)
+ *   and clears `terminalId` on backlog issues that had planning terminals.
  *
  * **Persistence:** Uses better-sqlite3 in WAL mode for concurrent read access.
  * The database file defaults to `../hermes-monitor.db` relative to `cwd`,

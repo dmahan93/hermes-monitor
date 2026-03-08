@@ -46,7 +46,7 @@ export type IssueEventCallback = (event: IssueEvent, issue: Issue) => void;
  *   - `in_progress`: creates a git worktree ({@link WorktreeManager}), spawns an
  *     agent terminal ({@link TerminalManager}).
  *   - `review`: creates a pull request ({@link PRManager}).
- *   - `done`: cleans up worktree and branch.
+ *   - `done`: removes the worktree (branch is preserved for history).
  * - Auto-resumes crashed agent terminals — watches for unexpected terminal exits
  *   and re-spawns the agent (up to {@link MAX_RESUME_ATTEMPTS} within a
  *   {@link RESUME_WINDOW_MS} window) with a brief delay to avoid tight loops.
