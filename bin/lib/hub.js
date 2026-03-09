@@ -143,9 +143,10 @@ function startHub({ foreground = false, port = HUB_PORT } = {}) {
     }
   }
 
-  // Clean up lock on exit
+  // Clean up lock on exit (use 'once' to prevent handler accumulation
+  // if startHub were called multiple times in the same process, e.g. tests)
   const cleanupLock = () => { try { unlinkSync(LOCK_FILE); } catch { /* ignore */ } };
-  process.on('exit', cleanupLock);
+  process.once('exit', cleanupLock);
 
   const tsxBin = join(ROOT, 'node_modules', '.bin', 'tsx');
   const hubScript = join(ROOT, 'server', 'src', 'hub-start.ts');

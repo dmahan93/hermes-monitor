@@ -306,20 +306,38 @@ async function handleDefault() {
     const alive = (() => { try { process.kill(entry.pid, 0); return true; } catch { return false; } })();
 
     if (alive && entry.status === 'starting') {
-      // Another CLI instance is currently starting this repo — wait for it
-      console.log(`Repo ${entry.name} is being started by another instance. Waiting...`);
-      const serverUp = await checkHealth(entry.port);
-      if (!serverUp) {
-        // Poll for up to 30 seconds
-        const startWait = Date.now();
-        let ready = false;
-        while (Date.now() - startWait < 30000) {
-          if (await checkHealth(entry.port)) { ready = true; break; }
-          await new Promise((r) => setTimeout(r, 500));
+      // Check if the PID actually belongs to a hermes-monitor process.
+      // If the PID was recycled (assigned to an unrelated process), skip
+      // the wait and treat it as stale immediately.
+      let isHermesProcess = true;
+      try {
+        const cmdline = require('fs').readFileSync(`/proc/${entry.pid}/cmdline`, 'utf8');
+        if (!cmdline.includes('hermes-monitor') && !cmdline.includes('tsx') && !cmdline.includes('node')) {
+          isHermesProcess = false;
         }
-        if (!ready) {
-          console.log('Timed out waiting for repo to start. Killing stale process and restarting...');
-          await killStaleProcess(entry);
+      } catch {
+        // /proc not available (macOS) or process already gone — assume ours
+      }
+
+      if (!isHermesProcess) {
+        console.log(`Repo ${entry.name}: PID ${entry.pid} was recycled (not a hermes-monitor process). Cleaning up...`);
+        await killStaleProcess(entry);
+      } else {
+        // Another CLI instance is currently starting this repo — wait for it
+        console.log(`Repo ${entry.name} is being started by another instance. Waiting...`);
+        const serverUp = await checkHealth(entry.port);
+        if (!serverUp) {
+          // Poll for up to 15 seconds (reduced from 30s to minimize false waits)
+          const startWait = Date.now();
+          let ready = false;
+          while (Date.now() - startWait < 15000) {
+            if (await checkHealth(entry.port)) { ready = true; break; }
+            await new Promise((r) => setTimeout(r, 500));
+          }
+          if (!ready) {
+            console.log('Timed out waiting for repo to start. Killing stale process and restarting...');
+            await killStaleProcess(entry);
+          }
         }
       }
       if (await checkHealth(entry.port)) {
@@ -389,6 +407,22 @@ async function handleDefault() {
   if (CLIENT_PORT > 65535) {
     console.error(`Error: computed client port ${CLIENT_PORT} exceeds 65535 (server port: ${SERVER_PORT}).`);
     console.error('Too many repos registered or port range is fragmented. Try removing unused repos with --remove.');
+    process.exit(1);
+  }
+
+  // ── Verify ports are actually free on the OS ──
+  const [serverFree, clientFree] = await Promise.all([
+    isPortFree(SERVER_PORT),
+    isPortFree(CLIENT_PORT),
+  ]);
+  if (!serverFree) {
+    console.error(`Error: server port ${SERVER_PORT} is already in use by another process.`);
+    console.error('Another (non-hermes) process may be occupying this port.');
+    process.exit(1);
+  }
+  if (!clientFree) {
+    console.error(`Error: client port ${CLIENT_PORT} is already in use by another process.`);
+    console.error('Another (non-hermes) process may be occupying this port.');
     process.exit(1);
   }
 
@@ -478,23 +512,34 @@ async function handleDefault() {
 
   // ── Graceful shutdown ──
   // NOTE: Signal handlers fire-and-forget async functions in Node.js.
-  // We use a synchronous HTTP request (execSync + curl) for the critical
-  // registry status update to ensure it completes before the process exits.
+  // We use a synchronous child process (spawnSync + node http) for the
+  // critical registry status update to ensure it completes before exit.
   function shutdown() {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log('\nShutting down hermes-monitor...');
 
-    // Update hub status synchronously — use 'error' if a child exited with non-zero code
+    // Update hub status synchronously — use 'error' if a child exited with non-zero code.
+    // Uses Node's own executable (process.execPath) instead of curl to avoid
+    // external tool dependencies (curl may not be available in minimal Docker images).
     const exitStatus = worstExitCode !== 0 ? 'error' : 'stopped';
     try {
       const body = JSON.stringify({ status: exitStatus, pid: null });
-      spawnSync('curl', [
-        '-s', '-X', 'PATCH',
-        '-H', 'Content-Type: application/json',
-        '-d', body,
-        `http://localhost:${HUB_PORT}/api/hub/repos/${encodeURIComponent(entry.id)}`,
-      ], { timeout: 3000, stdio: 'ignore' });
+      const script = [
+        'const http = require("http");',
+        `const body = ${JSON.stringify(body)};`,
+        'const req = http.request({',
+        '  hostname: "127.0.0.1",',
+        `  port: ${HUB_PORT},`,
+        `  path: "/api/hub/repos/${encodeURIComponent(entry.id)}",`,
+        '  method: "PATCH",',
+        '  headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) }',
+        '}, () => process.exit(0));',
+        'req.on("error", () => process.exit(0));',
+        'req.write(body);',
+        'req.end();',
+      ].join('\n');
+      spawnSync(process.execPath, ['-e', script], { timeout: 3000, stdio: 'ignore' });
     } catch { /* non-fatal — hub may be unreachable */ }
 
     // Clean up repo PID file
@@ -545,6 +590,21 @@ async function handleDefault() {
 // ────────────────────────────────────────────────────────────
 
 /**
+ * Check if a TCP port is free (not in use by any process).
+ * Attempts to bind the port briefly — if it succeeds, the port is available.
+ * @param {number} port
+ * @returns {Promise<boolean>}
+ */
+function isPortFree(port) {
+  return new Promise((resolve) => {
+    const srv = require('net').createServer();
+    srv.once('error', () => resolve(false));
+    srv.once('listening', () => { srv.close(); resolve(true); });
+    srv.listen(port, '127.0.0.1');
+  });
+}
+
+/**
  * Check if an HTTP server is responding on the given port.
  * @param {number} port
  * @returns {Promise<boolean>}
@@ -589,11 +649,21 @@ async function waitForServerReady(serverPort, clientPort, timeoutMs = 30000) {
 }
 
 /**
- * Kill a stale process and update its registry status to 'stopped'.
+ * Kill a stale process and wait for it to exit before returning.
+ * Waits up to 3 seconds for the process to release its port, then sends SIGKILL.
+ * This prevents EADDRINUSE when spawning a replacement on the same port.
  * @param {{ id: string, pid: number }} entry
  */
 async function killStaleProcess(entry) {
-  try { process.kill(entry.pid, 'SIGTERM'); } catch { /* ignore */ }
+  try { process.kill(entry.pid, 'SIGTERM'); } catch { return; }
+  // Wait for process to exit and release the port
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    try { process.kill(entry.pid, 0); } catch { break; }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  // Force kill if still alive
+  try { process.kill(entry.pid, 'SIGKILL'); } catch { /* already dead */ }
   try { await updateRepoStatus(entry.id, 'stopped', null); } catch { /* non-fatal */ }
 }
 
