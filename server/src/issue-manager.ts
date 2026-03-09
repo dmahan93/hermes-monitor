@@ -397,6 +397,7 @@ export class IssueManager {
               worktreePath: cwd,
               prManager: this.prManager,
               worktreeManager: this.worktreeManager,
+              port: config.serverPort,
             });
           } catch (err) {
             console.error('[task-context] Failed to write task context:', err);

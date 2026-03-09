@@ -142,6 +142,40 @@ describe('Task Context — TASK.md Generation', () => {
     expect(md).toContain('**Status:** REWORK');
   });
 
+  it('shows rework feedback even after verdict is reset to pending (ordering bug fix)', () => {
+    // This simulates the real scenario: resetToOpen() sets verdict to 'pending'
+    // BEFORE writeTaskContext runs. The rework section should still appear
+    // because we check the comment body, not the PR verdict field.
+    const pr = {
+      id: 'pr-1',
+      issueId: 'test-issue-123',
+      verdict: 'pending',  // ← reset by resetToOpen()
+      comments: [
+        {
+          id: 'c1',
+          prId: 'pr-1',
+          author: 'hermes-reviewer',
+          body: 'VERDICT: CHANGES_REQUESTED\n\n- Fix the null check on line 15\n- Add error handling',
+          file: null,
+          line: null,
+          createdAt: Date.now(),
+        },
+      ],
+    };
+
+    const md = generateTaskMd({
+      issue: makeIssue(),
+      worktreePath: tmpDir,
+      prManager: makeMockPRManager({ pr }) as any,
+      port: '4000',
+    });
+
+    expect(md).toContain('REWORK REQUIRED');
+    expect(md).toContain('Fix the null check on line 15');
+    expect(md).toContain('Add error handling');
+    expect(md).toContain('**Status:** REWORK');
+  });
+
   it('includes action items from review feedback', () => {
     const pr = {
       id: 'pr-1',
@@ -485,6 +519,23 @@ describe('Task Context — writeTaskContext', () => {
     expect(submitStat.mode & 0o100).toBeTruthy();
   });
 
+  it('helper scripts require jq', () => {
+    writeTaskContext({
+      issue: makeIssue(),
+      worktreePath: tmpDir,
+      port: '4000',
+    });
+
+    const submit = readFileSync(join(tmpDir, '.hermes-monitor/submit.sh'), 'utf-8');
+    expect(submit).toContain('command -v jq');
+
+    const progress = readFileSync(join(tmpDir, '.hermes-monitor/progress.sh'), 'utf-8');
+    expect(progress).toContain('command -v jq');
+
+    const upload = readFileSync(join(tmpDir, '.hermes-monitor/upload-screenshot.sh'), 'utf-8');
+    expect(upload).toContain('command -v jq');
+  });
+
   it('helper scripts contain correct issue ID', () => {
     writeTaskContext({
       issue: makeIssue({ id: 'unique-id-42' }),
@@ -500,6 +551,41 @@ describe('Task Context — writeTaskContext', () => {
 
     const upload = readFileSync(join(tmpDir, '.hermes-monitor/upload-screenshot.sh'), 'utf-8');
     expect(upload).toContain('unique-id-42');
+  });
+
+  it('writes .git/info/exclude entries when worktree is a git repo', () => {
+    const { execSync } = require('child_process');
+    // Initialize a git repo in tmpDir so writeGitExclude can find the git dir
+    execSync('git init', { cwd: tmpDir, stdio: 'pipe' });
+
+    writeTaskContext({
+      issue: makeIssue(),
+      worktreePath: tmpDir,
+      port: '4000',
+    });
+
+    const excludePath = join(tmpDir, '.git', 'info', 'exclude');
+    expect(existsSync(excludePath)).toBe(true);
+    const excludeContent = readFileSync(excludePath, 'utf-8');
+    expect(excludeContent).toContain('TASK.md');
+    expect(excludeContent).toContain('AGENTS.md');
+    expect(excludeContent).toContain('CLAUDE.md');
+    expect(excludeContent).toContain('.hermes-monitor/');
+  });
+
+  it('does not duplicate .git/info/exclude entries on repeat writes', () => {
+    const { execSync } = require('child_process');
+    execSync('git init', { cwd: tmpDir, stdio: 'pipe' });
+
+    // Write twice
+    const opts = { issue: makeIssue(), worktreePath: tmpDir, port: '4000' };
+    writeTaskContext(opts);
+    writeTaskContext(opts);
+
+    const excludeContent = readFileSync(join(tmpDir, '.git', 'info', 'exclude'), 'utf-8');
+    // Each entry should appear exactly once
+    const taskMdMatches = excludeContent.split('\n').filter((l: string) => l === 'TASK.md');
+    expect(taskMdMatches.length).toBe(1);
   });
 });
 
@@ -562,6 +648,35 @@ describe('Task Context — updateTaskContext', () => {
     expect(taskMd).toContain('REWORK REQUIRED');
     expect(taskMd).toContain('Fix the null check on line 15');
   });
+
+  it('includes rework feedback even when verdict has been reset to pending', () => {
+    // Simulates the real ordering: resetToOpen() clears verdict before writeTaskContext
+    const pr = {
+      id: 'pr-1',
+      issueId: 'test-issue-123',
+      verdict: 'pending',  // ← already reset by resetToOpen()
+      comments: [
+        {
+          id: 'c1', prId: 'pr-1', author: 'hermes-reviewer',
+          body: 'VERDICT: CHANGES_REQUESTED\n\n- Fix the race condition\n* Add locking mechanism',
+          file: null, line: null, createdAt: Date.now(),
+        },
+      ],
+    };
+
+    updateTaskContext({
+      issue: makeIssue(),
+      worktreePath: tmpDir,
+      prManager: makeMockPRManager({ pr }) as any,
+      port: '4000',
+    });
+
+    const taskMd = readFileSync(join(tmpDir, 'TASK.md'), 'utf-8');
+    expect(taskMd).toContain('REWORK REQUIRED');
+    expect(taskMd).toContain('Fix the race condition');
+    expect(taskMd).toContain('Add locking mechanism');
+    expect(taskMd).toContain('### Action Items');
+  });
 });
 
 describe('Task Context — Special Characters', () => {
@@ -619,7 +734,7 @@ describe('Task Context — Special Characters', () => {
     const pr = {
       id: 'pr-1',
       issueId: 'test-issue-123',
-      verdict: 'changes_requested',
+      verdict: 'pending',  // ← test with pending verdict (realistic post-reset scenario)
       comments: [
         {
           id: 'c1', prId: 'pr-1', author: 'hermes-reviewer',
@@ -722,5 +837,31 @@ describe('Task Context — Shell Script Syntax Validation', () => {
     const script = generateSubmitScript('test-id', '4000');
     // The fix: check if next arg starts with --
     expect(script).toContain('!= --*');
+  });
+
+  it('all scripts check for jq dependency', () => {
+    const submit = generateSubmitScript('test-id', '4000');
+    const progress = generateProgressScript('test-id', '4000');
+    const upload = generateUploadScreenshotScript('test-id', '4000');
+
+    for (const script of [submit, progress, upload]) {
+      expect(script).toContain('command -v jq');
+      expect(script).toContain('jq is required but not installed');
+    }
+  });
+
+  it('upload-screenshot.sh uses jq for URL encoding', () => {
+    const script = generateUploadScreenshotScript('test-id', '4000');
+    expect(script).toContain('jq -sRr @uri');
+    // Should NOT use the fragile sed approach
+    expect(script).not.toContain("sed 's/ /+/g'");
+  });
+
+  it('upload-screenshot.sh uses jq for JSON parsing', () => {
+    const script = generateUploadScreenshotScript('test-id', '4000');
+    expect(script).toContain("jq -r '.markdown // empty'");
+    // Should NOT use fragile grep+cut approach
+    expect(script).not.toContain('grep -o');
+    expect(script).not.toContain("cut -d");
   });
 });

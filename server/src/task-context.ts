@@ -15,8 +15,9 @@
  *   `upload-screenshot.sh` that wrap common API calls.
  */
 
-import { mkdirSync, writeFileSync, chmodSync, existsSync } from 'fs';
-import { join } from 'path';
+import { mkdirSync, writeFileSync, chmodSync, existsSync, readFileSync } from 'fs';
+import { join, resolve } from 'path';
+import { execSync } from 'child_process';
 import type { Issue } from '@hermes-monitor/shared/types';
 import type { PRManager } from './pr-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
@@ -25,12 +26,12 @@ import { getDiagnostics } from './diagnostics.js';
 import { UI_EXTENSIONS } from './screenshot-utils.js';
 import { extractActionItems } from './review-utils.js';
 
-/** Server port — single source of truth for URL construction */
-const PORT = process.env.PORT || '4000';
+/** Server port — use config.serverPort as the single source of truth */
 
 export interface TaskContextOptions {
   issue: Issue;
-  worktreePath: string;
+  /** Worktree path — required for writeTaskContext, optional for generateTaskMd */
+  worktreePath?: string;
   prManager?: PRManager | null;
   worktreeManager?: WorktreeManager | null;
   /** Override port for testing */
@@ -45,7 +46,7 @@ export interface TaskContextOptions {
  */
 export function generateTaskMd(options: TaskContextOptions): string {
   const { issue, worktreePath, prManager, worktreeManager } = options;
-  const port = options.port || PORT;
+  const port = options.port || config.serverPort;
   const baseUrl = `http://localhost:${port}`;
 
   const existingPr = prManager?.getByIssueId(issue.id);
@@ -59,14 +60,17 @@ export function generateTaskMd(options: TaskContextOptions): string {
     // Worktree may not be fully initialized yet — skip changed files section
   }
 
-  // Build rework feedback
+  // Build rework feedback — check comment body for CHANGES_REQUESTED rather than
+  // the PR verdict field, because resetToOpen() clears the verdict to 'pending'
+  // before writeTaskContext runs. This ensures rework feedback always appears.
   let reworkSection = '';
-  if (existingPr && existingPr.verdict === 'changes_requested') {
-    const reviewerComments = existingPr.comments
-      .filter((c) => c.author === 'hermes-reviewer')
+  if (existingPr) {
+    // Find reviewer comments whose body contains a CHANGES_REQUESTED verdict
+    const changesRequestedComments = existingPr.comments
+      .filter((c) => /VERDICT:\s*CHANGES_REQUESTED/i.test(c.body))
       .sort((a, b) => b.createdAt - a.createdAt);
-    if (reviewerComments.length > 0) {
-      const latest = reviewerComments[0];
+    if (changesRequestedComments.length > 0) {
+      const latest = changesRequestedComments[0];
       const actionItems = extractActionItems(latest.body);
       reworkSection = [
         '',
@@ -287,7 +291,7 @@ export function generateClaudeMd(): string {
  * Generate the submit helper script.
  */
 export function generateSubmitScript(issueId: string, port?: string): string {
-  const p = port || PORT;
+  const p = port || config.serverPort;
   return [
     '#!/bin/bash',
     '# Submit this task for review.',
@@ -295,6 +299,8 @@ export function generateSubmitScript(issueId: string, port?: string): string {
     '#   ./.hermes-monitor/submit.sh',
     '#   ./.hermes-monitor/submit.sh --details "Summary of changes"',
     '#   ./.hermes-monitor/submit.sh --no-ui-changes "Reason for bypass"',
+    '',
+    'command -v jq >/dev/null 2>&1 || { echo "Error: jq is required but not installed. Install with: apt install jq / brew install jq"; exit 1; }',
     '',
     `BASE_URL="http://localhost:${p}/agent/${issueId}"`,
     '',
@@ -360,12 +366,14 @@ export function generateSubmitScript(issueId: string, port?: string): string {
  * Generate the progress helper script.
  */
 export function generateProgressScript(issueId: string, port?: string): string {
-  const p = port || PORT;
+  const p = port || config.serverPort;
   return [
     '#!/bin/bash',
     '# Report progress on this task.',
     '# Usage: ./.hermes-monitor/progress.sh "Running tests"',
     '# Usage: ./.hermes-monitor/progress.sh "Building" 50',
+    '',
+    'command -v jq >/dev/null 2>&1 || { echo "Error: jq is required but not installed. Install with: apt install jq / brew install jq"; exit 1; }',
     '',
     'MESSAGE="${1:?Usage: progress.sh \\"message\\" [percent]}"',
     'PERCENT="${2:-}"',
@@ -389,11 +397,13 @@ export function generateProgressScript(issueId: string, port?: string): string {
  * Generate the screenshot upload helper script.
  */
 export function generateUploadScreenshotScript(issueId: string, port?: string): string {
-  const p = port || PORT;
+  const p = port || config.serverPort;
   return [
     '#!/bin/bash',
     '# Upload a screenshot for this task.',
     '# Usage: ./.hermes-monitor/upload-screenshot.sh screenshot.png "Description"',
+    '',
+    'command -v jq >/dev/null 2>&1 || { echo "Error: jq is required but not installed. Install with: apt install jq / brew install jq"; exit 1; }',
     '',
     'FILE="${1:?Usage: upload-screenshot.sh <file> [description]}"',
     'DESCRIPTION="${2:-}"',
@@ -416,7 +426,8 @@ export function generateUploadScreenshotScript(issueId: string, port?: string): 
     '',
     'FILENAME=$(basename "$FILE")',
     'QUERY="filename=$FILENAME"',
-    '[[ -n "$DESCRIPTION" ]] && QUERY="$QUERY&description=$(echo "$DESCRIPTION" | sed \'s/ /+/g\')"',
+    '# Use jq for proper URL encoding (handles &, ?, #, = and all special chars)',
+    '[[ -n "$DESCRIPTION" ]] && QUERY="$QUERY&description=$(printf \'%s\' "$DESCRIPTION" | jq -sRr @uri)"',
     '',
     `BASE_URL="http://localhost:${p}/agent/${issueId}"`,
     '',
@@ -426,8 +437,8 @@ export function generateUploadScreenshotScript(issueId: string, port?: string): 
     '',
     'echo "$RESPONSE"',
     '',
-    '# Extract markdown snippet',
-    'MARKDOWN=$(echo "$RESPONSE" | grep -o \'"markdown":"[^"]*"\' | cut -d\'"\' -f4)',
+    '# Extract markdown snippet using jq for reliable JSON parsing',
+    'MARKDOWN=$(echo "$RESPONSE" | jq -r \'.markdown // empty\')',
     'if [[ -n "$MARKDOWN" ]]; then',
     '  echo ""',
     '  echo "Markdown to include in PR description:"',
@@ -454,6 +465,54 @@ function getAgentContextFile(agentId: string): { filename: string; generator: ()
   }
 }
 
+/** Files that should be excluded from git in target repos */
+const GENERATED_EXCLUDES = [
+  '# hermes-monitor generated context files (do not commit)',
+  'TASK.md',
+  'AGENTS.md',
+  'CLAUDE.md',
+  '.hermes-monitor/',
+];
+
+/**
+ * Write entries to .git/info/exclude for the worktree to prevent
+ * generated context files from being staged by `git add -A`.
+ *
+ * Uses the per-worktree exclude file, which is invisible to the repo
+ * and doesn't conflict with the user's .gitignore.
+ */
+function writeGitExclude(worktreePath: string): void {
+  try {
+    // git rev-parse --git-dir gives the worktree-specific git dir
+    const gitDir = execSync('git rev-parse --git-dir', {
+      cwd: worktreePath,
+      stdio: 'pipe',
+    }).toString().trim();
+
+    const resolvedGitDir = resolve(worktreePath, gitDir);
+    const infoDir = join(resolvedGitDir, 'info');
+    mkdirSync(infoDir, { recursive: true });
+
+    const excludePath = join(infoDir, 'exclude');
+
+    // Read existing content (if any) and only add entries that aren't already present
+    let existing = '';
+    if (existsSync(excludePath)) {
+      existing = readFileSync(excludePath, 'utf-8');
+    }
+
+    const linesToAdd = GENERATED_EXCLUDES.filter((line) => !existing.includes(line));
+    if (linesToAdd.length > 0) {
+      const suffix = existing.endsWith('\n') || existing === '' ? '' : '\n';
+      writeFileSync(excludePath, existing + suffix + linesToAdd.join('\n') + '\n', 'utf-8');
+    }
+  } catch {
+    // Non-fatal — the context files will still work, they just might
+    // be staged by git add -A. The .gitignore in hermes-monitor's own
+    // repo still protects the common case.
+  }
+}
+
 /**
  * Write all task context files into a worktree.
  *
@@ -468,9 +527,9 @@ function getAgentContextFile(agentId: string): { filename: string; generator: ()
  * Files are written atomically. Existing files are overwritten (they may
  * be stale from a previous attempt).
  */
-export function writeTaskContext(options: TaskContextOptions): void {
+export function writeTaskContext(options: TaskContextOptions & { worktreePath: string }): void {
   const { issue, worktreePath } = options;
-  const port = options.port || PORT;
+  const port = options.port || config.serverPort;
 
   // Bail early if the worktree directory doesn't exist (shouldn't happen
   // in production, but can occur in tests with mock worktree managers)
@@ -508,13 +567,23 @@ export function writeTaskContext(options: TaskContextOptions): void {
     writeFileSync(scriptPath, script.content, 'utf-8');
     chmodSync(scriptPath, 0o755);
   }
+
+  // Inject entries into .git/info/exclude to prevent context files from
+  // being committed into target repos. This is invisible to the repo
+  // (not committed) and doesn't conflict with the user's .gitignore.
+  writeGitExclude(worktreePath);
 }
 
 /**
  * Update TASK.md in an existing worktree (e.g., after rework).
  * Re-generates the file with fresh review feedback and status.
+ *
+ * Note: writeTaskContext already handles the rework case (since rework
+ * goes through `to === 'in_progress'`), so this function is available
+ * for callers that only need to regenerate TASK.md without touching
+ * helper scripts or agent context files.
  */
-export function updateTaskContext(options: TaskContextOptions): void {
+export function updateTaskContext(options: TaskContextOptions & { worktreePath: string }): void {
   const { worktreePath } = options;
   const taskMd = generateTaskMd(options);
   writeFileSync(join(worktreePath, 'TASK.md'), taskMd, 'utf-8');
