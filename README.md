@@ -197,6 +197,7 @@ curl -X POST http://localhost:4000/agent/:id/review
 | `HERMES_SCREENSHOT_BASE` | `/tmp/hermes-screenshots` | Where screenshots are stored |
 | `HERMES_DB_PATH` | `../hermes-monitor.db` | SQLite database path |
 | `HERMES_REQUIRE_SCREENSHOTS` | `true` | Require screenshots for UI changes |
+| `HERMES_AUDIBLE_ALERTS` | `false` | Play terminal bell on ticket status changes (requires interactive terminal) |
 
 ## Agent Presets
 
