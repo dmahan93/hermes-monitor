@@ -1,4 +1,3 @@
-import { useNavigate } from 'react-router-dom';
 import { Header } from './components/Header';
 import { TerminalGrid } from './components/TerminalGrid';
 import { KanbanBoard } from './components/KanbanBoard';
@@ -44,8 +43,6 @@ function AppContent() {
     errors, removeError,
   } = useApp();
 
-  const navigate = useNavigate();
-
   if (loading) {
     return (
       <div className="app">
@@ -58,7 +55,9 @@ function AppContent() {
     <div className="app">
       <Header
         onAdd={view === 'terminals' ? handleAddTerminal : undefined}
-        onHome={() => navigate('/')}
+        onHome={() => {
+          window.location.href = `http://${window.location.hostname}:${__DEFAULT_HUB_PORT__}`;
+        }}
         connected={connected}
       >
         <ViewSwitcher

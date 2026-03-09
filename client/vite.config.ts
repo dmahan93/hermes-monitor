@@ -27,6 +27,7 @@ export default defineConfig({
   plugins: [react()],
   define: {
     __CLIENT_PORT_OFFSET__: JSON.stringify(sharedConstants.CLIENT_PORT_OFFSET),
+    __DEFAULT_HUB_PORT__: JSON.stringify(sharedConstants.DEFAULT_HUB_PORT),
   },
   server: {
     port: 3000,
