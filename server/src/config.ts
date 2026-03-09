@@ -1,6 +1,7 @@
 import { existsSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, basename, join } from 'path';
 import { execSync } from 'child_process';
+import { createHash } from 'crypto';
 import type { MergeMode, ManagerTerminalAgent } from '@hermes-monitor/shared/types';
 
 export type { MergeMode, ManagerTerminalAgent } from '@hermes-monitor/shared/types';
@@ -42,9 +43,35 @@ function detectDefaultBranch(repoPath: string): string {
 // Default to parent of server/ dir (project root), or HERMES_REPO_PATH env var
 const defaultRepo = process.env.HERMES_REPO_PATH || resolve(process.cwd(), '..');
 
+/**
+ * Derive a per-repo worktree base directory.
+ *
+ * In multi-repo hub mode, each repo instance gets its own subdirectory under
+ * /tmp/hermes-worktrees/ to prevent worktree collisions between repos.
+ * Format: /tmp/hermes-worktrees/<basename>-<hash>/
+ *
+ * The basename prefix makes `ls /tmp/hermes-worktrees/` human-readable.
+ * The hash suffix ensures uniqueness even when multiple repos share a name.
+ */
+export function getWorktreeBase(): string {
+  if (process.env.HERMES_WORKTREE_BASE) {
+    return process.env.HERMES_WORKTREE_BASE;
+  }
+
+  const repoPath = process.env.HERMES_REPO_PATH;
+  if (repoPath) {
+    const resolved = resolve(repoPath);
+    const hash = createHash('sha256').update(resolved).digest('hex').slice(0, 12);
+    const name = basename(resolved).replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 30);
+    return join('/tmp/hermes-worktrees', `${name}-${hash}`);
+  }
+
+  return '/tmp/hermes-worktrees';
+}
+
 export const config: AppConfig = {
   repoPath: defaultRepo,
-  worktreeBase: process.env.HERMES_WORKTREE_BASE || '/tmp/hermes-worktrees',
+  worktreeBase: getWorktreeBase(),
   reviewBase: process.env.HERMES_REVIEW_BASE || '/tmp/hermes-reviews',
   screenshotBase: process.env.HERMES_SCREENSHOT_BASE || '/tmp/hermes-screenshots',
   diagnosticsBase: process.env.HERMES_DIAGNOSTICS_BASE || '/tmp/hermes-diagnostics',
