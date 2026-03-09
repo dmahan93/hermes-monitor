@@ -149,29 +149,31 @@ export function HubLanding() {
     }
   };
 
-  /** Toggle start/stop via PATCH /api/hub/repos/:id */
+  /**
+   * Toggle start/stop via the spawner API.
+   * Uses POST /api/hub/repos/:id/start or /stop to actually spawn/kill
+   * the hermes-monitor child process, not just update the registry status.
+   */
   const handleToggle = async (repo: RepoEntry, e: React.MouseEvent) => {
     e.stopPropagation();
     if (mutatingRepos.has(repo.id)) return;
 
-    const newStatus: RepoStatus = repo.status === 'running' || repo.status === 'starting'
-      ? 'stopped'
-      : 'running';
+    const action = (repo.status === 'running' || repo.status === 'starting')
+      ? 'stop'
+      : 'start';
 
     setMutatingRepos(prev => new Set(prev).add(repo.id));
     try {
-      const res = await fetch(`${API_BASE}/hub/repos/${encodeURIComponent(repo.id)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
+      const res = await fetch(`${API_BASE}/hub/repos/${encodeURIComponent(repo.id)}/${action}`, {
+        method: 'POST',
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Failed to update (${res.status})`);
+        throw new Error(data.error || `Failed to ${action} (${res.status})`);
       }
       if (mountedRef.current) await fetchRepos();
     } catch (err: any) {
-      if (mountedRef.current) setError(err.message || 'Failed to toggle repo');
+      if (mountedRef.current) setError(err.message || `Failed to ${action} repo`);
     } finally {
       setMutatingRepos(prev => { const next = new Set(prev); next.delete(repo.id); return next; });
     }
@@ -207,15 +209,34 @@ export function HubLanding() {
     }
   };
 
-  /** Navigate to repo settings */
-  const handleSettings = (repo: RepoEntry, e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigate(`/${encodeURIComponent(repo.id)}/config`);
+  /**
+   * Build the per-repo client URL.
+   * Each repo runs its own Vite client on (server port + CLIENT_PORT_OFFSET).
+   * We must navigate to that origin — NOT use client-side routing — because
+   * the Vite proxy on the current origin points to a different server.
+   */
+  const getRepoClientUrl = (repo: RepoEntry, path = ''): string => {
+    const clientPort = repo.port + __CLIENT_PORT_OFFSET__;
+    return `http://localhost:${clientPort}${path}`;
   };
 
-  /** Navigate to repo dashboard */
+  /** Navigate to repo settings — opens on the repo's own client */
+  const handleSettings = (repo: RepoEntry, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (repo.status === 'running') {
+      window.location.href = getRepoClientUrl(repo, `/${encodeURIComponent(repo.id)}/config`);
+    } else {
+      navigate(`/${encodeURIComponent(repo.id)}/config`);
+    }
+  };
+
+  /** Navigate to repo dashboard — opens on the repo's own client */
   const handleCardClick = (repo: RepoEntry) => {
-    navigate(`/${encodeURIComponent(repo.id)}`);
+    if (repo.status === 'running') {
+      window.location.href = getRepoClientUrl(repo, `/${encodeURIComponent(repo.id)}`);
+    } else {
+      navigate(`/${encodeURIComponent(repo.id)}`);
+    }
   };
 
   const statusLabel = (status: RepoStatus): string => {

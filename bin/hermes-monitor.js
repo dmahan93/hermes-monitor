@@ -343,7 +343,7 @@ async function handleDefault() {
       if (await checkHealth(entry.port)) {
         const runningClientPort = entry.port + CLIENT_PORT_OFFSET;
         console.log(`Repo ${entry.name} is now running on :${runningClientPort}`);
-        if (opts.browser) openBrowser(`http://localhost:${runningClientPort}`);
+        if (opts.browser) openBrowser(`http://localhost:${runningClientPort}/${encodeURIComponent(entry.id)}`);
         process.exit(0);
       }
     } else if (alive && entry.status === 'running') {
@@ -351,7 +351,7 @@ async function handleDefault() {
       if (await checkHealth(entry.port)) {
         const runningClientPort = entry.port + CLIENT_PORT_OFFSET;
         console.log(`Repo ${entry.name} is already running on :${runningClientPort}`);
-        if (opts.browser) openBrowser(`http://localhost:${runningClientPort}`);
+        if (opts.browser) openBrowser(`http://localhost:${runningClientPort}/${encodeURIComponent(entry.id)}`);
         process.exit(0);
       }
       // PID alive but server not responding — kill stale process before restart
@@ -486,7 +486,7 @@ async function handleDefault() {
   let worstExitCode = 0;
 
   {
-    const url = `http://localhost:${CLIENT_PORT}`;
+    const url = `http://localhost:${CLIENT_PORT}/${encodeURIComponent(entry.id)}`;
 
     async function pollReady() {
       if (shuttingDown) return;

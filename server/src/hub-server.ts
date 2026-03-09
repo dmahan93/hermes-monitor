@@ -60,8 +60,9 @@ export function createHubApp(dbPath?: string): {
           const statusClass = r.status === 'running' ? 'running' : 'stopped';
           const statusDot = r.status === 'running' ? '●' : '○';
           const clientPort = r.port + CLIENT_PORT_OFFSET;
+          const repoUrl = `http://localhost:${clientPort}/${encodeURIComponent(r.id)}`;
           const link = r.status === 'running'
-            ? `<a href="http://localhost:${clientPort}" class="repo-link">Open Dashboard →</a>`
+            ? `<a href="${repoUrl}" class="repo-link">Open Dashboard →</a>`
             : '<span class="repo-offline">Not running</span>';
           return `
             <div class="repo-card ${statusClass}">
