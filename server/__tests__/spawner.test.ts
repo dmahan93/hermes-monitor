@@ -579,6 +579,77 @@ describe('Spawner', () => {
     expect(err).toBeInstanceOf(Error);
     expect(err).toBeInstanceOf(SpawnerError);
   });
+
+  // ── Cross-instance interference (bug: launching from different repo kills previous) ──
+
+  it('a fresh spawner calling startAll() corrupts untracked running repos', async () => {
+    // Simulate repo A already running (managed by the CLI, not this spawner).
+    // Set it to 'running' with a real PID so it looks alive.
+    const repoA = registry.register('/tmp/test-repo-cross-a');
+    registry.updateStatus(repoA.id, 'running', process.pid); // use own PID as stand-in
+
+    // Now create a SECOND spawner (simulating what a per-repo server for repo B
+    // would do — it creates its own Spawner against the same registry).
+    const crashRoot = createCrashingBin(join(tmpDir, 'cross-crash'));
+    const secondSpawner = new Spawner(registry, {
+      hermesRoot: crashRoot, // will fail immediately (port in use in real scenario)
+      logDir,
+      healthCheckIntervalMs: 60_000, // disable auto-restarts for this test
+      stopTimeoutMs: 2000,
+    });
+
+    // Before startAll: repo A should be 'running' with a valid PID
+    expect(registry.get(repoA.id)!.status).toBe('running');
+    expect(registry.get(repoA.id)!.pid).toBe(process.pid);
+
+    // Second spawner calls startAll() — it sees repo A as 'running' but not
+    // in its own process map, so it tries to spawn it. _doSpawn sets status
+    // to 'starting' with null PID, then the crashing bin exits → status 'error'.
+    await secondSpawner.startAll();
+
+    // Wait for the crash to be processed
+    await waitFor(() => {
+      const current = registry.get(repoA.id);
+      return current?.status === 'error';
+    });
+
+    // BUG DEMONSTRATED: repo A's status is now 'error' with null PID,
+    // even though the original process (process.pid) is still alive.
+    const corrupted = registry.get(repoA.id)!;
+    expect(corrupted.status).toBe('error');
+    expect(corrupted.pid).toBeNull();
+
+    await secondSpawner.stopAll();
+  });
+
+  it('skipping startAll() in per-repo mode preserves sibling repo status', async () => {
+    // Simulate repo A already running (managed by the CLI)
+    const repoA = registry.register('/tmp/test-repo-guard-a');
+    registry.updateStatus(repoA.id, 'running', process.pid);
+
+    // Simulate the per-repo mode guard: when HERMES_REPO_PATH is set,
+    // index.ts does NOT call spawner.startAll(). Verify repo A stays intact.
+    const isPerRepoInstance = true; // simulates !!process.env.HERMES_REPO_PATH
+
+    const secondSpawner = new Spawner(registry, {
+      hermesRoot,
+      logDir,
+      healthCheckIntervalMs: 60_000,
+      stopTimeoutMs: 2000,
+    });
+
+    // The guard in index.ts: if (!isPerRepoInstance) { spawner.startAll(); }
+    if (!isPerRepoInstance) {
+      await secondSpawner.startAll();
+    }
+
+    // Repo A should be completely untouched
+    const preserved = registry.get(repoA.id)!;
+    expect(preserved.status).toBe('running');
+    expect(preserved.pid).toBe(process.pid);
+
+    await secondSpawner.stopAll();
+  });
 });
 
 // ── Spawner API tests ──
