@@ -307,6 +307,14 @@ export class IssueManager {
       issue.terminalId = null;
     }
 
+    // Kill reviewer/conflict-fixer terminal when leaving review.
+    // Must happen before the in_progress spawn guard so issue.terminalId
+    // is cleared and a new coding agent terminal can be created.
+    if (from === 'review' && issue.terminalId) {
+      this.terminalManager.kill(issue.terminalId);
+      issue.terminalId = null;
+    }
+
     // Reset PR verdict when moving back to in_progress so it doesn't show stale status
     if (to === 'in_progress' && this.prManager) {
       const existingPr = this.prManager.getByIssueId(issue.id);
@@ -382,12 +390,6 @@ export class IssueManager {
           // PR already exists (e.g. review → in_progress → review cycle)
           // Relaunch the review to pick up new changes + updated submitter notes
           this.prManager.relaunchReview(existingPr.id, issue.submitterNotes, issue.screenshotBypassReason);
-        }
-
-        // Sync issue.terminalId with the reviewer's terminal
-        const pr = this.prManager.getByIssueId(issue.id);
-        if (pr?.reviewerTerminalId) {
-          issue.terminalId = pr.reviewerTerminalId;
         }
       }
     }

@@ -302,6 +302,14 @@ export class PRManager {
       return;
     }
 
+    // Terminal was killed externally (e.g., by IssueManager during a status
+    // transition away from review). When kill() is called, the terminal is
+    // removed from the TerminalManager map before the exit event fires.
+    // Skip cleanup — the caller handles the transition.
+    if (!this.terminalManager.get(terminalId)) {
+      return;
+    }
+
     // Find the PR this reviewer belongs to
     const pr = Array.from(this.prs.values()).find(
       (p) => p.reviewerTerminalId === terminalId
@@ -440,6 +448,12 @@ export class PRManager {
    */
   private handleConflictFixerExit(terminalId: string): void {
     this.conflictFixerTerminals.delete(terminalId);
+
+    // Terminal was killed externally (e.g., by IssueManager during a status
+    // transition away from review). Skip cleanup — the caller handles it.
+    if (!this.terminalManager.get(terminalId)) {
+      return;
+    }
 
     // Find the PR this conflict fixer belongs to
     const pr = Array.from(this.prs.values()).find(

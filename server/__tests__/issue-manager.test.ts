@@ -752,12 +752,14 @@ describe('IssueManager', () => {
 
   it('in_progress→review sets issue.terminalId to reviewer terminal', () => {
     setup();
-    const fakePr = { id: 'pr-review-term', issueId: '', reviewerTerminalId: 'reviewer-term-42' };
+    const fakePr = { id: 'pr-review-term', issueId: '', reviewerTerminalId: null as string | null };
     const mockPRManager = {
       getByIssueId: vi.fn().mockReturnValue(undefined),
       create: vi.fn().mockReturnValue(fakePr),
       spawnReviewer: vi.fn().mockImplementation(() => {
+        // Simulate what real spawnReviewer does: set PR terminal and call updateTerminalId
         fakePr.reviewerTerminalId = 'reviewer-term-42';
+        issueManager.updateTerminalId(fakePr.issueId, 'reviewer-term-42');
       }),
       relaunchReview: vi.fn(),
       resetToOpen: vi.fn(),
@@ -771,14 +773,184 @@ describe('IssueManager', () => {
     const termId = issueManager.get(issue.id)!.terminalId;
     expect(termId).toBeTruthy();
 
-    // Mock getByIssueId to return undefined first (no existing PR)
-    (mockPRManager.getByIssueId as ReturnType<typeof vi.fn>)
-      .mockReturnValueOnce(undefined)  // first call in the 'no existing PR' check
-      .mockReturnValue(fakePr);        // second call for syncing terminalId
-
     issueManager.changeStatus(issue.id, 'review');
     const updated = issueManager.get(issue.id);
-    // Issue should now point to the reviewer's terminal
+    // Issue should now point to the reviewer's terminal (set via updateTerminalId in spawnReviewer)
     expect(updated!.terminalId).toBe('reviewer-term-42');
+  });
+
+  it('review→in_progress with active reviewer kills reviewer and spawns coding terminal', () => {
+    setup();
+
+    // Create a real terminal to act as the "reviewer" terminal
+    const reviewerTerminal = terminalManager.create({ title: 'Reviewer', command: 'sleep 60' });
+    const reviewerTerminalId = reviewerTerminal.id;
+
+    const fakePr = { id: 'pr-active-reviewer', issueId: '', reviewerTerminalId };
+    const mockPRManager = {
+      getByIssueId: vi.fn().mockReturnValue(undefined),
+      create: vi.fn().mockReturnValue(fakePr),
+      spawnReviewer: vi.fn().mockImplementation(() => {
+        fakePr.reviewerTerminalId = reviewerTerminalId;
+        issueManager.updateTerminalId(fakePr.issueId, reviewerTerminalId);
+      }),
+      relaunchReview: vi.fn(),
+      resetToOpen: vi.fn(),
+    } as unknown as PRManager;
+
+    issueManager.setPRManager(mockPRManager);
+    const issue = issueManager.create({ title: 'Active reviewer test' });
+    fakePr.issueId = issue.id;
+
+    // Move to in_progress → spawns coding terminal
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const codingTermId = issueManager.get(issue.id)!.terminalId!;
+    expect(codingTermId).toBeTruthy();
+
+    // Move to review → kills coding terminal, spawnReviewer sets reviewer terminal
+    issueManager.changeStatus(issue.id, 'review');
+    expect(issueManager.get(issue.id)!.terminalId).toBe(reviewerTerminalId);
+
+    // Now move back to in_progress WHILE reviewer terminal is still active.
+    // The from=review cleanup block should kill the reviewer terminal and
+    // clear issue.terminalId so a new coding terminal can be spawned.
+    (mockPRManager.getByIssueId as ReturnType<typeof vi.fn>).mockReturnValue(fakePr);
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const updated = issueManager.get(issue.id)!;
+    // Should have a new coding terminal, not the reviewer terminal
+    expect(updated.terminalId).toBeTruthy();
+    expect(updated.terminalId).not.toBe(reviewerTerminalId);
+    // Reviewer terminal should have been killed
+    expect(terminalManager.get(reviewerTerminalId)).toBeUndefined();
+    // resetToOpen should have been called to clear stale PR verdict
+    expect(mockPRManager.resetToOpen).toHaveBeenCalledWith('pr-active-reviewer');
+  });
+
+  it('review→in_progress without active terminal still spawns coding terminal', () => {
+    setup();
+
+    // This tests the normal flow where the reviewer has already exited
+    // and handleReviewerExit has cleared issue.terminalId
+    const fakePr = { id: 'pr-no-reviewer', issueId: '', reviewerTerminalId: null as string | null };
+    const mockPRManager = {
+      getByIssueId: vi.fn().mockReturnValue(undefined),
+      create: vi.fn().mockReturnValue(fakePr),
+      spawnReviewer: vi.fn().mockImplementation(() => {
+        fakePr.reviewerTerminalId = 'reviewer-term-done';
+        issueManager.updateTerminalId(fakePr.issueId, 'reviewer-term-done');
+      }),
+      relaunchReview: vi.fn(),
+      resetToOpen: vi.fn(),
+    } as unknown as PRManager;
+
+    issueManager.setPRManager(mockPRManager);
+    const issue = issueManager.create({ title: 'Normal review exit test' });
+    fakePr.issueId = issue.id;
+
+    issueManager.changeStatus(issue.id, 'in_progress');
+    issueManager.changeStatus(issue.id, 'review');
+
+    // Simulate reviewer has exited and cleared the terminal reference
+    issueManager.updateTerminalId(issue.id, null);
+
+    // Move back to in_progress — should spawn coding terminal even though
+    // issue.terminalId is already null
+    (mockPRManager.getByIssueId as ReturnType<typeof vi.fn>).mockReturnValue(fakePr);
+    issueManager.changeStatus(issue.id, 'in_progress');
+
+    const updated = issueManager.get(issue.id)!;
+    expect(updated.status).toBe('in_progress');
+    expect(updated.terminalId).toBeTruthy();
+  });
+
+  it('in_progress→review→in_progress→review cycle (relaunchReview) updates terminalId', () => {
+    setup();
+
+    // Track terminal IDs assigned during each review cycle
+    let reviewCycle = 0;
+    const reviewerTerminalIds = ['reviewer-term-cycle-1', 'reviewer-term-cycle-2'];
+
+    const fakePr = { id: 'pr-relaunch', issueId: '', reviewerTerminalId: null as string | null };
+    const mockPRManager = {
+      getByIssueId: vi.fn().mockReturnValue(undefined),
+      create: vi.fn().mockReturnValue(fakePr),
+      spawnReviewer: vi.fn().mockImplementation(() => {
+        const termId = reviewerTerminalIds[reviewCycle];
+        fakePr.reviewerTerminalId = termId;
+        issueManager.updateTerminalId(fakePr.issueId, termId);
+        reviewCycle++;
+      }),
+      relaunchReview: vi.fn().mockImplementation(() => {
+        // Simulate what real relaunchReview does:
+        // Kill old terminal, reset PR state, then call spawnReviewer (which calls updateTerminalId)
+        fakePr.reviewerTerminalId = null;
+        const termId = reviewerTerminalIds[reviewCycle];
+        fakePr.reviewerTerminalId = termId;
+        issueManager.updateTerminalId(fakePr.issueId, termId);
+        reviewCycle++;
+      }),
+      resetToOpen: vi.fn(),
+    } as unknown as PRManager;
+
+    issueManager.setPRManager(mockPRManager);
+    const issue = issueManager.create({ title: 'Relaunch cycle test' });
+    fakePr.issueId = issue.id;
+
+    // Cycle 1: in_progress → review (creates PR, spawns first reviewer)
+    issueManager.changeStatus(issue.id, 'in_progress');
+    issueManager.changeStatus(issue.id, 'review');
+    expect(issueManager.get(issue.id)!.terminalId).toBe('reviewer-term-cycle-1');
+    expect(mockPRManager.spawnReviewer).toHaveBeenCalledTimes(1);
+
+    // Simulate reviewer has exited and cleared the terminal reference
+    issueManager.updateTerminalId(issue.id, null);
+
+    // Back to in_progress (user sends back for changes)
+    (mockPRManager.getByIssueId as ReturnType<typeof vi.fn>).mockReturnValue(fakePr);
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const codingTermId = issueManager.get(issue.id)!.terminalId!;
+    expect(codingTermId).toBeTruthy();
+
+    // Cycle 2: in_progress → review again (PR already exists, calls relaunchReview)
+    issueManager.changeStatus(issue.id, 'review');
+    expect(issueManager.get(issue.id)!.terminalId).toBe('reviewer-term-cycle-2');
+    expect(mockPRManager.relaunchReview).toHaveBeenCalledTimes(1);
+    // spawnReviewer should NOT be called again (relaunchReview handles spawning internally)
+    expect(mockPRManager.spawnReviewer).toHaveBeenCalledTimes(1);
+  });
+
+  it('review→done with active reviewer kills reviewer terminal', () => {
+    setup();
+
+    const reviewerTerminal = terminalManager.create({ title: 'Reviewer', command: 'sleep 60' });
+    const reviewerTerminalId = reviewerTerminal.id;
+
+    const fakePr = { id: 'pr-review-done', issueId: '', reviewerTerminalId };
+    const mockPRManager = {
+      getByIssueId: vi.fn().mockReturnValue(undefined),
+      create: vi.fn().mockReturnValue(fakePr),
+      spawnReviewer: vi.fn().mockImplementation(() => {
+        fakePr.reviewerTerminalId = reviewerTerminalId;
+        issueManager.updateTerminalId(fakePr.issueId, reviewerTerminalId);
+      }),
+      relaunchReview: vi.fn(),
+      resetToOpen: vi.fn(),
+    } as unknown as PRManager;
+
+    issueManager.setPRManager(mockPRManager);
+    const issue = issueManager.create({ title: 'Review to done test' });
+    fakePr.issueId = issue.id;
+
+    issueManager.changeStatus(issue.id, 'in_progress');
+    issueManager.changeStatus(issue.id, 'review');
+    expect(issueManager.get(issue.id)!.terminalId).toBe(reviewerTerminalId);
+
+    // Move directly to done — should kill the reviewer terminal
+    issueManager.changeStatus(issue.id, 'done');
+    const updated = issueManager.get(issue.id)!;
+    expect(updated.status).toBe('done');
+    expect(updated.terminalId).toBeNull();
+    expect(terminalManager.get(reviewerTerminalId)).toBeUndefined();
   });
 });
