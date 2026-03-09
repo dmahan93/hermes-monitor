@@ -5,6 +5,7 @@
  * trigger merges, manage comments, and configure review settings.
  */
 import { Router, json } from 'express';
+import { execSync } from 'child_process';
 import type { PRManager } from './pr-manager.js';
 import type { IssueManager } from './issue-manager.js';
 import { config, updateConfig } from './config.js';
@@ -25,6 +26,52 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
     const { repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote, mergeMode, managerTerminalAgent, audibleAlerts } = req.body || {};
     updateConfig({ repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote, mergeMode, managerTerminalAgent, audibleAlerts });
     res.json(config);
+  });
+
+  // ── Branches ──
+
+  router.get('/branches', (_req, res) => {
+    try {
+      const output = execSync('git branch --list --no-color', {
+        cwd: config.repoPath,
+        stdio: 'pipe',
+      }).toString().trim();
+      const branches = output
+        .split('\n')
+        .map((line) => line.replace(/^\*?\s+/, '').trim())
+        .filter((b) => b && !b.startsWith('('));
+      res.json({ branches, current: config.targetBranch });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to list branches';
+      res.status(500).json({ error: message });
+    }
+  });
+
+  router.post('/branches', (req, res) => {
+    const { name } = req.body || {};
+    if (!name || typeof name !== 'string') {
+      res.status(400).json({ error: 'Branch name is required' });
+      return;
+    }
+    const trimmed = name.trim();
+    // Validate branch name: no spaces, no special chars except - _ . /
+    if (!trimmed || !/^[a-zA-Z0-9][a-zA-Z0-9._\-/]*$/.test(trimmed)) {
+      res.status(400).json({ error: 'Invalid branch name' });
+      return;
+    }
+    try {
+      // Create the branch from current target branch
+      execSync(`git branch ${trimmed} ${config.targetBranch}`, {
+        cwd: config.repoPath,
+        stdio: 'pipe',
+      });
+      // Update config to use the new branch
+      updateConfig({ targetBranch: trimmed });
+      res.json({ branch: trimmed, config });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to create branch';
+      res.status(500).json({ error: message });
+    }
   });
 
   // ── Pull Requests ──
