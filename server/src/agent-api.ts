@@ -21,8 +21,7 @@ import { pushBranch, createGitHubPR } from './github.js';
 /** File extensions that indicate UI changes requiring screenshots (derived from screenshot-utils) */
 const UI_FILE_EXTENSIONS = new Set(UI_EXTENSIONS);
 
-/** Server port — single source of truth for URL construction in this module */
-const PORT = process.env.PORT || '4000';
+
 
 const MIME_TO_EXT: Record<string, string> = {
   'image/png': '.png',
@@ -206,7 +205,7 @@ export function createAgentApiRouter(
     // Get diagnostic entries from previous terminal exits
     const previousAttempts = getDiagnostics(issue.id, config.diagnosticsBase);
 
-    const baseUrl = `http://localhost:${PORT}`;
+    const baseUrl = `http://localhost:${config.serverPort}`;
 
     const screenshotUploadUrl = `${baseUrl}/agent/${issue.id}/screenshots`;
     const screenshotUploadInstructions = [
@@ -299,7 +298,7 @@ export function createAgentApiRouter(
     writeFileSync(filePath, req.body);
 
     const url = `/screenshots/${issue.id}/${basename}`;
-    const fullUrl = `http://localhost:${PORT}${url}`;
+    const fullUrl = `http://localhost:${config.serverPort}${url}`;
     const alt = description || basename;
     const markdown = `![${alt}](${fullUrl})`;
 
@@ -319,8 +318,8 @@ export function createAgentApiRouter(
     const screenshots = files.map((f) => ({
       filename: f,
       url: `/screenshots/${issue.id}/${f}`,
-      fullUrl: `http://localhost:${PORT}/screenshots/${issue.id}/${f}`,
-      markdown: `![${f}](http://localhost:${PORT}/screenshots/${issue.id}/${f})`,
+      fullUrl: `http://localhost:${config.serverPort}/screenshots/${issue.id}/${f}`,
+      markdown: `![${f}](http://localhost:${config.serverPort}/screenshots/${issue.id}/${f})`,
     }));
 
     res.json({ screenshots });
@@ -480,7 +479,7 @@ export function createAgentApiRouter(
                   'To fix: upload screenshots using the screenshotUploadUrl from /agent/:id/info',
                   '',
                   'To bypass (if no visual changes): resubmit with ?no_ui_changes=true',
-                  '  curl -s -X POST http://localhost:' + PORT + '/agent/' + issue.id + '/review?no_ui_changes=true',
+                  '  curl -s -X POST http://localhost:' + config.serverPort + '/agent/' + issue.id + '/review?no_ui_changes=true',
                   '',
                   'Or send JSON body: { "noUiChanges": true, "reason": "explain why no visual change" }',
                 ].join('\n'),

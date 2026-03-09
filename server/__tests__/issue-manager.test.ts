@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { TerminalManager } from '../src/terminal-manager.js';
 import { IssueManager } from '../src/issue-manager.js';
+import { config } from '../src/config.js';
 import type { PRManager } from '../src/pr-manager.js';
 import type { WorktreeManager } from '../src/worktree-manager.js';
 
@@ -165,6 +166,44 @@ describe('IssueManager', () => {
 
     const interpolated = issueManager.interpolateCommand(issue.command, issue);
     expect(interpolated).toBe('/bin/echo "Fix login - fix/login"');
+  });
+
+  it('command template interpolates {{port}} from config.serverPort', () => {
+    setup();
+    const originalPort = config.serverPort;
+    config.serverPort = '5555';
+
+    const issue = issueManager.create({
+      title: 'Port test',
+      description: 'test',
+      agent: 'custom',
+      command: 'curl http://localhost:{{port}}/agent/{{id}}/info',
+    });
+
+    const interpolated = issueManager.interpolateCommand(issue.command, issue);
+    expect(interpolated).toContain('http://localhost:5555/agent/');
+    expect(interpolated).toContain(issue.id);
+    expect(interpolated).not.toContain('{{port}}');
+
+    config.serverPort = originalPort;
+  });
+
+  it('command template uses default port 4000 when PORT env not set', () => {
+    setup();
+    const originalPort = config.serverPort;
+    config.serverPort = '4000';
+
+    const issue = issueManager.create({
+      title: 'Default port',
+      description: 'test',
+      agent: 'custom',
+      command: 'curl http://localhost:{{port}}/agent/{{id}}/info',
+    });
+
+    const interpolated = issueManager.interpolateCommand(issue.command, issue);
+    expect(interpolated).toContain('http://localhost:4000/agent/');
+
+    config.serverPort = originalPort;
   });
 
   it('command template escapes single quotes in values', () => {

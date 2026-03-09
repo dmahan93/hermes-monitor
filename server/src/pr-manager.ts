@@ -198,8 +198,7 @@ export class PRManager {
     mkdirSync(reviewDir, { recursive: true });
 
     // Build screenshot section for the review context
-    const port = process.env.PORT || '4000';
-    const screenshotSection = buildScreenshotSection(pr.issueId, pr.changedFiles, port, pr.screenshotBypassReason);
+    const screenshotSection = buildScreenshotSection(pr.issueId, pr.changedFiles, config.serverPort, pr.screenshotBypassReason);
 
     const contextSections = [
       `# PR Review: ${pr.title}`,
