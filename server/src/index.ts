@@ -18,7 +18,7 @@ import { createRegistryApiRouter } from './manager/registry-api.js';
 import { Spawner } from './manager/spawner.js';
 import { createSpawnerApiRouter } from './manager/spawner-api.js';
 import { setupWebSocket, broadcastToAll } from './ws.js';
-import { config, isGitRepo } from './config.js';
+import { config, updateConfig, isGitRepo } from './config.js';
 import { enrichPRWithScreenshots } from './screenshot-utils.js';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
@@ -57,6 +57,12 @@ if (backlog > 0) {
 }
 issueManager.loadFromStore();
 prManager.loadFromStore();
+
+// Restore persisted target branch (survives server restarts)
+const persistedTargetBranch = store.getConfig('targetBranch');
+if (persistedTargetBranch) {
+  updateConfig({ targetBranch: persistedTargetBranch });
+}
 
 // Log repo config
 if (isGitRepo(config.repoPath)) {
@@ -135,7 +141,7 @@ app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 // REST API
 app.use('/api', createApiRouter(terminalManager));
 app.use('/api', createIssueApiRouter(issueManager));
-app.use('/api', createPRApiRouter(prManager, issueManager));
+app.use('/api', createPRApiRouter(prManager, issueManager, store));
 app.use('/api', createGitApiRouter());
 app.use('/api/batch', createBatchApiRouter(prManager, issueManager, terminalManager));
 app.use('/api', createRegistryApiRouter(registry));

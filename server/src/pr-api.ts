@@ -8,10 +8,11 @@ import { Router, json } from 'express';
 import { execSync } from 'child_process';
 import type { PRManager } from './pr-manager.js';
 import type { IssueManager } from './issue-manager.js';
+import type { Store } from './store.js';
 import { config, updateConfig } from './config.js';
 import { enrichPRWithScreenshots, getScreenshotInfos } from './screenshot-utils.js';
 
-export function createPRApiRouter(prManager: PRManager, issueManager?: IssueManager): Router {
+export function createPRApiRouter(prManager: PRManager, issueManager?: IssueManager, store?: Store): Router {
   const router = Router();
   router.use(json());
 
@@ -25,6 +26,10 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
   router.patch('/config', (req, res) => {
     const { repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote, mergeMode, managerTerminalAgent, audibleAlerts } = req.body || {};
     updateConfig({ repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote, mergeMode, managerTerminalAgent, audibleAlerts });
+    // Persist target branch to survive server restarts
+    if (targetBranch !== undefined && store) {
+      store.setConfig('targetBranch', config.targetBranch);
+    }
     res.json(config);
   });
 
@@ -65,8 +70,11 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
         cwd: config.repoPath,
         stdio: 'pipe',
       });
-      // Update config to use the new branch
+      // Update config to use the new branch and persist
       updateConfig({ targetBranch: trimmed });
+      if (store) {
+        store.setConfig('targetBranch', config.targetBranch);
+      }
       res.json({ branch: trimmed, config });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to create branch';

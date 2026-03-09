@@ -9,6 +9,7 @@ import { execSync } from 'child_process';
 import { TerminalManager } from '../src/terminal-manager.js';
 import { WorktreeManager } from '../src/worktree-manager.js';
 import { PRManager } from '../src/pr-manager.js';
+import { Store } from '../src/store.js';
 import { createPRApiRouter } from '../src/pr-api.js';
 import { config, updateConfig } from '../src/config.js';
 
@@ -28,6 +29,7 @@ async function request(server: Server, method: string, path: string, body?: any)
 describe('Branches API', () => {
   let server: Server;
   let terminalManager: TerminalManager;
+  let store: Store;
   let tmpDir: string;
   let originalRepoPath: string;
   let originalTargetBranch: string;
@@ -49,12 +51,15 @@ describe('Branches API', () => {
     originalTargetBranch = config.targetBranch;
     updateConfig({ repoPath: tmpDir, targetBranch: 'master' });
 
+    // Use in-memory SQLite store for persistence tests
+    store = new Store(':memory:');
+
     terminalManager = new TerminalManager();
     const worktreeManager = new WorktreeManager();
     const prManager = new PRManager(terminalManager, worktreeManager);
 
     const app = express();
-    app.use(createPRApiRouter(prManager));
+    app.use(createPRApiRouter(prManager, undefined, store));
 
     server = createServer(app);
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -63,6 +68,7 @@ describe('Branches API', () => {
   afterEach(() => {
     server.close();
     terminalManager.killAll();
+    store.close();
     updateConfig({ repoPath: originalRepoPath, targetBranch: originalTargetBranch });
     try {
       rmSync(tmpDir, { recursive: true, force: true });
@@ -130,6 +136,24 @@ describe('Branches API', () => {
       const res = await request(server, 'PATCH', '/config', { targetBranch: 'develop' });
       expect(res.status).toBe(200);
       expect(res.body.targetBranch).toBe('develop');
+    });
+
+    it('persists target branch to store when changed via config', async () => {
+      await request(server, 'PATCH', '/config', { targetBranch: 'develop' });
+      expect(store.getConfig('targetBranch')).toBe('develop');
+    });
+
+    it('does not persist target branch when not included in update', async () => {
+      await request(server, 'PATCH', '/config', { githubEnabled: true });
+      expect(store.getConfig('targetBranch')).toBeUndefined();
+    });
+  });
+
+  describe('target branch persistence via POST /branches', () => {
+    it('persists new target branch to store after branch creation', async () => {
+      const res = await request(server, 'POST', '/branches', { name: 'release/v2' });
+      expect(res.status).toBe(200);
+      expect(store.getConfig('targetBranch')).toBe('release/v2');
     });
   });
 });
