@@ -6,7 +6,8 @@ import type { Store } from './store.js';
 import { getPreset } from './agents.js';
 import { saveDiagnostics } from './diagnostics.js';
 import { config } from './config.js';
-import { playStatusAlert } from './audible-alerts.js';
+import { playStatusAlert, getAlertTone } from './audible-alerts.js';
+import type { AlertTone } from '@hermes-monitor/shared/types';
 
 // Re-export shared types so existing server imports continue to work.
 export type { Issue, IssueStatus } from '@hermes-monitor/shared/types';
@@ -17,8 +18,15 @@ const MAX_RESUME_ATTEMPTS = 3;       // max retries before giving up
 const RESUME_DELAY_MS = 5000;        // wait 5s before resuming (avoid tight loops)
 const RESUME_WINDOW_MS = 5 * 60000;  // reset attempt counter after 5 minutes of quiet
 
-export type IssueEvent = 'issue:created' | 'issue:updated' | 'issue:deleted' | 'issue:progress';
+export type IssueEvent = 'issue:created' | 'issue:updated' | 'issue:deleted' | 'issue:progress' | 'issue:statusChanged';
 
+export interface StatusChangedDetail {
+  issueId: string;
+  title: string;
+  from: IssueStatus;
+  to: IssueStatus;
+  alertTone: AlertTone;
+}
 
 export interface CreateIssueOptions {
   title: string;
@@ -41,6 +49,7 @@ export interface UpdateIssueOptions {
 }
 
 export type IssueEventCallback = (event: IssueEvent, issue: Issue) => void;
+export type StatusChangedCallback = (detail: StatusChangedDetail) => void;
 
 /**
  * Manages the full issue lifecycle from backlog to done.
@@ -74,6 +83,7 @@ export class IssueManager {
   private prManager: PRManager | null = null;
   private store: Store | null = null;
   private eventCallbacks: IssueEventCallback[] = [];
+  private statusChangedCallbacks: StatusChangedCallback[] = [];
   private repoPath: string | undefined;
   private resumeAttempts = new Map<string, { count: number; lastAttempt: number }>();
   private resumeTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -120,9 +130,19 @@ export class IssueManager {
     this.eventCallbacks.push(cb);
   }
 
+  onStatusChanged(cb: StatusChangedCallback): void {
+    this.statusChangedCallbacks.push(cb);
+  }
+
   private emit(event: IssueEvent, issue: Issue): void {
     for (const cb of this.eventCallbacks) {
       cb(event, issue);
+    }
+  }
+
+  private emitStatusChanged(detail: StatusChangedDetail): void {
+    for (const cb of this.statusChangedCallbacks) {
+      cb(detail);
     }
   }
 
@@ -288,6 +308,17 @@ export class IssueManager {
 
     this.persist(issue);
     this.emit('issue:updated', issue);
+
+    // Emit status changed event for browser notifications
+    const alertTone = getAlertTone(oldStatus, newStatus);
+    this.emitStatusChanged({
+      issueId: issue.id,
+      title: issue.title,
+      from: oldStatus,
+      to: newStatus,
+      alertTone,
+    });
+
     return issue;
   }
 

@@ -9,6 +9,7 @@ export type {
   ManagerTerminalAgent,
   ModelInfo,
   MergeMode,
+  AlertTone,
   PRStatus,
   Verdict,
   PRComment,

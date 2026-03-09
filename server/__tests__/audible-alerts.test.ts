@@ -278,3 +278,106 @@ describe('audible alert on status change via API', () => {
     expect(writeSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('issue:statusChanged event', () => {
+  let terminalManager: TerminalManager;
+  let issueManager: IssueManager;
+  let writeSpy: ReturnType<typeof vi.spyOn>;
+  let originalAudibleAlerts: boolean;
+
+  beforeEach(() => {
+    originalAudibleAlerts = config.audibleAlerts;
+    terminalManager = new TerminalManager();
+    issueManager = new IssueManager(terminalManager);
+    writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    _resetDebounce();
+  });
+
+  afterEach(() => {
+    writeSpy.mockRestore();
+    updateConfig({ audibleAlerts: originalAudibleAlerts });
+    terminalManager.killAll();
+  });
+
+  it('emits statusChanged event with correct alertTone on status change', () => {
+    updateConfig({ audibleAlerts: true });
+    const events: any[] = [];
+    issueManager.onStatusChanged((detail) => events.push(detail));
+
+    const issue = issueManager.create({ title: 'Test issue' });
+    issueManager.changeStatus(issue.id, 'todo');
+
+    expect(events).toHaveLength(1);
+    expect(events[0].issueId).toBe(issue.id);
+    expect(events[0].title).toBe('Test issue');
+    expect(events[0].from).toBe('backlog');
+    expect(events[0].to).toBe('todo');
+    expect(events[0].alertTone).toBe('neutral');
+  });
+
+  it('emits positive tone for transition to done', () => {
+    updateConfig({ audibleAlerts: true });
+    const events: any[] = [];
+    issueManager.onStatusChanged((detail) => events.push(detail));
+
+    const issue = issueManager.create({ title: 'Done test' });
+    issueManager.changeStatus(issue.id, 'done');
+
+    expect(events).toHaveLength(1);
+    expect(events[0].alertTone).toBe('positive');
+    expect(events[0].from).toBe('backlog');
+    expect(events[0].to).toBe('done');
+  });
+
+  it('emits alert tone for transition to review', () => {
+    updateConfig({ audibleAlerts: true });
+    const events: any[] = [];
+    issueManager.onStatusChanged((detail) => events.push(detail));
+
+    const issue = issueManager.create({ title: 'Review test' });
+    issueManager.changeStatus(issue.id, 'review');
+
+    expect(events).toHaveLength(1);
+    expect(events[0].alertTone).toBe('alert');
+  });
+
+  it('emits negative tone for regression', () => {
+    updateConfig({ audibleAlerts: true });
+    const events: any[] = [];
+    issueManager.onStatusChanged((detail) => events.push(detail));
+
+    const issue = issueManager.create({ title: 'Regression test' });
+    issueManager.changeStatus(issue.id, 'done');
+    issueManager.changeStatus(issue.id, 'backlog');
+
+    expect(events).toHaveLength(2);
+    expect(events[1].alertTone).toBe('negative');
+    expect(events[1].from).toBe('done');
+    expect(events[1].to).toBe('backlog');
+  });
+
+  it('does not emit statusChanged when status is unchanged', () => {
+    updateConfig({ audibleAlerts: true });
+    const events: any[] = [];
+    issueManager.onStatusChanged((detail) => events.push(detail));
+
+    const issue = issueManager.create({ title: 'Same status' });
+    issueManager.changeStatus(issue.id, 'backlog'); // same as current
+
+    expect(events).toHaveLength(0);
+  });
+
+  it('emits statusChanged even when audibleAlerts is disabled', () => {
+    // The statusChanged event should fire regardless of audibleAlerts config
+    // (audibleAlerts only controls the terminal bell, not the WS notification)
+    updateConfig({ audibleAlerts: false });
+    const events: any[] = [];
+    issueManager.onStatusChanged((detail) => events.push(detail));
+
+    const issue = issueManager.create({ title: 'Alert off test' });
+    issueManager.changeStatus(issue.id, 'todo');
+
+    expect(events).toHaveLength(1);
+    expect(events[0].alertTone).toBe('neutral');
+  });
+});

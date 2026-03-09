@@ -33,6 +33,7 @@ import { usePRs } from '../hooks/usePRs';
 import { useAgents } from '../hooks/useAgents';
 import { useGitGraph, type GitCommit, type GraphNode, type GitFileChange } from '../hooks/useGitGraph';
 import { useErrorToast, type ErrorEntry } from '../hooks/useErrorToast';
+import { useNotificationSound } from '../hooks/useNotificationSound';
 
 // ── URL parsing helpers ──
 
@@ -292,11 +293,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const gitGraph = useGitGraph({ subscribe, active: gitPanelOpen });
   const [mergeMode, setMergeMode] = useState<MergeMode>('local');
+  const [audibleAlerts, setAudibleAlerts] = useState(false);
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [termViewSelection, setTermViewSelection] = useState<AgentListSelection | null>(null);
   const [planningIssueId, setPlanningIssueId] = useState<string | null>(null);
   const [detailEditing, setDetailEditing] = useState(false);
   const [awaitingInputIds, setAwaitingInputIds] = useState<Set<string>>(new Set());
+
+  // Browser-side audible notification sounds
+  useNotificationSound(subscribe, audibleAlerts);
 
   // URL-derived detail IDs
   const detailIssueId = urlIssueId;
@@ -316,7 +321,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('hermes:gitPanelOpen', String(gitPanelOpen));
   }, [gitPanelOpen]);
 
-  // Fetch mergeMode from config on mount
+  // Fetch mergeMode and audibleAlerts from config on mount
   useEffect(() => {
     fetch(`${API_BASE}/config`)
       .then((res) => res.json())
@@ -324,16 +329,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (data.mergeMode && ['local', 'github', 'both'].includes(data.mergeMode)) {
           setMergeMode(data.mergeMode);
         }
+        if (typeof data.audibleAlerts === 'boolean') {
+          setAudibleAlerts(data.audibleAlerts);
+        }
       })
       .catch(() => {});
   }, []);
 
-  // Listen for config changes from ConfigView (custom event) to keep mergeMode in sync
+  // Listen for config changes from ConfigView (custom event) to keep mergeMode/audibleAlerts in sync
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.mergeMode && ['local', 'github', 'both'].includes(detail.mergeMode)) {
         setMergeMode(detail.mergeMode);
+      }
+      if (typeof detail?.audibleAlerts === 'boolean') {
+        setAudibleAlerts(detail.audibleAlerts);
       }
     };
     window.addEventListener('hermes:config-updated', handler);
