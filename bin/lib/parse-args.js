@@ -14,7 +14,7 @@ class ParseError extends Error {
 }
 
 /** Recognized subcommands that don't start the server */
-const SUBCOMMANDS = ['update', 'version'];
+const SUBCOMMANDS = ['update', 'version', 'hub', 'stop'];
 
 /**
  * Parse CLI arguments into an options object.
@@ -22,7 +22,7 @@ const SUBCOMMANDS = ['update', 'version'];
  * @param {string[]} argv - The arguments (process.argv.slice(2))
  * @param {object}   [defaults] - Override default values (useful for testing)
  * @param {string}   [defaults.cwd] - Working directory for resolving relative --repo paths
- * @returns {{ command: string|null, port: number, serverPort: number, repo: string, browser: boolean, build: boolean, help: boolean }}
+ * @returns {{ command: string|null, port: number, serverPort: number, repo: string, browser: boolean, build: boolean, help: boolean, foreground: boolean, list: boolean, add: string|null, remove: string|null }}
  * @throws {ParseError} on invalid arguments
  */
 function parseArgs(argv, defaults = {}) {
@@ -35,6 +35,11 @@ function parseArgs(argv, defaults = {}) {
     browser: true,
     build: false,
     help: false,
+    foreground: false,
+    list: false,
+    add: null,
+    remove: null,
+    _explicit: new Set(), // tracks which flags were explicitly set
   };
 
   function requireArg(flag, i) {
@@ -54,6 +59,7 @@ function parseArgs(argv, defaults = {}) {
         if (isNaN(opts.port) || opts.port < 1 || opts.port > 65535) {
           throw new ParseError('--port must be a valid port number (1-65535)');
         }
+        opts._explicit.add('port');
         break;
       }
       case '--server-port': {
@@ -62,6 +68,7 @@ function parseArgs(argv, defaults = {}) {
         if (isNaN(opts.serverPort) || opts.serverPort < 1 || opts.serverPort > 65535) {
           throw new ParseError('--server-port must be a valid port number (1-65535)');
         }
+        opts._explicit.add('serverPort');
         break;
       }
       case '--repo':
@@ -74,6 +81,21 @@ function parseArgs(argv, defaults = {}) {
       case '--build':
         opts.build = true;
         break;
+      case '--foreground':
+        opts.foreground = true;
+        break;
+      case '--list':
+      case '-l':
+        opts.list = true;
+        break;
+      case '--add': {
+        opts.add = resolve(cwd, requireArg(arg, ++i));
+        break;
+      }
+      case '--remove': {
+        opts.remove = requireArg(arg, ++i);
+        break;
+      }
       case '--help':
       case '-h':
         opts.help = true;
@@ -88,8 +110,15 @@ function parseArgs(argv, defaults = {}) {
     }
   }
 
-  // Validate port collision (skip when just showing help or running a subcommand)
-  if (!opts.help && !opts.command && opts.port === opts.serverPort) {
+  // Validate --foreground is only used with 'hub' command
+  if (opts.foreground && opts.command !== 'hub') {
+    throw new ParseError('--foreground can only be used with the "hub" command');
+  }
+
+  // Validate port collision (skip when just showing help, running a subcommand,
+  // or using hub management flags)
+  if (!opts.help && !opts.command && !opts.list && !opts.add && !opts.remove &&
+      opts.port === opts.serverPort) {
     throw new ParseError('--port and --server-port must be different');
   }
 
@@ -97,30 +126,44 @@ function parseArgs(argv, defaults = {}) {
 }
 
 const HELP_TEXT = `
-hermes-monitor — start the Hermes Monitor dashboard
+hermes-monitor — AI agent orchestration dashboard
 
 Usage:
-  hermes-monitor [options]
+  hermes-monitor [options]        Start monitoring current repo (auto-starts hub)
   hermes-monitor <command>
 
 Commands:
-  update                   Pull latest code, install deps, rebuild
-  version                  Show version, commit hash, and available updates
+  hub                            Start the multi-repo hub manager
+  stop                           Stop the hub and all repo instances
+  update                         Pull latest code, install deps, rebuild
+  version                        Show version, commit hash, and available updates
+
+Hub Management:
+  --list, -l                     List all registered repos with status
+  --add <path>                   Register a repo without opening it
+  --remove <id>                  Unregister a repo by ID
 
 Options:
-  --port, -p <port>        Client port (default: 3000)
-  --server-port <port>     Server API port (default: 4000)
-  --repo, -r <path>        Target git repo (default: current directory)
-  --no-browser             Don't auto-open browser
-  --build                  Serve pre-built client (faster startup, no HMR)
-  --help, -h               Show this help
+  --port, -p <port>              Client port (ignored in hub mode — auto-assigned)
+  --server-port <port>           Server API port (ignored in hub mode — auto-assigned)
+  --repo, -r <path>              Target git repo (default: current directory)
+  --no-browser                   Don't auto-open browser
+  --build                        Serve pre-built client (faster startup, no HMR)
+  --foreground                   Run hub in foreground (default: background)
+  --help, -h                     Show this help
 
 Examples:
-  hermes-monitor                          # start in current repo
+  hermes-monitor                          # start in current repo (hub mode)
+  hermes-monitor hub                      # start hub landing page only
+  hermes-monitor hub --foreground         # hub in foreground (for debugging)
+  hermes-monitor --list                   # list all registered repos
+  hermes-monitor --add ~/projects/myapp   # register a repo
+  hermes-monitor --remove <id>            # unregister a repo
+  hermes-monitor stop                     # stop hub + all repos
   hermes-monitor --repo ~/projects/myapp  # explicit repo
+  hermes-monitor --build --no-browser     # production mode, no browser
   hermes-monitor --port 5000              # custom port
   hermes-monitor --server-port 8000       # custom server port
-  hermes-monitor --build --no-browser     # production mode, no browser
   hermes-monitor version                  # show version info
   hermes-monitor update                   # self-update
 `;
