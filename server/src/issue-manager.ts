@@ -7,6 +7,7 @@ import { getPreset } from './agents.js';
 import { saveDiagnostics } from './diagnostics.js';
 import { config } from './config.js';
 import { playStatusAlert, getAlertTone } from './audible-alerts.js';
+import { writeTaskContext, updateTaskContext } from './task-context.js';
 import type { AlertTone } from '@hermes-monitor/shared/types';
 
 // Re-export shared types so existing server imports continue to work.
@@ -384,6 +385,21 @@ export class IssueManager {
           }
         } catch (err) {
           console.error('[health-check] Failed to run health check:', err);
+        }
+
+        // Write task context files (TASK.md, AGENTS.md/CLAUDE.md, helper scripts)
+        // into the worktree so the agent has everything it needs on disk.
+        if (cwd) {
+          try {
+            writeTaskContext({
+              issue,
+              worktreePath: cwd,
+              prManager: this.prManager,
+              worktreeManager: this.worktreeManager,
+            });
+          } catch (err) {
+            console.error('[task-context] Failed to write task context:', err);
+          }
         }
       }
 

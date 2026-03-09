@@ -9,3 +9,7 @@ dist/
 hermes-monitor.db-shm
 hermes-monitor.db-wal
 client/tsconfig.tsbuildinfo
+
+# Generated task context files (written by hermes-monitor into worktrees)
+TASK.md
+.hermes-monitor/
