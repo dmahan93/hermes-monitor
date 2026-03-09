@@ -5,7 +5,7 @@
  * trigger merges, manage comments, and configure review settings.
  */
 import { Router, json } from 'express';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import type { PRManager } from './pr-manager.js';
 import type { IssueManager } from './issue-manager.js';
 import type { Store } from './store.js';
@@ -37,7 +37,7 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
 
   router.get('/branches', (_req, res) => {
     try {
-      const output = execSync('git branch --list --no-color', {
+      const output = execFileSync('git', ['branch', '--list', '--no-color'], {
         cwd: config.repoPath,
         stdio: 'pipe',
       }).toString().trim();
@@ -59,14 +59,20 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
       return;
     }
     const trimmed = name.trim();
-    // Validate branch name: no spaces, no special chars except - _ . /
+    // Validate branch name: alphanumeric start, no spaces, only - _ . / allowed
     if (!trimmed || !/^[a-zA-Z0-9][a-zA-Z0-9._\-/]*$/.test(trimmed)) {
+      res.status(400).json({ error: 'Invalid branch name' });
+      return;
+    }
+    // Reject git-invalid patterns: "..", ".lock" suffix, trailing "/", consecutive "//", leading "/"
+    if (/\.\.|\.lock$|\/\/|\/$|^\//.test(trimmed)) {
       res.status(400).json({ error: 'Invalid branch name' });
       return;
     }
     try {
       // Create the branch from current target branch
-      execSync(`git branch ${trimmed} ${config.targetBranch}`, {
+      // Uses execFileSync to avoid shell interpolation (command injection prevention)
+      execFileSync('git', ['branch', trimmed, config.targetBranch], {
         cwd: config.repoPath,
         stdio: 'pipe',
       });
@@ -78,7 +84,8 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
       res.json({ branch: trimmed, config });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to create branch';
-      res.status(500).json({ error: message });
+      const isDuplicate = message.includes('already exists');
+      res.status(isDuplicate ? 409 : 500).json({ error: message });
     }
   });
 

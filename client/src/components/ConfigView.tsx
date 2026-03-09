@@ -48,7 +48,7 @@ export function ConfigView() {
       .then((data) => {
         if (data.branches) setBranches(data.branches);
       })
-      .catch(() => { /* ignore */ });
+      .catch((err) => { console.warn('Failed to fetch branches:', err); });
   }, []);
 
   const fetchConfig = useCallback(() => {
