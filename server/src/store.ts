@@ -1,10 +1,43 @@
 // @ts-ignore - esm/cjs interop
 import Database from 'better-sqlite3';
-import { join } from 'path';
+import { join, resolve } from 'path';
+import { mkdirSync } from 'fs';
+import { createHash } from 'crypto';
+import { homedir } from 'os';
 import type { Issue, IssueStatus } from './issue-manager.js';
 import type { PullRequest, PRComment, PRStatus, Verdict } from './pr-manager.js';
 
-const DB_PATH = process.env.HERMES_DB_PATH || join(process.cwd(), '..', 'hermes-monitor.db');
+/**
+ * Compute the default database path.
+ *
+ * Priority:
+ * 1. HERMES_DB_PATH env var — explicit override (e.g., tests)
+ * 2. HERMES_REPO_PATH env var — derive a per-repo DB under ~/.hermes/repos/<hash>/
+ * 3. Fallback to ../hermes-monitor.db relative to cwd (legacy behavior)
+ *
+ * When running in hub mode, each repo instance gets HERMES_REPO_PATH set by the
+ * CLI, so each repo automatically gets its own isolated database.
+ */
+export function getDefaultDbPath(): string {
+  if (process.env.HERMES_DB_PATH) {
+    return process.env.HERMES_DB_PATH;
+  }
+
+  const repoPath = process.env.HERMES_REPO_PATH;
+  if (repoPath) {
+    const resolved = resolve(repoPath);
+    const hash = createHash('sha256').update(resolved).digest('hex').slice(0, 16);
+    const repoDbDir = join(homedir(), '.hermes', 'repos', hash);
+    mkdirSync(repoDbDir, { recursive: true });
+    return join(repoDbDir, 'hermes-monitor.db');
+  }
+
+  // Legacy fallback — only hit when running the server directly without
+  // HERMES_REPO_PATH (e.g., old manual invocations)
+  return join(process.cwd(), '..', 'hermes-monitor.db');
+}
+
+const DB_PATH = getDefaultDbPath();
 
 /**
  * SQLite persistence layer for issues, pull requests, comments, and config.
@@ -19,8 +52,10 @@ const DB_PATH = process.env.HERMES_DB_PATH || join(process.cwd(), '..', 'hermes-
  *   and clears `terminalId` on backlog issues that had planning terminals.
  *
  * **Persistence:** Uses better-sqlite3 in WAL mode for concurrent read access.
- * The database file defaults to `../hermes-monitor.db` relative to `cwd`,
- * overridable via `HERMES_DB_PATH` env var.
+ * The database file is per-repo: when HERMES_REPO_PATH is set, it lives at
+ * `~/.hermes/repos/<hash>/hermes-monitor.db` (hash derived from the absolute
+ * repo path). Overridable via `HERMES_DB_PATH` env var. Falls back to
+ * `../hermes-monitor.db` relative to cwd for legacy compatibility.
  *
  * **Ephemeral state:** None — this class is purely a persistence adapter.
  * All runtime coordination lives in the manager classes.
