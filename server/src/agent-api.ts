@@ -17,6 +17,7 @@ import { ALLOWED_EXTENSIONS, getUploadedScreenshots, UI_EXTENSIONS } from './scr
 import { getDiagnostics } from './diagnostics.js';
 import { analyzeUiDiff } from './ui-change-analyzer.js';
 import { pushBranch, createGitHubPR } from './github.js';
+import { extractActionItems } from './review-utils.js';
 
 /** File extensions that indicate UI changes requiring screenshots (derived from screenshot-utils) */
 const UI_FILE_EXTENSIONS = new Set(UI_EXTENSIONS);
@@ -86,30 +87,7 @@ function recordBypass(issueManager: IssueManager, issueId: string, reason: strin
   issueManager.update(issueId, { screenshotBypassReason: reason });
 }
 
-/**
- * Extract action items from a review body.
- * Looks for bullet points (- or *) and numbered lists (1. 2. etc.).
- * Filters out VERDICT: lines that happen to be on bullet points.
- */
-function extractActionItems(body: string): string[] {
-  const items: string[] = [];
-  const lines = body.split('\n');
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    // Match bullet points (- or *) and numbered lists (1. 2. etc.)
-    const match = trimmed.match(/^(?:[-*]|\d+\.)\s+(.+)/);
-    if (match) {
-      // Skip VERDICT: lines — they're metadata, not action items
-      if (/VERDICT:\s*(APPROVED|CHANGES_REQUESTED)/i.test(match[1])) {
-        continue;
-      }
-      items.push(match[1].trim());
-    }
-  }
-
-  return items;
-}
 
 /**
  * Agent-facing API — these endpoints are called BY the agent during task execution.
