@@ -1211,6 +1211,284 @@ describe('ManagerView', () => {
       });
     });
 
+    it('resize handle has role="separator" for accessibility', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/config')) {
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
+        }
+        if (urlStr.includes('/terminals') && opts?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'mgr-term-1' }), { status: 201 });
+        }
+        if (urlStr.includes('/terminals')) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      });
+
+      const props = defaultProps();
+      const { container } = render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText('MANAGER TERMINAL'));
+
+      await waitFor(() => {
+        const handle = container.querySelector('.manager-terminal-resize-handle');
+        expect(handle).not.toBeNull();
+        expect(handle!.getAttribute('role')).toBe('separator');
+        expect(handle!.getAttribute('aria-orientation')).toBe('horizontal');
+        expect(handle!.getAttribute('aria-label')).toBe('Resize terminal panel');
+      });
+    });
+
+    it('resize handle is not shown when terminal is collapsed', () => {
+      const props = defaultProps();
+      const { container } = render(<ManagerView {...props} />);
+      // Terminal starts collapsed (isActive defaults to false)
+      expect(container.querySelector('.manager-terminal-resize-handle')).toBeNull();
+    });
+
+    it('dragging the resize handle changes terminal pane height', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/config')) {
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
+        }
+        if (urlStr.includes('/terminals') && opts?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'mgr-term-1' }), { status: 201 });
+        }
+        if (urlStr.includes('/terminals')) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      });
+
+      const props = defaultProps();
+      const { container } = render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText('MANAGER TERMINAL'));
+
+      await waitFor(() => {
+        expect(container.querySelector('.manager-terminal-resize-handle')).not.toBeNull();
+      });
+
+      const handle = container.querySelector('.manager-terminal-resize-handle')!;
+      const pane = container.querySelector('.manager-terminal-pane') as HTMLElement;
+
+      // Default height is 320
+      expect(pane.style.height).toBe('320px');
+
+      // Simulate drag: mousedown at y=500, then mousemove to y=400 (drag up = +100px)
+      fireEvent.mouseDown(handle, { clientY: 500 });
+      fireEvent(document, new MouseEvent('mousemove', { clientY: 400, bubbles: true }));
+      fireEvent(document, new MouseEvent('mouseup', { bubbles: true }));
+
+      expect(pane.style.height).toBe('420px');
+    });
+
+    it('dragging down reduces terminal pane height', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/config')) {
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
+        }
+        if (urlStr.includes('/terminals') && opts?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'mgr-term-1' }), { status: 201 });
+        }
+        if (urlStr.includes('/terminals')) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      });
+
+      const props = defaultProps();
+      const { container } = render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText('MANAGER TERMINAL'));
+
+      await waitFor(() => {
+        expect(container.querySelector('.manager-terminal-resize-handle')).not.toBeNull();
+      });
+
+      const handle = container.querySelector('.manager-terminal-resize-handle')!;
+      const pane = container.querySelector('.manager-terminal-pane') as HTMLElement;
+
+      // Default height is 320
+      expect(pane.style.height).toBe('320px');
+
+      // Simulate drag: mousedown at y=500, then mousemove to y=600 (drag down = -100px)
+      fireEvent.mouseDown(handle, { clientY: 500 });
+      fireEvent(document, new MouseEvent('mousemove', { clientY: 600, bubbles: true }));
+      fireEvent(document, new MouseEvent('mouseup', { bubbles: true }));
+
+      expect(pane.style.height).toBe('220px');
+    });
+
+    it('height is clamped to minimum (100px)', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/config')) {
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
+        }
+        if (urlStr.includes('/terminals') && opts?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'mgr-term-1' }), { status: 201 });
+        }
+        if (urlStr.includes('/terminals')) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      });
+
+      const props = defaultProps();
+      const { container } = render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText('MANAGER TERMINAL'));
+
+      await waitFor(() => {
+        expect(container.querySelector('.manager-terminal-resize-handle')).not.toBeNull();
+      });
+
+      const handle = container.querySelector('.manager-terminal-resize-handle')!;
+      const pane = container.querySelector('.manager-terminal-pane') as HTMLElement;
+
+      // Drag down far enough to go below minimum (320 - 500 = -180, clamped to 100)
+      fireEvent.mouseDown(handle, { clientY: 200 });
+      fireEvent(document, new MouseEvent('mousemove', { clientY: 700, bubbles: true }));
+      fireEvent(document, new MouseEvent('mouseup', { bubbles: true }));
+
+      expect(pane.style.height).toBe('100px');
+    });
+
+    it('height is clamped to maximum (80vh)', async () => {
+      // Set a known viewport height
+      Object.defineProperty(window, 'innerHeight', { value: 1000, writable: true });
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/config')) {
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
+        }
+        if (urlStr.includes('/terminals') && opts?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'mgr-term-1' }), { status: 201 });
+        }
+        if (urlStr.includes('/terminals')) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      });
+
+      const props = defaultProps();
+      const { container } = render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText('MANAGER TERMINAL'));
+
+      await waitFor(() => {
+        expect(container.querySelector('.manager-terminal-resize-handle')).not.toBeNull();
+      });
+
+      const handle = container.querySelector('.manager-terminal-resize-handle')!;
+      const pane = container.querySelector('.manager-terminal-pane') as HTMLElement;
+
+      // Drag up far enough to exceed 80vh = 800px (320 + 1000 = 1320, clamped to 800)
+      fireEvent.mouseDown(handle, { clientY: 1000 });
+      fireEvent(document, new MouseEvent('mousemove', { clientY: 0, bubbles: true }));
+      fireEvent(document, new MouseEvent('mouseup', { bubbles: true }));
+
+      // 80% of 1000 = 800
+      expect(pane.style.height).toBe('800px');
+    });
+
+    it('persists terminal height in localStorage after drag', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/config')) {
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
+        }
+        if (urlStr.includes('/terminals') && opts?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'mgr-term-1' }), { status: 201 });
+        }
+        if (urlStr.includes('/terminals')) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      });
+
+      const props = defaultProps();
+      const { container } = render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText('MANAGER TERMINAL'));
+
+      await waitFor(() => {
+        expect(container.querySelector('.manager-terminal-resize-handle')).not.toBeNull();
+      });
+
+      const handle = container.querySelector('.manager-terminal-resize-handle')!;
+
+      // Drag up by 80px
+      fireEvent.mouseDown(handle, { clientY: 500 });
+      fireEvent(document, new MouseEvent('mousemove', { clientY: 420, bubbles: true }));
+      fireEvent(document, new MouseEvent('mouseup', { bubbles: true }));
+
+      expect(localStorage.getItem('hermes:managerTerminalHeight')).toBe('400');
+    });
+
+    it('restores terminal height from localStorage on mount', async () => {
+      localStorage.setItem('hermes:managerTerminalHeight', '450');
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/config')) {
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
+        }
+        if (urlStr.includes('/terminals') && opts?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'mgr-term-1' }), { status: 201 });
+        }
+        if (urlStr.includes('/terminals')) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      });
+
+      const props = defaultProps();
+      const { container } = render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText('MANAGER TERMINAL'));
+
+      await waitFor(() => {
+        const pane = container.querySelector('.manager-terminal-pane') as HTMLElement;
+        expect(pane).not.toBeNull();
+        expect(pane.style.height).toBe('450px');
+      });
+    });
+
+    it('sets body cursor to ns-resize during drag', async () => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/config')) {
+          return new Response(JSON.stringify({ repoPath: '/test/repo', serverPort: 4000 }), { status: 200 });
+        }
+        if (urlStr.includes('/terminals') && opts?.method === 'POST') {
+          return new Response(JSON.stringify({ id: 'mgr-term-1' }), { status: 201 });
+        }
+        if (urlStr.includes('/terminals')) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+        return new Response('{}', { status: 200 });
+      });
+
+      const props = defaultProps();
+      const { container } = render(<ManagerView {...props} />);
+      fireEvent.click(screen.getByText('MANAGER TERMINAL'));
+
+      await waitFor(() => {
+        expect(container.querySelector('.manager-terminal-resize-handle')).not.toBeNull();
+      });
+
+      const handle = container.querySelector('.manager-terminal-resize-handle')!;
+
+      // Start drag
+      fireEvent.mouseDown(handle, { clientY: 500 });
+      expect(document.body.style.cursor).toBe('ns-resize');
+      expect(document.body.style.userSelect).toBe('none');
+
+      // End drag
+      fireEvent(document, new MouseEvent('mouseup', { bubbles: true }));
+      expect(document.body.style.cursor).toBe('');
+      expect(document.body.style.userSelect).toBe('');
+    });
+
     it('collapsing terminal hides the terminal pane', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts) => {
         const urlStr = typeof url === 'string' ? url : url.toString();

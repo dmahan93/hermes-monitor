@@ -484,14 +484,37 @@
 /* ── Resize Handle ── */
 
 .manager-terminal-resize-handle {
-  height: 4px;
+  height: 6px;
   background: var(--chrome-dark);
   cursor: ns-resize;
   transition: background 0.15s;
   flex-shrink: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Grip dots indicator */
+.manager-terminal-resize-handle::after {
+  content: '· · ·';
+  font-size: 8px;
+  line-height: 1;
+  color: var(--text-muted);
+  letter-spacing: 2px;
+  pointer-events: none;
+  transition: color 0.15s;
 }
 
 .manager-terminal-resize-handle:hover {
+  background: var(--accent);
+}
+
+.manager-terminal-resize-handle:hover::after {
+  color: var(--bg);
+}
+
+.manager-terminal-resize-handle:active {
   background: var(--accent);
 }
 
