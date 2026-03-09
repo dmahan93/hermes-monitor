@@ -163,8 +163,8 @@ describe('HubLanding', () => {
 
   // ── Navigation ──
 
-  it('navigates to repo on card click', async () => {
-    mockFetchRepos([makeRepo({ id: 'test-repo' })]);
+  it('navigates to repo on card click (stopped repo — client-side)', async () => {
+    mockFetchRepos([makeRepo({ id: 'test-repo', status: 'stopped' })]);
     renderLanding();
     await waitFor(() => {
       expect(screen.getByText('my-project')).toBeInTheDocument();
@@ -173,8 +173,27 @@ describe('HubLanding', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/test-repo');
   });
 
-  it('navigates to settings on settings click', async () => {
-    mockFetchRepos([makeRepo({ id: 'test-repo' })]);
+  it('does not use client-side navigate for running repo card click', async () => {
+    // Running repo should redirect to its own client origin, not use client-side routing.
+    // We can't easily test window.location.href in jsdom, but we CAN verify navigate()
+    // is NOT called for running repos (the redirect happens via window.location.href instead).
+    mockFetchRepos([makeRepo({ id: 'test-repo', port: 4001, status: 'running' })]);
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByText('my-project')).toBeInTheDocument();
+    });
+    // Click will attempt window.location.href assignment (which jsdom may ignore/error)
+    // but should NOT call React Router navigate()
+    try {
+      fireEvent.click(screen.getByText('my-project'));
+    } catch {
+      // jsdom may throw on location change — that's OK
+    }
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('navigates to settings on settings click (stopped repo — client-side)', async () => {
+    mockFetchRepos([makeRepo({ id: 'test-repo', status: 'stopped' })]);
     renderLanding();
     await waitFor(() => {
       expect(screen.getByTitle('Settings')).toBeInTheDocument();
@@ -201,7 +220,7 @@ describe('HubLanding', () => {
     });
   });
 
-  it('calls PATCH to toggle repo status', async () => {
+  it('calls POST /start to start a stopped repo', async () => {
     const repo = makeRepo({ id: 'repo-1', status: 'stopped' });
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({ ok: true, json: async () => [repo] } as Response)
@@ -217,10 +236,9 @@ describe('HubLanding', () => {
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
-        '/api/hub/repos/repo-1',
+        '/api/hub/repos/repo-1/start',
         expect.objectContaining({
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'running' }),
+          method: 'POST',
         }),
       );
     });
@@ -465,7 +483,7 @@ describe('HubLanding', () => {
 
   // ── Starting status toggle ──
 
-  it('shows Stop button for starting repo and sends stopped status', async () => {
+  it('calls POST /stop for starting repo', async () => {
     const repo = makeRepo({ id: 'repo-1', status: 'starting' });
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({ ok: true, json: async () => [repo] } as Response)
@@ -481,10 +499,9 @@ describe('HubLanding', () => {
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
-        '/api/hub/repos/repo-1',
+        '/api/hub/repos/repo-1/stop',
         expect.objectContaining({
-          method: 'PATCH',
-          body: JSON.stringify({ status: 'stopped' }),
+          method: 'POST',
         }),
       );
     });
@@ -492,7 +509,7 @@ describe('HubLanding', () => {
 
   // ── Failed mutation error display ──
 
-  it('shows error when PATCH toggle fails', async () => {
+  it('shows error when toggle fails', async () => {
     const repo = makeRepo({ id: 'repo-1', status: 'stopped' });
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({ ok: true, json: async () => [repo] } as Response)
