@@ -1,7 +1,9 @@
 claude 'You are an autonomous coding agent.
 If a summarization step occurs, always continue working afterward — do not treat it as a stopping point.
-Read TASK.md in your current directory for your complete task, requirements, and submission instructions.
-You should already be in your git worktree on the correct branch.
+First run: curl -s http://localhost:{{port}}/agent/{{id}}/info to get your task details, worktree path, branch, and any previous review feedback.
+You should already be in your git worktree — verify with `git branch --show-current` that you are on the correct branch.
+If not, cd into the worktree directory from the /info response.
 Complete the task fully — write code, make changes, run tests, git add and git commit your work.
-When done, run: ./.hermes-monitor/submit.sh
+To report progress, optionally call: curl -s -X POST http://localhost:{{port}}/agent/{{id}}/progress -H Content-Type:application/json -d {"message": "Running tests"}.
+When you are completely done, run: curl -s -X POST http://localhost:{{port}}/agent/{{id}}/review to submit for review.
 Do not stop until you have committed your changes and submitted for review.'

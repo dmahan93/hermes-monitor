@@ -701,4 +701,117 @@ describe('HubLanding', () => {
     fireEvent.change(pathInput, { target: { value: '/home/user/other-project' } });
     expect(nameInput.value).toBe('custom-name');
   });
+
+  // ── Folder picker / Browse button ──
+
+  it('shows Browse button in add form', async () => {
+    mockFetchRepos([]);
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByText('+ Add Repo')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('+ Add Repo'));
+    expect(screen.getByLabelText('Browse folders')).toBeInTheDocument();
+  });
+
+  it('toggles folder picker on Browse button click', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          path: '/home/user',
+          parent: '/home',
+          entries: [
+            { name: 'my-repo', path: '/home/user/my-repo', isGitRepo: true },
+          ],
+        }),
+      } as Response);
+
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByText('+ Add Repo')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('+ Add Repo'));
+
+    // Initially no folder picker
+    expect(screen.queryByTestId('folder-picker')).not.toBeInTheDocument();
+
+    // Click Browse to show it
+    fireEvent.click(screen.getByLabelText('Browse folders'));
+    await waitFor(() => {
+      expect(screen.getByTestId('folder-picker')).toBeInTheDocument();
+    });
+  });
+
+  it('populates path input when folder is selected from picker', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          path: '/home/user',
+          parent: '/home',
+          entries: [
+            { name: 'my-repo', path: '/home/user/my-repo', isGitRepo: true },
+          ],
+        }),
+      } as Response);
+
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByText('+ Add Repo')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('+ Add Repo'));
+    fireEvent.click(screen.getByLabelText('Browse folders'));
+
+    await waitFor(() => {
+      expect(screen.getByText('my-repo')).toBeInTheDocument();
+    });
+
+    // Select the repo
+    fireEvent.click(screen.getByTitle('Select my-repo'));
+
+    // Path input should be populated
+    const pathInput = screen.getByLabelText('Repository path') as HTMLInputElement;
+    expect(pathInput.value).toBe('/home/user/my-repo');
+
+    // Name should be auto-detected
+    const nameInput = screen.getByLabelText('Name (auto-detected)') as HTMLInputElement;
+    expect(nameInput.value).toBe('my-repo');
+
+    // Folder picker should be closed after selection
+    expect(screen.queryByTestId('folder-picker')).not.toBeInTheDocument();
+  });
+
+  it('closes folder picker when cancel resets form', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          path: '/home/user',
+          parent: '/home',
+          entries: [],
+        }),
+      } as Response);
+
+    renderLanding();
+    await waitFor(() => {
+      expect(screen.getByText('+ Add Repo')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('+ Add Repo'));
+    fireEvent.click(screen.getByLabelText('Browse folders'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('folder-picker')).toBeInTheDocument();
+    });
+
+    // Cancel the form
+    fireEvent.click(screen.getByText('✕ Cancel'));
+
+    // Both form and picker should be gone
+    expect(screen.queryByTestId('add-repo-form')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('folder-picker')).not.toBeInTheDocument();
+  });
 });

@@ -159,7 +159,8 @@ export class IssueManager {
       .replace(/\{\{id\}\}/g, this.shellEscape(issue.id))
       .replace(/\{\{title\}\}/g, this.shellEscape(issue.title))
       .replace(/\{\{description\}\}/g, this.shellEscape(issue.description))
-      .replace(/\{\{branch\}\}/g, this.shellEscape(issue.branch || ''));
+      .replace(/\{\{branch\}\}/g, this.shellEscape(issue.branch || ''))
+      .replace(/\{\{port\}\}/g, this.shellEscape(config.serverPort));
   }
 
   create(options: CreateIssueOptions): Issue {
