@@ -129,6 +129,16 @@
   letter-spacing: 0.05rem;
 }
 
+.hub-add-path-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.hub-add-path-row .hub-add-input {
+  flex: 1;
+}
+
 .hub-add-input {
   background: var(--bg);
   border: 1px solid var(--chrome);
@@ -140,6 +150,23 @@
 }
 
 .hub-add-input:focus {
+  border-color: var(--accent);
+}
+
+.hub-browse-btn {
+  background: var(--bg);
+  border: 1px solid var(--chrome);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.833rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.1s, border-color 0.1s;
+}
+
+.hub-browse-btn:hover {
+  color: var(--accent);
   border-color: var(--accent);
 }
 

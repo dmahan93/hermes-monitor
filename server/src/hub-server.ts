@@ -17,6 +17,9 @@
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
+import { readdirSync, statSync, existsSync } from 'fs';
+import { join, dirname, resolve } from 'path';
+import { homedir } from 'os';
 import { Registry } from './manager/registry.js';
 import { createRegistryApiRouter } from './manager/registry-api.js';
 import { CLIENT_PORT_OFFSET } from './constants.js';
@@ -46,6 +49,75 @@ export function createHubApp(dbPath?: string): {
   // ── Health check ──
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', service: 'hermes-hub' });
+  });
+
+  // ── Directory browse API ──
+  app.get('/api/hub/browse', (req, res) => {
+    const rawPath = typeof req.query.path === 'string' ? req.query.path.trim() : '';
+    const browsePath = rawPath || homedir();
+    const resolved = resolve(browsePath);
+
+    // Validate path exists and is a directory
+    try {
+      const st = statSync(resolved);
+      if (!st.isDirectory()) {
+        res.status(400).json({ error: 'Path is not a directory' });
+        return;
+      }
+    } catch {
+      res.status(400).json({ error: 'Path does not exist or is not accessible' });
+      return;
+    }
+
+    // Read directory entries, filtering to subdirectories only
+    interface DirEntry {
+      name: string;
+      path: string;
+      isGitRepo: boolean;
+    }
+    const entries: DirEntry[] = [];
+    try {
+      const items = readdirSync(resolved, { withFileTypes: true });
+      for (const item of items) {
+        // Skip hidden directories (starting with .)
+        if (item.name.startsWith('.')) continue;
+        try {
+          const fullPath = join(resolved, item.name);
+          // Follow symlinks: if the dirent says directory OR if it's a symlink
+          // that resolves to a directory
+          let isDir = item.isDirectory();
+          if (!isDir && item.isSymbolicLink()) {
+            try {
+              isDir = statSync(fullPath).isDirectory();
+            } catch {
+              // Broken symlink — skip
+              continue;
+            }
+          }
+          if (!isDir) continue;
+          const isGitRepo = existsSync(join(fullPath, '.git'));
+          entries.push({ name: item.name, path: fullPath, isGitRepo });
+        } catch {
+          // Permission denied on individual entry — skip
+        }
+      }
+    } catch {
+      res.status(403).json({ error: 'Cannot read directory' });
+      return;
+    }
+
+    // Sort: git repos first, then alphabetically
+    entries.sort((a, b) => {
+      if (a.isGitRepo !== b.isGitRepo) return a.isGitRepo ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    const parent = resolved === '/' ? null : dirname(resolved);
+    res.json({
+      path: resolved,
+      parent,
+      entries,
+    });
   });
 
   // ── Registry API (CRUD for repos) ──

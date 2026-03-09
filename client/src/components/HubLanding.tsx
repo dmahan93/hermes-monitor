@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '../config';
 import { useConfirm } from '../hooks/useConfirm';
+import { FolderPicker } from './FolderPicker';
 import './HubLanding.css';
 
 export type RepoStatus = 'stopped' | 'starting' | 'running' | 'error';
@@ -48,6 +49,9 @@ export function HubLanding() {
   // Track whether user has manually edited the name field
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
 
+  // Folder picker state
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
+
   // Track mounted state to avoid state updates after unmount
   const mountedRef = useRef(true);
 
@@ -88,6 +92,7 @@ export function HubLanding() {
     setAddError(null);
     setNameManuallyEdited(false);
     setShowAddForm(false);
+    setShowFolderPicker(false);
   };
 
   /** Auto-detect name from path (last segment of the directory) */
@@ -298,16 +303,37 @@ export function HubLanding() {
             <label className="hub-add-label" htmlFor="hub-add-path">
               Repository path
             </label>
-            <input
-              id="hub-add-path"
-              className="hub-add-input"
-              type="text"
-              placeholder="/home/user/my-project"
-              value={addPath}
-              onChange={(e) => handlePathChange(e.target.value)}
-              autoFocus
-            />
+            <div className="hub-add-path-row">
+              <input
+                id="hub-add-path"
+                className="hub-add-input"
+                type="text"
+                placeholder="/home/user/my-project"
+                value={addPath}
+                onChange={(e) => handlePathChange(e.target.value)}
+                autoFocus
+              />
+              <button
+                className="hub-browse-btn"
+                type="button"
+                onClick={() => setShowFolderPicker(!showFolderPicker)}
+                aria-label={showFolderPicker ? 'Close folder browser' : 'Browse folders'}
+                title={showFolderPicker ? 'Close folder browser' : 'Browse folders'}
+              >
+                {showFolderPicker ? '\u2715' : '\ud83d\udcc2 Browse'}
+              </button>
+            </div>
           </div>
+          {showFolderPicker && (
+            <FolderPicker
+              initialPath={addPath || undefined}
+              onSelect={(path) => {
+                handlePathChange(path);
+                setShowFolderPicker(false);
+              }}
+              onClose={() => setShowFolderPicker(false)}
+            />
+          )}
           <div className="hub-add-field">
             <label className="hub-add-label" htmlFor="hub-add-name">
               Name (auto-detected)
