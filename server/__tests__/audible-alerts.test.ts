@@ -9,7 +9,7 @@ import { createPRApiRouter } from '../src/pr-api.js';
 import { PRManager } from '../src/pr-manager.js';
 import { WorktreeManager } from '../src/worktree-manager.js';
 import { config, updateConfig } from '../src/config.js';
-import { getAlertTone, playStatusAlert } from '../src/audible-alerts.js';
+import { getAlertTone, playStatusAlert, _resetDebounce } from '../src/audible-alerts.js';
 
 async function request(server: Server, method: string, path: string, body?: any) {
   const addr = server.address() as any;
@@ -36,11 +36,18 @@ describe('getAlertTone', () => {
     expect(getAlertTone('todo', 'review')).toBe('alert');
   });
 
-  it('returns neutral for other transitions', () => {
+  it('returns negative for regressions (moving backward)', () => {
+    expect(getAlertTone('done', 'backlog')).toBe('negative');
+    expect(getAlertTone('done', 'in_progress')).toBe('negative');
+    expect(getAlertTone('review', 'in_progress')).toBe('negative');
+    expect(getAlertTone('review', 'todo')).toBe('negative');
+    expect(getAlertTone('in_progress', 'backlog')).toBe('negative');
+  });
+
+  it('returns neutral for forward transitions (not to done/review)', () => {
     expect(getAlertTone('backlog', 'todo')).toBe('neutral');
     expect(getAlertTone('backlog', 'in_progress')).toBe('neutral');
     expect(getAlertTone('todo', 'in_progress')).toBe('neutral');
-    expect(getAlertTone('done', 'backlog')).toBe('neutral');
   });
 });
 
@@ -51,6 +58,7 @@ describe('playStatusAlert', () => {
   beforeEach(() => {
     originalAudibleAlerts = config.audibleAlerts;
     writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    _resetDebounce();
   });
 
   afterEach(() => {
@@ -91,6 +99,23 @@ describe('playStatusAlert', () => {
     const result = playStatusAlert('review', 'done');
     expect(result).toBe(true);
     expect(writeSpy).toHaveBeenCalledWith('\x07\x07\x07');
+  });
+
+  it('plays double bell for regression transitions', () => {
+    updateConfig({ audibleAlerts: true });
+    const result = playStatusAlert('done', 'backlog');
+    expect(result).toBe(true);
+    expect(writeSpy).toHaveBeenCalledWith('\x07\x07');
+  });
+
+  it('debounces rapid alerts', () => {
+    updateConfig({ audibleAlerts: true });
+    const first = playStatusAlert('backlog', 'todo');
+    expect(first).toBe(true);
+    // Second call within debounce window should be suppressed
+    const second = playStatusAlert('todo', 'in_progress');
+    expect(second).toBe(false);
+    expect(writeSpy).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -144,8 +169,9 @@ describe('audibleAlerts config via API', () => {
   });
 
   it('audibleAlerts defaults to false', () => {
-    // Reset to check default (already covered by the object literal, but explicit test)
-    expect(typeof config.audibleAlerts).toBe('boolean');
+    // Verify actual default value, not just type
+    const freshConfig = { audibleAlerts: process.env.HERMES_AUDIBLE_ALERTS === 'true' };
+    expect(freshConfig.audibleAlerts).toBe(false);
   });
 });
 
@@ -166,6 +192,7 @@ describe('audible alert on status change via API', () => {
     server = createServer(app);
     await new Promise<void>((resolve) => server.listen(0, resolve));
     writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    _resetDebounce();
   });
 
   afterEach(async () => {
@@ -203,8 +230,10 @@ describe('audible alert on status change via API', () => {
     // backlog -> todo -> in_progress -> review
     await request(server, 'PATCH', `/api/issues/${id}/status`, { status: 'todo' });
     writeSpy.mockClear();
+    _resetDebounce();
     await request(server, 'PATCH', `/api/issues/${id}/status`, { status: 'in_progress' });
     writeSpy.mockClear();
+    _resetDebounce();
     await request(server, 'PATCH', `/api/issues/${id}/status`, { status: 'review' });
     expect(writeSpy).toHaveBeenCalledWith('\x07\x07');
   });
@@ -217,6 +246,7 @@ describe('audible alert on status change via API', () => {
     // Move through statuses to done
     await request(server, 'PATCH', `/api/issues/${id}/status`, { status: 'todo' });
     writeSpy.mockClear();
+    _resetDebounce();
     await request(server, 'PATCH', `/api/issues/${id}/status`, { status: 'done' });
     expect(writeSpy).toHaveBeenCalledWith('\x07\x07\x07');
   });

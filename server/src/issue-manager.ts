@@ -6,6 +6,7 @@ import type { Store } from './store.js';
 import { getPreset } from './agents.js';
 import { saveDiagnostics } from './diagnostics.js';
 import { config } from './config.js';
+import { playStatusAlert } from './audible-alerts.js';
 
 // Re-export shared types so existing server imports continue to work.
 export type { Issue, IssueStatus } from '@hermes-monitor/shared/types';
@@ -276,6 +277,10 @@ export class IssueManager {
   }
 
   private handleTransition(issue: Issue, from: IssueStatus, to: IssueStatus): void {
+    // Audible alert — centralized here so ALL status transitions fire alerts,
+    // regardless of which API endpoint or internal caller triggered the change.
+    playStatusAlert(from, to);
+
     // Reset resume attempts on any status transition — a fresh start gets fresh retries
     this.resetResumeAttempts(issue.id);
 
