@@ -28,9 +28,8 @@ const PID_FILE = join(HERMES_DIR, 'hub.pid');
 
 /**
  * Client port offset — the Vite dev server (or vite preview) runs on
- * SERVER_PORT + CLIENT_PORT_OFFSET. This convention is shared with
- * bin/hermes-monitor.js (handleDefault) where the client is spawned.
- * In dev mode the dashboard is only accessible via the Vite port.
+ * SERVER_PORT + CLIENT_PORT_OFFSET. The canonical value lives in
+ * bin/lib/hub.js (exported as CLIENT_PORT_OFFSET). Keep in sync.
  */
 const CLIENT_PORT_OFFSET = 1000;
 
@@ -147,7 +146,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 // ── Start ──
-server.listen(HUB_PORT, () => {
+server.listen(HUB_PORT, '127.0.0.1', () => {
   // Write PID file only after the port is confirmed bound.
   // This prevents leaving a stale PID file if the port is already in use.
   mkdirSync(HERMES_DIR, { recursive: true });

@@ -24,6 +24,12 @@ const REPO_PIDS_DIR = join(HERMES_DIR, 'repo-pids');
 const HUB_PORT = parseInt(process.env.HUB_PORT || '3000', 10);
 const HUB_BASE = `http://localhost:${HUB_PORT}`;
 
+/**
+ * Client port offset — the Vite dev server (or vite preview) runs on
+ * SERVER_PORT + CLIENT_PORT_OFFSET. Shared between CLI, hub-server, and tests.
+ */
+const CLIENT_PORT_OFFSET = 1000;
+
 // Resolve hermes-monitor root directory (two levels up from bin/lib/)
 const ROOT = resolve(__dirname, '..', '..');
 
@@ -34,11 +40,12 @@ const ROOT = resolve(__dirname, '..', '..');
 /**
  * Check if the hub process is alive by reading the PID file
  * and sending signal 0.
+ * @param {string} [pidFile] - Override PID file path (for testing). Defaults to ~/.hermes/hub.pid.
  * @returns {number|null} PID if alive, null otherwise
  */
-function getHubPid() {
-  if (!existsSync(PID_FILE)) return null;
-  const raw = readFileSync(PID_FILE, 'utf8').trim();
+function getHubPid(pidFile = PID_FILE) {
+  if (!existsSync(pidFile)) return null;
+  const raw = readFileSync(pidFile, 'utf8').trim();
   const pid = parseInt(raw, 10);
   if (isNaN(pid)) return null;
   try {
@@ -46,7 +53,7 @@ function getHubPid() {
     return pid;
   } catch {
     // Stale PID file — clean up
-    try { unlinkSync(PID_FILE); } catch { /* ignore */ }
+    try { unlinkSync(pidFile); } catch { /* ignore */ }
     return null;
   }
 }
@@ -172,7 +179,16 @@ function startHub({ foreground = false, port = HUB_PORT } = {}) {
     stdio: ['ignore', out, err],
   });
 
+  child.on('error', (spawnErr) => {
+    console.error('Failed to start hub process:', spawnErr.message);
+  });
+
   child.unref();
+
+  // Close parent's copies of the file descriptors — the child inherits its own
+  require('fs').closeSync(out);
+  require('fs').closeSync(err);
+
   return null;
 }
 
@@ -463,6 +479,7 @@ module.exports = {
   REPO_PIDS_DIR,
   HUB_PORT,
   HUB_BASE,
+  CLIENT_PORT_OFFSET,
   getHubPid,
   isHubRunning,
   isHubReachable,

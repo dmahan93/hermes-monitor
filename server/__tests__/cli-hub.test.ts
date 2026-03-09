@@ -15,7 +15,7 @@ describe('hub.js', () => {
   // ── getHubPid ──
 
   describe('getHubPid', () => {
-    let hubModule: any;
+    const { getHubPid } = require('../../bin/lib/hub');
     let testDir: string;
     let testPidFile: string;
 
@@ -30,56 +30,30 @@ describe('hub.js', () => {
     });
 
     it('returns null when PID file does not exist', () => {
-      // Directly test the logic: no PID file → null
       const pidPath = join(testDir, 'nonexistent.pid');
-      expect(existsSync(pidPath)).toBe(false);
-      // We can't easily call getHubPid with a custom path since it uses a constant,
-      // but we can test the logic inline
-      const raw = existsSync(pidPath) ? readFileSync(pidPath, 'utf8').trim() : null;
-      expect(raw).toBeNull();
+      expect(getHubPid(pidPath)).toBeNull();
     });
 
     it('returns null for non-numeric PID content', () => {
       writeFileSync(testPidFile, 'not-a-number');
-      const raw = readFileSync(testPidFile, 'utf8').trim();
-      const pid = parseInt(raw, 10);
-      expect(isNaN(pid)).toBe(true);
+      expect(getHubPid(testPidFile)).toBeNull();
     });
 
     it('returns null for empty PID file', () => {
       writeFileSync(testPidFile, '');
-      const raw = readFileSync(testPidFile, 'utf8').trim();
-      const pid = parseInt(raw, 10);
-      expect(isNaN(pid)).toBe(true);
+      expect(getHubPid(testPidFile)).toBeNull();
     });
 
     it('returns PID for current process (alive)', () => {
-      const myPid = process.pid;
-      writeFileSync(testPidFile, String(myPid));
-      const raw = readFileSync(testPidFile, 'utf8').trim();
-      const pid = parseInt(raw, 10);
-      expect(pid).toBe(myPid);
-      // Verify it's alive
-      let alive = false;
-      try {
-        process.kill(pid, 0);
-        alive = true;
-      } catch { /* dead */ }
-      expect(alive).toBe(true);
+      writeFileSync(testPidFile, String(process.pid));
+      expect(getHubPid(testPidFile)).toBe(process.pid);
     });
 
-    it('detects stale PID (dead process)', () => {
-      // Use a very high PID that almost certainly doesn't exist
+    it('detects stale PID and cleans up file', () => {
       writeFileSync(testPidFile, '999999999');
-      const raw = readFileSync(testPidFile, 'utf8').trim();
-      const pid = parseInt(raw, 10);
-      expect(pid).toBe(999999999);
-      let alive = false;
-      try {
-        process.kill(pid, 0);
-        alive = true;
-      } catch { /* dead */ }
-      expect(alive).toBe(false);
+      expect(getHubPid(testPidFile)).toBeNull();
+      // PID file should be cleaned up
+      expect(existsSync(testPidFile)).toBe(false);
     });
   });
 

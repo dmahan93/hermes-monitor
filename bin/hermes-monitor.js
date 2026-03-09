@@ -24,6 +24,7 @@ const {
   killReposByPidFiles,
   openBrowser,
   HUB_PORT,
+  CLIENT_PORT_OFFSET,
 } = require('./lib/hub');
 
 // Resolve hermes-monitor root directory (one level up from bin/)
@@ -124,7 +125,9 @@ async function handleStop() {
   if (killed) {
     console.log('Hub stopped.');
   } else {
-    console.log('Hub was not running.');
+    // isHubRunning() was true above but stopHub() returned false — the hub
+    // exited between our check and the kill attempt (race window).
+    console.log('Hub exited before it could be stopped.');
   }
   process.exit(0);
 }
@@ -205,7 +208,7 @@ async function handleList() {
                    repo.status === 'starting' ? '\x1b[33m◐ starting\x1b[0m' :
                    repo.status === 'error' ? '\x1b[31m✗ error\x1b[0m' :
                    '\x1b[90m○ stopped\x1b[0m';
-    const clientPort = repo.status === 'running' ? `  :${repo.port + 1000}` : '';
+    const clientPort = repo.status === 'running' ? `  :${repo.port + CLIENT_PORT_OFFSET}` : '';
     console.log(`  ${status}  ${repo.name}${clientPort}`);
     console.log(`           ${repo.path}`);
     console.log(`           id: ${repo.id}`);
@@ -330,15 +333,17 @@ async function handleDefault() {
           await new Promise((r) => setTimeout(r, 500));
         }
         if (ready) {
-          const runningClientPort = entry.port + 1000;
+          const runningClientPort = entry.port + CLIENT_PORT_OFFSET;
           console.log(`Repo ${entry.name} is now running on :${runningClientPort}`);
           if (opts.browser) {
             openBrowser(`http://localhost:${runningClientPort}`);
           }
           process.exit(0);
         }
-        // Timed out waiting — fall through to restart
-        console.log('Timed out waiting for repo to start. Restarting...');
+        // Timed out waiting — kill the stale process before restarting
+        console.log('Timed out waiting for repo to start. Killing stale process and restarting...');
+        try { process.kill(entry.pid, 'SIGTERM'); } catch { /* ignore */ }
+        try { await updateRepoStatus(entry.id, 'stopped', null); } catch { /* non-fatal */ }
       } else {
         // status === 'running' — verify HTTP server is actually responding
         const serverUp = await new Promise((res) => {
@@ -351,14 +356,17 @@ async function handleDefault() {
         });
 
         if (serverUp) {
-          const runningClientPort = entry.port + 1000;
+          const runningClientPort = entry.port + CLIENT_PORT_OFFSET;
           console.log(`Repo ${entry.name} is already running on :${runningClientPort}`);
           if (opts.browser) {
             openBrowser(`http://localhost:${runningClientPort}`);
           }
           process.exit(0);
         }
-        // PID alive but server not responding — restart below
+        // PID alive but server not responding — kill stale process before restart
+        console.log(`Repo ${entry.name}: PID alive but server not responding. Killing stale process...`);
+        try { process.kill(entry.pid, 'SIGTERM'); } catch { /* ignore */ }
+        try { await updateRepoStatus(entry.id, 'stopped', null); } catch { /* non-fatal */ }
       }
     }
   }
@@ -400,7 +408,7 @@ async function handleDefault() {
 
   // ── Use the port assigned by the hub registry ──
   const SERVER_PORT = entry.port;
-  const CLIENT_PORT = entry.port + 1000; // offset client port to avoid collisions
+  const CLIENT_PORT = entry.port + CLIENT_PORT_OFFSET;
 
   if (CLIENT_PORT > 65535) {
     console.error(`Error: computed client port ${CLIENT_PORT} exceeds 65535 (server port: ${SERVER_PORT}).`);
