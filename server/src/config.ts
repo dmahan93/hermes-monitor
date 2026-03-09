@@ -25,6 +25,7 @@ export interface AppConfig {
   mergeMode: MergeMode;
   managerTerminalAgent: ManagerTerminalAgent;
   audibleAlerts: boolean;
+  serverPort: string;
 }
 
 // Detect the default branch name for a repo
@@ -86,6 +87,7 @@ export const config: AppConfig = {
     ? process.env.HERMES_MANAGER_TERMINAL_AGENT
     : 'hermes',
   audibleAlerts: process.env.HERMES_AUDIBLE_ALERTS === 'true',
+  serverPort: process.env.PORT || '4000',
 };
 
 export function updateConfig(updates: Partial<AppConfig>): void {
@@ -120,6 +122,7 @@ export function updateConfig(updates: Partial<AppConfig>): void {
     }
   }
   if (updates.audibleAlerts !== undefined) config.audibleAlerts = !!updates.audibleAlerts;
+  if (updates.serverPort !== undefined) config.serverPort = updates.serverPort;
 }
 
 // Cache isGitRepo result per path — the repo status doesn't change during

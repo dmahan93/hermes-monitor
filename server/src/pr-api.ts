@@ -17,8 +17,8 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
   // ── Config ──
 
   router.get('/config', (_req, res) => {
-    const serverPort = parseInt(process.env.PORT || '4000', 10);
-    res.json({ ...config, serverPort });
+    // Return serverPort as a number for backward compatibility with clients
+    res.json({ ...config, serverPort: parseInt(config.serverPort, 10) });
   });
 
   router.patch('/config', (req, res) => {
