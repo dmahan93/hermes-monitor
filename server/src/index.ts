@@ -193,9 +193,22 @@ issueManager.onEvent((event, issue) => {
       message: issue.progressMessage ?? null,
       percent: issue.progressPercent ?? null,
     });
-  } else {
+  } else if (event !== 'issue:statusChanged') {
+    // issue:statusChanged is handled by the dedicated callback below
     broadcastToAll(wss, { type: event, issue });
   }
+});
+
+// Broadcast status change events (used for browser audible notifications)
+issueManager.onStatusChanged((detail) => {
+  broadcastToAll(wss, {
+    type: 'issue:statusChanged',
+    issueId: detail.issueId,
+    title: detail.title,
+    from: detail.from,
+    to: detail.to,
+    alertTone: detail.alertTone,
+  });
 });
 
 // Broadcast PR events — enrich with screenshot data so clients get consistent data

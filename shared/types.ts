@@ -59,6 +59,11 @@ export interface AgentPreset {
 
 export type ManagerTerminalAgent = 'hermes' | 'claude' | 'codex' | 'gemini';
 
+// ── Audible Alerts ──
+
+/** Tone category for status-change notifications. */
+export type AlertTone = 'positive' | 'alert' | 'negative' | 'neutral';
+
 // ── Config ──
 
 export type MergeMode = 'local' | 'github' | 'both';
@@ -126,5 +131,6 @@ export type ServerMessage =
   | { type: 'issue:updated'; issue: Issue }
   | { type: 'issue:deleted'; issueId: string }
   | { type: 'issue:progress'; issueId: string; message: string | null; percent: number | null }
+  | { type: 'issue:statusChanged'; issueId: string; title: string; from: IssueStatus; to: IssueStatus; alertTone: AlertTone }
   | { type: 'pr:created'; pr: PullRequest }
   | { type: 'pr:updated'; pr: PullRequest };

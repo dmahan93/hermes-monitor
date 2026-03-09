@@ -11,7 +11,10 @@
  *   the bell character is silently lost or written into the pipe/log file.
  */
 import { config } from './config.js';
-import type { IssueStatus } from '@hermes-monitor/shared/types';
+import type { IssueStatus, AlertTone } from '@hermes-monitor/shared/types';
+
+// Re-export AlertTone so existing server imports continue to work.
+export type { AlertTone } from '@hermes-monitor/shared/types';
 
 /** Bell character — triggers an audible beep in most terminals. */
 const BELL = '\x07';
@@ -36,8 +39,6 @@ let lastAlertTime = 0;
  * Note: done -> review returns 'alert' (not 'negative') because semantically
  * it means "needs attention", which is more useful than flagging it as a regression.
  */
-export type AlertTone = 'positive' | 'alert' | 'negative' | 'neutral';
-
 /** Status progression order for detecting regressions. */
 const STATUS_ORDER: Record<IssueStatus, number> = {
   backlog: 0,
