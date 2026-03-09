@@ -22,7 +22,8 @@ import type { PRManager } from './pr-manager.js';
 import type { WorktreeManager } from './worktree-manager.js';
 import { config } from './config.js';
 import { getDiagnostics } from './diagnostics.js';
-import { getUploadedScreenshots, UI_EXTENSIONS } from './screenshot-utils.js';
+import { UI_EXTENSIONS } from './screenshot-utils.js';
+import { extractActionItems } from './review-utils.js';
 
 /** Server port — single source of truth for URL construction */
 const PORT = process.env.PORT || '4000';
@@ -36,22 +37,7 @@ export interface TaskContextOptions {
   port?: string;
 }
 
-/**
- * Extract action items from a review body.
- * Mirrors the logic in agent-api.ts for consistency.
- */
-function extractActionItems(body: string): string[] {
-  const items: string[] = [];
-  for (const line of body.split('\n')) {
-    const trimmed = line.trim();
-    const match = trimmed.match(/^(?:[-*]|\d+\.)\s+(.+)/);
-    if (match) {
-      if (/VERDICT:\s*(APPROVED|CHANGES_REQUESTED)/i.test(match[1])) continue;
-      items.push(match[1].trim());
-    }
-  }
-  return items;
-}
+
 
 /**
  * Generate the TASK.md content for an issue.
@@ -247,12 +233,13 @@ export function generateTaskMd(options: TaskContextOptions): string {
 }
 
 /**
- * Generate AGENTS.md content (for Hermes, Codex, Gemini).
- * This file is auto-loaded by these agents and tells them to read TASK.md.
+ * Generate agent-native context file content.
+ * Used for AGENTS.md (Hermes, Codex, Gemini) and CLAUDE.md (Claude Code).
+ * These files are auto-loaded by agents and tell them to read TASK.md.
  */
-export function generateAgentsMd(options: TaskContextOptions): string {
+function generateAgentContextMd(heading: string): string {
   return [
-    '# Project Agent Instructions',
+    `# ${heading}`,
     '',
     '## Current Task',
     '',
@@ -263,7 +250,7 @@ export function generateAgentsMd(options: TaskContextOptions): string {
     '',
     '1. Read TASK.md for task details and any rework feedback.',
     '2. Implement the changes.',
-    '3. Run tests to verify: `npm test` (from project root).',
+    '3. Run tests to verify.',
     '4. Commit your changes: `git add -A && git commit -m "description"`',
     '5. Submit: `./.hermes-monitor/submit.sh`',
     '',
@@ -283,39 +270,17 @@ export function generateAgentsMd(options: TaskContextOptions): string {
 }
 
 /**
- * Generate CLAUDE.md content (for Claude Code).
- * Auto-loaded by Claude Code at session start.
+ * Generate AGENTS.md content (for Hermes, Codex, Gemini).
  */
-export function generateClaudeMd(options: TaskContextOptions): string {
-  return [
-    '# Project Instructions',
-    '',
-    '## Current Task',
-    '',
-    'Read `TASK.md` in this directory for your complete task description,',
-    'requirements, and submission instructions.',
-    '',
-    '## Workflow',
-    '',
-    '1. Read TASK.md for task details and any rework feedback.',
-    '2. Implement the changes.',
-    '3. Run tests to verify: `npm test` (from project root).',
-    '4. Commit your changes: `git add -A && git commit -m "description"`',
-    '5. Submit: `./.hermes-monitor/submit.sh`',
-    '',
-    '## Helper Scripts',
-    '',
-    '- `./.hermes-monitor/submit.sh` — submit for review',
-    '- `./.hermes-monitor/progress.sh "message"` — report progress',
-    '- `./.hermes-monitor/upload-screenshot.sh file.png "description"` — upload screenshot',
-    '',
-    '## Important Notes',
-    '',
-    '- Do NOT stop after summarization steps — continue working.',
-    '- Complete the full task before submitting.',
-    '- If tests fail, fix them before submitting.',
-    '',
-  ].join('\n');
+export function generateAgentsMd(): string {
+  return generateAgentContextMd('Project Agent Instructions');
+}
+
+/**
+ * Generate CLAUDE.md content (for Claude Code).
+ */
+export function generateClaudeMd(): string {
+  return generateAgentContextMd('Project Instructions');
 }
 
 /**
@@ -345,9 +310,12 @@ export function generateSubmitScript(issueId: string, port?: string): string {
     '      ;;',
     '    --no-ui-changes)',
     '      NO_UI_CHANGES="true"',
-    '      REASON="${2:-}"',
+    '      # Only consume next arg as reason if it doesn\'t start with --',
+    '      if [[ -n "${2:-}" && "${2}" != --* ]]; then',
+    '        REASON="$2"',
+    '        shift',
+    '      fi',
     '      shift',
-    '      [[ -n "$REASON" ]] && shift',
     '      ;;',
     '    *)',
     '      echo "Unknown option: $1"',
@@ -356,18 +324,17 @@ export function generateSubmitScript(issueId: string, port?: string): string {
     '  esac',
     'done',
     '',
-    'BODY="{"',
+    '# Build JSON body using jq for safe escaping',
+    'BODY="{}"',
     'if [[ -n "$DETAILS" ]]; then',
-    '  BODY="$BODY\\"details\\": \\"$(echo "$DETAILS" | sed \'s/"/\\\\"/g\')\\""',
+    '  BODY=$(echo "$BODY" | jq --arg details "$DETAILS" \'. + {details: $details}\')',
     'fi',
     'if [[ -n "$NO_UI_CHANGES" ]]; then',
-    '  [[ "$BODY" != "{" ]] && BODY="$BODY, "',
-    '  BODY="$BODY\\"noUiChanges\\": true"',
+    '  BODY=$(echo "$BODY" | jq \'. + {noUiChanges: true}\')',
     '  if [[ -n "$REASON" ]]; then',
-    '    BODY="$BODY, \\"reason\\": \\"$(echo "$REASON" | sed \'s/"/\\\\"/g\')\\""',
+    '    BODY=$(echo "$BODY" | jq --arg reason "$REASON" \'. + {reason: $reason}\')',
     '  fi',
     'fi',
-    'BODY="$BODY}"',
     '',
     'echo "Submitting for review..."',
     'RESPONSE=$(curl -s -X POST "$BASE_URL/review" \\',
@@ -377,7 +344,7 @@ export function generateSubmitScript(issueId: string, port?: string): string {
     'echo "$RESPONSE"',
     '',
     '# Check for errors',
-    'if echo "$RESPONSE" | grep -q \'"error"\'; then',
+    'if echo "$RESPONSE" | grep -q \'\"error\"\'; then',
     '  echo ""',
     '  echo "❌ Submission failed. See error above."',
     '  exit 1',
@@ -405,11 +372,11 @@ export function generateProgressScript(issueId: string, port?: string): string {
     '',
     `BASE_URL="http://localhost:${p}/agent/${issueId}"`,
     '',
-    'BODY="{\\"message\\": \\"$(echo "$MESSAGE" | sed \'s/"/\\\\"/g\')\\""',
+    '# Build JSON body using jq for safe escaping',
+    'BODY=$(jq -n --arg message "$MESSAGE" \'{message: $message}\')',
     'if [[ -n "$PERCENT" ]]; then',
-    '  BODY="$BODY, \\"percent\\": $PERCENT"',
+    '  BODY=$(echo "$BODY" | jq --argjson percent "$PERCENT" \'. + {percent: $percent}\')',
     'fi',
-    'BODY="$BODY}"',
     '',
     'curl -s -X POST "$BASE_URL/progress" \\',
     '  -H "Content-Type: application/json" \\',
@@ -473,7 +440,7 @@ export function generateUploadScreenshotScript(issueId: string, port?: string): 
 /**
  * Determine which agent-native context file to write based on the agent type.
  */
-function getAgentContextFile(agentId: string): { filename: string; generator: (opts: TaskContextOptions) => string } | null {
+function getAgentContextFile(agentId: string): { filename: string; generator: () => string } | null {
   switch (agentId) {
     case 'hermes':
     case 'codex':
@@ -518,7 +485,7 @@ export function writeTaskContext(options: TaskContextOptions): void {
   // Write agent-native context file
   const agentCtx = getAgentContextFile(issue.agent);
   if (agentCtx) {
-    const content = agentCtx.generator(options);
+    const content = agentCtx.generator();
     const targetPath = join(worktreePath, agentCtx.filename);
     // Don't overwrite if the file exists in the repo already (user's own context)
     if (!existsSync(targetPath)) {

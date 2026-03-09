@@ -12,6 +12,7 @@ import {
   writeTaskContext,
   updateTaskContext,
 } from '../src/task-context.js';
+import { extractActionItems } from '../src/review-utils.js';
 import type { Issue } from '@hermes-monitor/shared/types';
 
 function makeIssue(overrides: Partial<Issue> = {}): Issue {
@@ -273,26 +274,46 @@ describe('Task Context — TASK.md Generation', () => {
 
 describe('Task Context — Agent-Native Context Files', () => {
   it('generates AGENTS.md referencing TASK.md', () => {
-    const content = generateAgentsMd({
-      issue: makeIssue(),
-      worktreePath: '/tmp/test',
-    });
+    const content = generateAgentsMd();
 
     expect(content).toContain('TASK.md');
     expect(content).toContain('./.hermes-monitor/submit.sh');
     expect(content).toContain('./.hermes-monitor/progress.sh');
     expect(content).toContain('Do NOT stop after summarization');
+    expect(content).toContain('# Project Agent Instructions');
   });
 
   it('generates CLAUDE.md referencing TASK.md', () => {
-    const content = generateClaudeMd({
-      issue: makeIssue({ agent: 'claude' }),
-      worktreePath: '/tmp/test',
-    });
+    const content = generateClaudeMd();
 
     expect(content).toContain('TASK.md');
     expect(content).toContain('./.hermes-monitor/submit.sh');
     expect(content).toContain('Do NOT stop after summarization');
+    expect(content).toContain('# Project Instructions');
+  });
+
+  it('AGENTS.md and CLAUDE.md share the same structure but different headings', () => {
+    const agents = generateAgentsMd();
+    const claude = generateClaudeMd();
+
+    // Same content except heading
+    expect(agents).toContain('# Project Agent Instructions');
+    expect(claude).toContain('# Project Instructions');
+    expect(agents).not.toContain('# Project Instructions\n');
+    expect(claude).not.toContain('# Project Agent Instructions');
+
+    // Both have same workflow section
+    expect(agents).toContain('## Workflow');
+    expect(claude).toContain('## Workflow');
+  });
+
+  it('does not hardcode npm test in context files', () => {
+    const agents = generateAgentsMd();
+    const claude = generateClaudeMd();
+
+    // Should NOT hardcode a specific test runner
+    expect(agents).not.toContain('npm test');
+    expect(claude).not.toContain('npm test');
   });
 });
 
@@ -540,5 +561,166 @@ describe('Task Context — updateTaskContext', () => {
     const taskMd = readFileSync(join(tmpDir, 'TASK.md'), 'utf-8');
     expect(taskMd).toContain('REWORK REQUIRED');
     expect(taskMd).toContain('Fix the null check on line 15');
+  });
+});
+
+describe('Task Context — Special Characters', () => {
+  const tmpDir = join(tmpdir(), 'task-ctx-special-test-' + process.pid);
+
+  beforeEach(() => {
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('handles markdown in issue title and description', () => {
+    const md = generateTaskMd({
+      issue: makeIssue({
+        title: 'Fix `bug` in **parser** — handle # headers',
+        description: '## Problem\n\nThe `parser` fails when:\n\n```typescript\nconst x = "hello";\n```\n\n| Column A | Column B |\n|----------|----------|\n| value1   | value2   |',
+      }),
+      worktreePath: tmpDir,
+      port: '4000',
+    });
+
+    expect(md).toContain('Fix `bug` in **parser** — handle # headers');
+    expect(md).toContain('## Problem');
+    expect(md).toContain('```typescript');
+    expect(md).toContain('| Column A | Column B |');
+  });
+
+  it('handles backticks and single quotes in descriptions', () => {
+    const md = generateTaskMd({
+      issue: makeIssue({
+        description: "Use `Array.from()` and don't forget to handle `null`",
+      }),
+      worktreePath: tmpDir,
+      port: '4000',
+    });
+
+    expect(md).toContain("Use `Array.from()` and don't forget to handle `null`");
+  });
+
+  it('handles very long descriptions without crashing', () => {
+    const longDescription = 'A'.repeat(10000) + '\n' + 'B'.repeat(10000);
+    const md = generateTaskMd({
+      issue: makeIssue({ description: longDescription }),
+      worktreePath: tmpDir,
+      port: '4000',
+    });
+
+    expect(md).toContain('AAAA');
+    expect(md).toContain('BBBB');
+  });
+
+  it('handles special characters in review feedback action items', () => {
+    const pr = {
+      id: 'pr-1',
+      issueId: 'test-issue-123',
+      verdict: 'changes_requested',
+      comments: [
+        {
+          id: 'c1', prId: 'pr-1', author: 'hermes-reviewer',
+          body: 'VERDICT: CHANGES_REQUESTED\n\n- Fix `const x = "foo"` on line 42\n- Handle `$HOME` and `${PATH}` expansion\n- Don\'t use `eval()` — it\'s dangerous',
+          file: null, line: null, createdAt: Date.now(),
+        },
+      ],
+    };
+
+    const md = generateTaskMd({
+      issue: makeIssue(),
+      worktreePath: tmpDir,
+      prManager: makeMockPRManager({ pr }) as any,
+      port: '4000',
+    });
+
+    expect(md).toContain('Fix `const x = "foo"` on line 42');
+    expect(md).toContain('Handle `$HOME` and `${PATH}` expansion');
+  });
+});
+
+describe('Task Context — extractActionItems (shared)', () => {
+  it('extracts bullet points', () => {
+    const items = extractActionItems('Some text\n- Fix bug A\n- Fix bug B\n\nMore text');
+    expect(items).toEqual(['Fix bug A', 'Fix bug B']);
+  });
+
+  it('extracts numbered lists', () => {
+    const items = extractActionItems('1. First\n2. Second\n3. Third');
+    expect(items).toEqual(['First', 'Second', 'Third']);
+  });
+
+  it('filters VERDICT lines', () => {
+    const items = extractActionItems('- VERDICT: CHANGES_REQUESTED\n- Fix the bug\n- VERDICT: APPROVED');
+    expect(items).toEqual(['Fix the bug']);
+  });
+
+  it('handles asterisk bullets', () => {
+    const items = extractActionItems('* Item one\n* Item two');
+    expect(items).toEqual(['Item one', 'Item two']);
+  });
+
+  it('handles empty input', () => {
+    expect(extractActionItems('')).toEqual([]);
+  });
+
+  it('trims whitespace from items', () => {
+    const items = extractActionItems('  -   padded item   ');
+    expect(items).toEqual(['padded item']);
+  });
+});
+
+describe('Task Context — Shell Script Syntax Validation', () => {
+  const tmpDir = join(tmpdir(), 'task-ctx-bash-test-' + process.pid);
+  const { execSync } = require('child_process');
+
+  beforeEach(() => {
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('submit.sh passes bash syntax check', () => {
+    const script = generateSubmitScript('test-id', '4000');
+    const scriptPath = join(tmpDir, 'submit.sh');
+    writeFileSync(scriptPath, script, 'utf-8');
+    // bash -n does a syntax check without executing
+    expect(() => execSync(`bash -n "${scriptPath}"`)).not.toThrow();
+  });
+
+  it('progress.sh passes bash syntax check', () => {
+    const script = generateProgressScript('test-id', '4000');
+    const scriptPath = join(tmpDir, 'progress.sh');
+    writeFileSync(scriptPath, script, 'utf-8');
+    expect(() => execSync(`bash -n "${scriptPath}"`)).not.toThrow();
+  });
+
+  it('upload-screenshot.sh passes bash syntax check', () => {
+    const script = generateUploadScreenshotScript('test-id', '4000');
+    const scriptPath = join(tmpDir, 'upload.sh');
+    writeFileSync(scriptPath, script, 'utf-8');
+    expect(() => execSync(`bash -n "${scriptPath}"`)).not.toThrow();
+  });
+
+  it('submit.sh uses jq for JSON construction', () => {
+    const script = generateSubmitScript('test-id', '4000');
+    expect(script).toContain('jq');
+    // Should NOT use manual JSON string concatenation
+    expect(script).not.toMatch(/BODY="\{"/);
+  });
+
+  it('progress.sh uses jq for JSON construction', () => {
+    const script = generateProgressScript('test-id', '4000');
+    expect(script).toContain('jq');
+  });
+
+  it('submit.sh --no-ui-changes does not consume next flag as reason', () => {
+    const script = generateSubmitScript('test-id', '4000');
+    // The fix: check if next arg starts with --
+    expect(script).toContain('!= --*');
   });
 });

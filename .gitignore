@@ -12,4 +12,6 @@ client/tsconfig.tsbuildinfo
 
 # Generated task context files (written by hermes-monitor into worktrees)
 TASK.md
+AGENTS.md
+CLAUDE.md
 .hermes-monitor/

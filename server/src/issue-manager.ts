@@ -7,7 +7,7 @@ import { getPreset } from './agents.js';
 import { saveDiagnostics } from './diagnostics.js';
 import { config } from './config.js';
 import { playStatusAlert, getAlertTone } from './audible-alerts.js';
-import { writeTaskContext, updateTaskContext } from './task-context.js';
+import { writeTaskContext } from './task-context.js';
 import type { AlertTone } from '@hermes-monitor/shared/types';
 
 // Re-export shared types so existing server imports continue to work.
