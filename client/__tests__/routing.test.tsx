@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { HubLanding } from '../src/components/HubLanding';
 import { NotFound } from '../src/components/NotFound';
+import { Header } from '../src/components/Header';
 
 /**
  * Tests for the client-side routing setup.
@@ -15,6 +16,29 @@ function renderWithRoutes(initialRoute: string) {
       <Routes>
         <Route path="/" element={<HubLanding />} />
         <Route path="/:repoId/*" element={<div data-testid="app-view">App for repo</div>} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+/** Minimal App stub that includes the Header with onHome wired to navigate('/') */
+function AppWithHeader() {
+  const navigate = useNavigate();
+  return (
+    <div data-testid="app-view">
+      <Header onHome={() => navigate('/')} connected={true} />
+      App for repo
+    </div>
+  );
+}
+
+function renderWithRoutesAndHeader(initialRoute: string) {
+  return render(
+    <MemoryRouter initialEntries={[initialRoute]}>
+      <Routes>
+        <Route path="/" element={<HubLanding />} />
+        <Route path="/:repoId/*" element={<AppWithHeader />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </MemoryRouter>,
@@ -81,5 +105,27 @@ describe('Routing', () => {
   it('/:repoId/manager renders App', () => {
     renderWithRoutes('/my-repo/manager');
     expect(screen.getByTestId('app-view')).toBeInTheDocument();
+  });
+
+  it('clicking hub button from /:repoId navigates to /', async () => {
+    renderWithRoutesAndHeader('/my-repo/kanban');
+    expect(screen.getByTestId('app-view')).toBeInTheDocument();
+
+    const hubBtn = screen.getByRole('button', { name: 'Back to hub' });
+    fireEvent.click(hubBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('HERMES MONITOR HUB')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('app-view')).not.toBeInTheDocument();
+  });
+
+  it('hub button is visible on all repo sub-routes', () => {
+    const routes = ['/my-repo', '/my-repo/kanban', '/my-repo/terminals', '/my-repo/prs', '/my-repo/config', '/my-repo/manager'];
+    for (const route of routes) {
+      const { unmount } = renderWithRoutesAndHeader(route);
+      expect(screen.getByRole('button', { name: 'Back to hub' })).toBeInTheDocument();
+      unmount();
+    }
   });
 });
