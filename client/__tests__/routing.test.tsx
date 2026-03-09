@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { HubLanding } from '../src/components/HubLanding';
 import { NotFound } from '../src/components/NotFound';
 import { Header } from '../src/components/Header';
@@ -22,12 +22,13 @@ function renderWithRoutes(initialRoute: string) {
   );
 }
 
-/** Minimal App stub that includes the Header with onHome wired to navigate('/') */
+/** Minimal App stub that includes the Header with onHome wired to redirect to hub port */
 function AppWithHeader() {
-  const navigate = useNavigate();
   return (
     <div data-testid="app-view">
-      <Header onHome={() => navigate('/')} connected={true} />
+      <Header onHome={() => {
+        window.location.href = `http://${window.location.hostname}:${__DEFAULT_HUB_PORT__}`;
+      }} connected={true} />
       App for repo
     </div>
   );
@@ -107,17 +108,15 @@ describe('Routing', () => {
     expect(screen.getByTestId('app-view')).toBeInTheDocument();
   });
 
-  it('clicking hub button from /:repoId navigates to /', async () => {
+  it('clicking hub button from /:repoId redirects to hub port', () => {
     renderWithRoutesAndHeader('/my-repo/kanban');
     expect(screen.getByTestId('app-view')).toBeInTheDocument();
 
     const hubBtn = screen.getByRole('button', { name: 'Back to hub' });
     fireEvent.click(hubBtn);
 
-    await waitFor(() => {
-      expect(screen.getByText('HERMES MONITOR HUB')).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId('app-view')).not.toBeInTheDocument();
+    // Should redirect to the hub port (full page navigation, not react-router)
+    expect(window.location.href).toBe(`http://localhost:${__DEFAULT_HUB_PORT__}/`);
   });
 
   it('hub button is visible on all repo sub-routes', () => {
