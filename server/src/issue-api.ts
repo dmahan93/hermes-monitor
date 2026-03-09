@@ -138,7 +138,6 @@ export function createIssueApiRouter(manager: IssueManager): Router {
         res.status(404).json({ error: 'Issue not found' });
         return;
       }
-
       res.json(issue);
     } catch (err: any) {
       res.status(400).json({ error: err.message });

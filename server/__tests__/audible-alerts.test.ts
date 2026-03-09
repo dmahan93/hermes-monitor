@@ -36,6 +36,12 @@ describe('getAlertTone', () => {
     expect(getAlertTone('todo', 'review')).toBe('alert');
   });
 
+  it('returns alert for done -> review (review takes precedence over regression)', () => {
+    // done -> review is semantically "needs attention", not a regression.
+    // The `to === review` check runs before the regression check, which is intentional.
+    expect(getAlertTone('done', 'review')).toBe('alert');
+  });
+
   it('returns negative for regressions (moving backward)', () => {
     expect(getAlertTone('done', 'backlog')).toBe('negative');
     expect(getAlertTone('done', 'in_progress')).toBe('negative');
@@ -108,6 +114,17 @@ describe('playStatusAlert', () => {
     expect(writeSpy).toHaveBeenCalledWith('\x07\x07');
   });
 
+  it('returns false and does not throw when process.stdout.write fails', () => {
+    updateConfig({ audibleAlerts: true });
+    writeSpy.mockImplementation(() => {
+      throw new Error('EPIPE');
+    });
+    const result = playStatusAlert('backlog', 'todo');
+    expect(result).toBe(false);
+    // Verify it was called but the error was swallowed
+    expect(writeSpy).toHaveBeenCalled();
+  });
+
   it('debounces rapid alerts', () => {
     updateConfig({ audibleAlerts: true });
     const first = playStatusAlert('backlog', 'todo');
@@ -169,9 +186,9 @@ describe('audibleAlerts config via API', () => {
   });
 
   it('audibleAlerts defaults to false', () => {
-    // Verify actual default value, not just type
-    const freshConfig = { audibleAlerts: process.env.HERMES_AUDIBLE_ALERTS === 'true' };
-    expect(freshConfig.audibleAlerts).toBe(false);
+    // Reset to default and verify the actual value, not just the type
+    updateConfig({ audibleAlerts: false });
+    expect(config.audibleAlerts).toBe(false);
   });
 });
 

@@ -27,10 +27,14 @@ let lastAlertTime = 0;
 
 /**
  * Categorize a status transition for choosing an alert pattern.
- * - 'positive': moving to done (task completed)
- * - 'alert': moving to review (needs attention)
- * - 'negative': regression — moving from done/review back to an earlier status
- * - 'neutral': any other transition (e.g., backlog -> in_progress)
+ * Precedence (first match wins):
+ * 1. 'positive': moving to done (task completed)
+ * 2. 'alert': moving to review (needs attention) — including done -> review
+ * 3. 'negative': regression — moving backward to an earlier status
+ * 4. 'neutral': any other forward transition (e.g., backlog -> in_progress)
+ *
+ * Note: done -> review returns 'alert' (not 'negative') because semantically
+ * it means "needs attention", which is more useful than flagging it as a regression.
  */
 export type AlertTone = 'positive' | 'alert' | 'negative' | 'neutral';
 
@@ -79,21 +83,31 @@ export function playStatusAlert(from: IssueStatus, to: IssueStatus): boolean {
 
   const tone = getAlertTone(from, to);
 
+  let bellPattern: string;
   switch (tone) {
     case 'positive':
       // Triple beep for completion
-      process.stdout.write(BELL + BELL + BELL);
+      bellPattern = BELL + BELL + BELL;
       break;
     case 'alert':
     case 'negative':
       // Double beep for review or regression
-      process.stdout.write(BELL + BELL);
+      bellPattern = BELL + BELL;
       break;
     case 'neutral':
     default:
       // Single beep for other transitions
-      process.stdout.write(BELL);
+      bellPattern = BELL;
       break;
+  }
+
+  try {
+    process.stdout.write(bellPattern);
+  } catch {
+    // Silently ignore — stdout may not be a terminal (EPIPE, ENXIO,
+    // redirected/closed stdout in containers, systemd services, etc.).
+    // A cosmetic beep should never break status transitions.
+    return false;
   }
 
   return true;
