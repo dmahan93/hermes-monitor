@@ -298,8 +298,8 @@ async function handleDefault() {
     process.exit(1);
   }
 
-  // ── Check if repo server is already running ──
-  if (entry.status === 'running' && entry.pid) {
+  // ── Check if repo server is already running or starting ──
+  if ((entry.status === 'running' || entry.status === 'starting') && entry.pid) {
     let alive = false;
     try {
       process.kill(entry.pid, 0);
@@ -308,25 +308,58 @@ async function handleDefault() {
       // PID is stale
     }
     if (alive) {
-      // Verify HTTP server is actually responding (not just PID alive)
-      const serverUp = await new Promise((res) => {
-        const req = http.get(`http://localhost:${entry.port}/api/health`, (resp) => {
-          resp.resume();
-          res(resp.statusCode >= 200 && resp.statusCode < 500);
-        });
-        req.on('error', () => res(false));
-        req.setTimeout(2000, () => { req.destroy(); res(false); });
-      });
-
-      if (serverUp) {
-        const runningClientPort = entry.port + 1000;
-        console.log(`Repo ${entry.name} is already running on :${runningClientPort}`);
-        if (opts.browser) {
-          openBrowser(`http://localhost:${runningClientPort}`);
+      if (entry.status === 'starting') {
+        // Another CLI instance is currently starting this repo — wait for it
+        console.log(`Repo ${entry.name} is being started by another instance. Waiting...`);
+        const MAX_START_WAIT = 30000;
+        const startWait = Date.now();
+        let ready = false;
+        while (Date.now() - startWait < MAX_START_WAIT) {
+          const serverUp = await new Promise((res) => {
+            const req = http.get(`http://localhost:${entry.port}/api/health`, (resp) => {
+              resp.resume();
+              res(resp.statusCode >= 200 && resp.statusCode < 500);
+            });
+            req.on('error', () => res(false));
+            req.setTimeout(2000, () => { req.destroy(); res(false); });
+          });
+          if (serverUp) {
+            ready = true;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 500));
         }
-        process.exit(0);
+        if (ready) {
+          const runningClientPort = entry.port + 1000;
+          console.log(`Repo ${entry.name} is now running on :${runningClientPort}`);
+          if (opts.browser) {
+            openBrowser(`http://localhost:${runningClientPort}`);
+          }
+          process.exit(0);
+        }
+        // Timed out waiting — fall through to restart
+        console.log('Timed out waiting for repo to start. Restarting...');
+      } else {
+        // status === 'running' — verify HTTP server is actually responding
+        const serverUp = await new Promise((res) => {
+          const req = http.get(`http://localhost:${entry.port}/api/health`, (resp) => {
+            resp.resume();
+            res(resp.statusCode >= 200 && resp.statusCode < 500);
+          });
+          req.on('error', () => res(false));
+          req.setTimeout(2000, () => { req.destroy(); res(false); });
+        });
+
+        if (serverUp) {
+          const runningClientPort = entry.port + 1000;
+          console.log(`Repo ${entry.name} is already running on :${runningClientPort}`);
+          if (opts.browser) {
+            openBrowser(`http://localhost:${runningClientPort}`);
+          }
+          process.exit(0);
+        }
+        // PID alive but server not responding — restart below
       }
-      // PID alive but server not responding — restart below
     }
   }
 

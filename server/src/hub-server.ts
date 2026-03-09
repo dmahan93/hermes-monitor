@@ -49,25 +49,6 @@ app.get('/api/health', (_req, res) => {
 // ── Registry API (CRUD for repos) ──
 app.use('/api', createRegistryApiRouter(registry));
 
-// ── Bridge endpoint: /api/repos for the HubLanding React component ──
-// WHY THIS EXISTS: The React client's HubLanding component fetches /api/repos
-// to display repo cards with clickable links. It needs a `url` field for the
-// dashboard link, which the raw registry entries at /api/hub/repos don't include.
-// /api/hub/repos returns raw RepoEntry[] (used by CLI + internal APIs).
-// /api/repos returns transformed objects with a `url` field (used by React UI).
-app.get('/api/repos', (_req, res) => {
-  const repos = registry.list().map((r) => ({
-    id: r.id,
-    name: r.name,
-    path: r.path,
-    port: r.port,
-    clientPort: r.port + CLIENT_PORT_OFFSET,
-    status: r.status,
-    url: `http://localhost:${r.port + CLIENT_PORT_OFFSET}`,
-  }));
-  res.json(repos);
-});
-
 // ── Landing page (HTML) ──
 app.get('/', (_req, res) => {
   const repos = registry.list();
@@ -153,10 +134,6 @@ app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// ── PID file ──
-mkdirSync(HERMES_DIR, { recursive: true });
-writeFileSync(PID_FILE, String(process.pid));
-
 // ── Cleanup on shutdown ──
 function shutdown() {
   console.log('\nShutting down Hermes Hub...');
@@ -171,6 +148,10 @@ process.on('SIGTERM', shutdown);
 
 // ── Start ──
 server.listen(HUB_PORT, () => {
+  // Write PID file only after the port is confirmed bound.
+  // This prevents leaving a stale PID file if the port is already in use.
+  mkdirSync(HERMES_DIR, { recursive: true });
+  writeFileSync(PID_FILE, String(process.pid));
   console.log(`Hermes Hub listening on :${HUB_PORT}`);
   console.log(`PID: ${process.pid}`);
 });

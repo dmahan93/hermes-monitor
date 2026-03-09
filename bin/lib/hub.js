@@ -21,7 +21,7 @@ const HERMES_DIR = join(os.homedir(), '.hermes');
 const PID_FILE = join(HERMES_DIR, 'hub.pid');
 const LOCK_FILE = join(HERMES_DIR, 'hub.lock');
 const REPO_PIDS_DIR = join(HERMES_DIR, 'repo-pids');
-const HUB_PORT = 3000;
+const HUB_PORT = parseInt(process.env.HUB_PORT || '3000', 10);
 const HUB_BASE = `http://localhost:${HUB_PORT}`;
 
 // Resolve hermes-monitor root directory (two levels up from bin/lib/)
@@ -221,39 +221,44 @@ function stopHub() {
  */
 async function stopAllRepos(port = HUB_PORT) {
   const repos = await listRepos(port);
-  const pidsToWait = [];
+  const toStop = [];
 
   for (const repo of repos) {
     if (repo.pid && (repo.status === 'running' || repo.status === 'starting')) {
       try {
         process.kill(repo.pid, 'SIGTERM');
-        pidsToWait.push(repo.pid);
+        toStop.push(repo);
       } catch {
-        // Process already gone
+        // Process already gone — update status
+        try { await updateRepoStatus(repo.id, 'stopped', null, port); } catch { /* non-fatal */ }
       }
     }
   }
 
   // Wait for processes to exit (up to 3 seconds)
-  if (pidsToWait.length > 0) {
+  if (toStop.length > 0) {
     const deadline = Date.now() + 3000;
     while (Date.now() < deadline) {
-      const alive = pidsToWait.filter((pid) => {
-        try { process.kill(pid, 0); return true; } catch { return false; }
+      const alive = toStop.filter((r) => {
+        try { process.kill(r.pid, 0); return true; } catch { return false; }
       });
       if (alive.length === 0) break;
       await new Promise((r) => setTimeout(r, 100));
     }
     // Force kill any stragglers
-    for (const pid of pidsToWait) {
+    for (const repo of toStop) {
       try {
-        process.kill(pid, 0); // check alive
-        process.kill(pid, 'SIGKILL');
+        process.kill(repo.pid, 0); // check alive
+        process.kill(repo.pid, 'SIGKILL');
       } catch { /* already dead */ }
+    }
+    // Update status to 'stopped' for all killed repos
+    for (const repo of toStop) {
+      try { await updateRepoStatus(repo.id, 'stopped', null, port); } catch { /* non-fatal */ }
     }
   }
 
-  return pidsToWait.length;
+  return toStop.length;
 }
 
 // ────────────────────────────────────────────────────────────
@@ -388,7 +393,8 @@ async function listRepos(port = HUB_PORT) {
  */
 function writeRepoPid(id, pid) {
   mkdirSync(REPO_PIDS_DIR, { recursive: true });
-  writeFileSync(join(REPO_PIDS_DIR, `${id}.pid`), String(pid));
+  const safe = id.replace(/[^a-zA-Z0-9._-]/g, '_');
+  writeFileSync(join(REPO_PIDS_DIR, `${safe}.pid`), String(pid));
 }
 
 /**
@@ -396,7 +402,8 @@ function writeRepoPid(id, pid) {
  * @param {string} id - repo UUID
  */
 function removeRepoPid(id) {
-  try { unlinkSync(join(REPO_PIDS_DIR, `${id}.pid`)); } catch { /* ignore */ }
+  const safe = id.replace(/[^a-zA-Z0-9._-]/g, '_');
+  try { unlinkSync(join(REPO_PIDS_DIR, `${safe}.pid`)); } catch { /* ignore */ }
 }
 
 /**

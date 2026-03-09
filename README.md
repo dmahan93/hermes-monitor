@@ -201,7 +201,7 @@ server/src/
   manager/
     registry.ts         SQLite repo registry (multi-repo tracking)
     registry-api.ts     REST API for repo registry
-    proxy.ts            Reverse proxy for hub routing
+    proxy.ts            WebSocket proxy (scaffolding for future hub routing)
 
   issue-api.ts          UI-facing REST: /api/issues/*
   pr-api.ts             UI-facing REST: /api/prs/*, /api/config
