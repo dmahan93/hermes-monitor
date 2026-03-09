@@ -29,6 +29,10 @@ export function ConfigView() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [branches, setBranches] = useState<string[]>([]);
+  const [creatingBranch, setCreatingBranch] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [branchError, setBranchError] = useState<string | null>(null);
 
   // Track the last server-confirmed value of githubRemote so onBlur can detect real changes.
   // Without this, onChange updates local state first, making onBlur's comparison always equal.
@@ -37,6 +41,15 @@ export function ConfigView() {
   // Track whether the remote input is currently being edited (dirty).
   // When dirty, server responses from checkbox saves should NOT overwrite the local remote value.
   const remoteIsDirtyRef = useRef(false);
+
+  const fetchBranches = useCallback(() => {
+    fetch(`${API_BASE}/branches`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.branches) setBranches(data.branches);
+      })
+      .catch((err) => { console.warn('Failed to fetch branches:', err); });
+  }, []);
 
   const fetchConfig = useCallback(() => {
     fetch(`${API_BASE}/config`)
@@ -51,7 +64,8 @@ export function ConfigView() {
 
   useEffect(() => {
     fetchConfig();
-  }, [fetchConfig]);
+    fetchBranches();
+  }, [fetchConfig, fetchBranches]);
 
   const updateConfig = useCallback(async (updates: Partial<AppConfig>) => {
     setSaving(true);
@@ -91,6 +105,47 @@ export function ConfigView() {
       setSaving(false);
     }
   }, []);
+
+  const handleBranchChange = useCallback((value: string) => {
+    if (value === '__create__') {
+      setCreatingBranch(true);
+      setNewBranchName('');
+      setBranchError(null);
+    } else {
+      setCreatingBranch(false);
+      updateConfig({ targetBranch: value });
+    }
+  }, [updateConfig]);
+
+  const handleCreateBranch = useCallback(async () => {
+    const trimmed = newBranchName.trim();
+    if (!trimmed) return;
+    setBranchError(null);
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/branches`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCreatingBranch(false);
+        setNewBranchName('');
+        fetchBranches();
+        fetchConfig();
+        setSaveStatus('saved');
+        window.dispatchEvent(new CustomEvent('hermes:config-updated', { detail: data.config }));
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } else {
+        setBranchError(data.error || 'Failed to create branch');
+      }
+    } catch {
+      setBranchError('Failed to create branch');
+    } finally {
+      setSaving(false);
+    }
+  }, [newBranchName, fetchBranches, fetchConfig]);
 
   if (loading) {
     return (
@@ -226,8 +281,70 @@ export function ConfigView() {
           </div>
           <div className="config-field">
             <label className="config-label">Target Branch</label>
-            <span className="config-value">{config?.targetBranch ?? '—'}</span>
+            <select
+              className="config-input"
+              value={creatingBranch ? '__create__' : (config?.targetBranch ?? '')}
+              disabled={saving}
+              onChange={(e) => handleBranchChange(e.target.value)}
+            >
+              {branches.map((branch) => (
+                <option key={branch} value={branch}>{branch}</option>
+              ))}
+              {config?.targetBranch && !branches.includes(config.targetBranch) && (
+                <option value={config.targetBranch}>{config.targetBranch}</option>
+              )}
+              <option value="__create__">＋ Create new branch…</option>
+            </select>
+            <span className="config-hint">
+              All future merges will target this branch
+            </span>
           </div>
+          {creatingBranch && (
+            <div className="config-field config-create-branch">
+              <label className="config-label">New Branch Name</label>
+              <div className="config-branch-input-row">
+                <input
+                  type="text"
+                  className="config-input"
+                  value={newBranchName}
+                  disabled={saving}
+                  placeholder="e.g. develop, release/v2"
+                  onChange={(e) => setNewBranchName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreateBranch();
+                    if (e.key === 'Escape') {
+                      setCreatingBranch(false);
+                      setBranchError(null);
+                    }
+                  }}
+                  autoFocus
+                />
+                <button
+                  className="config-btn config-btn-create"
+                  disabled={saving || !newBranchName.trim()}
+                  onClick={handleCreateBranch}
+                >
+                  Create
+                </button>
+                <button
+                  className="config-btn config-btn-cancel"
+                  disabled={saving}
+                  onClick={() => {
+                    setCreatingBranch(false);
+                    setBranchError(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+              {branchError && (
+                <span className="config-branch-error">{branchError}</span>
+              )}
+              <span className="config-hint">
+                Branch will be created from current target branch ({config?.targetBranch})
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="config-section">

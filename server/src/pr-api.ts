@@ -5,12 +5,14 @@
  * trigger merges, manage comments, and configure review settings.
  */
 import { Router, json } from 'express';
+import { execFileSync } from 'child_process';
 import type { PRManager } from './pr-manager.js';
 import type { IssueManager } from './issue-manager.js';
+import type { Store } from './store.js';
 import { config, updateConfig } from './config.js';
 import { enrichPRWithScreenshots, getScreenshotInfos } from './screenshot-utils.js';
 
-export function createPRApiRouter(prManager: PRManager, issueManager?: IssueManager): Router {
+export function createPRApiRouter(prManager: PRManager, issueManager?: IssueManager, store?: Store): Router {
   const router = Router();
   router.use(json());
 
@@ -24,7 +26,67 @@ export function createPRApiRouter(prManager: PRManager, issueManager?: IssueMana
   router.patch('/config', (req, res) => {
     const { repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote, mergeMode, managerTerminalAgent, audibleAlerts } = req.body || {};
     updateConfig({ repoPath, worktreeBase, reviewBase, targetBranch, requireScreenshotsForUiChanges, githubEnabled, githubRemote, mergeMode, managerTerminalAgent, audibleAlerts });
+    // Persist target branch to survive server restarts
+    if (targetBranch !== undefined && store) {
+      store.setConfig('targetBranch', config.targetBranch);
+    }
     res.json(config);
+  });
+
+  // ── Branches ──
+
+  router.get('/branches', (_req, res) => {
+    try {
+      const output = execFileSync('git', ['branch', '--list', '--no-color'], {
+        cwd: config.repoPath,
+        stdio: 'pipe',
+      }).toString().trim();
+      const branches = output
+        .split('\n')
+        .map((line) => line.replace(/^\*?\s+/, '').trim())
+        .filter((b) => b && !b.startsWith('('));
+      res.json({ branches, current: config.targetBranch });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to list branches';
+      res.status(500).json({ error: message });
+    }
+  });
+
+  router.post('/branches', (req, res) => {
+    const { name } = req.body || {};
+    if (!name || typeof name !== 'string') {
+      res.status(400).json({ error: 'Branch name is required' });
+      return;
+    }
+    const trimmed = name.trim();
+    // Validate branch name: alphanumeric start, no spaces, only - _ . / allowed
+    if (!trimmed || !/^[a-zA-Z0-9][a-zA-Z0-9._\-/]*$/.test(trimmed)) {
+      res.status(400).json({ error: 'Invalid branch name' });
+      return;
+    }
+    // Reject git-invalid patterns: "..", ".lock" suffix, trailing "/", consecutive "//", leading "/"
+    if (/\.\.|\.lock$|\/\/|\/$|^\//.test(trimmed)) {
+      res.status(400).json({ error: 'Invalid branch name' });
+      return;
+    }
+    try {
+      // Create the branch from current target branch
+      // Uses execFileSync to avoid shell interpolation (command injection prevention)
+      execFileSync('git', ['branch', trimmed, config.targetBranch], {
+        cwd: config.repoPath,
+        stdio: 'pipe',
+      });
+      // Update config to use the new branch and persist
+      updateConfig({ targetBranch: trimmed });
+      if (store) {
+        store.setConfig('targetBranch', config.targetBranch);
+      }
+      res.json({ branch: trimmed, config });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to create branch';
+      const isDuplicate = message.includes('already exists');
+      res.status(isDuplicate ? 409 : 500).json({ error: message });
+    }
   });
 
   // ── Pull Requests ──

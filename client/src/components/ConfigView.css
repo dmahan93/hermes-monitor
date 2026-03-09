@@ -226,3 +226,75 @@
   border: 1px solid var(--red, #f48771);
   background: rgba(244, 135, 113, 0.1);
 }
+
+/* ── Branch creation ── */
+
+.config-create-branch {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px dashed var(--chrome);
+}
+
+.config-branch-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.config-branch-input-row .config-input {
+  flex: 1;
+}
+
+.config-btn {
+  font-family: 'VT323', monospace;
+  font-size: 0.917rem;
+  padding: 0.333rem 0.75rem;
+  border: 1px solid var(--chrome);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  cursor: pointer;
+  letter-spacing: 0.05rem;
+  white-space: nowrap;
+}
+
+.config-btn:active {
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
+.config-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.config-btn-create {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.config-btn-create:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.config-btn-cancel {
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+.config-btn-cancel:hover:not(:disabled) {
+  background: var(--chrome);
+  color: var(--text);
+}
+
+.config-branch-error {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--red, #f48771);
+  margin-top: 0.333rem;
+}
