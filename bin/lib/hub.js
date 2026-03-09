@@ -12,7 +12,7 @@
  */
 
 const http = require('http');
-const { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } = require('fs');
+const { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, openSync, closeSync, readdirSync } = require('fs');
 const { join, resolve } = require('path');
 const { spawn } = require('child_process');
 const os = require('os');
@@ -172,8 +172,8 @@ function startHub({ foreground = false, port = HUB_PORT } = {}) {
 
   // Run in background — detached, stdio to /dev/null
   const logFile = join(HERMES_DIR, 'hub.log');
-  const out = require('fs').openSync(logFile, 'a');
-  const err = require('fs').openSync(logFile, 'a');
+  const out = openSync(logFile, 'a');
+  const err = openSync(logFile, 'a');
 
   const child = spawn(tsxBin, [hubScript], {
     cwd: ROOT,
@@ -189,8 +189,8 @@ function startHub({ foreground = false, port = HUB_PORT } = {}) {
   child.unref();
 
   // Close parent's copies of the file descriptors — the child inherits its own
-  require('fs').closeSync(out);
-  require('fs').closeSync(err);
+  closeSync(out);
+  closeSync(err);
 
   return null;
 }
@@ -435,7 +435,6 @@ function removeRepoPid(id) {
  * @returns {number} number of processes killed
  */
 function killReposByPidFiles() {
-  const { readdirSync } = require('fs');
   let killed = 0;
   try {
     const files = readdirSync(REPO_PIDS_DIR);

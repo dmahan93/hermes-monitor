@@ -9,12 +9,28 @@ const require = createRequire(import.meta.url);
 
 // ── Verify shared constants stay in sync ──
 
+import {
+  CLIENT_PORT_OFFSET as TS_CLIENT_PORT_OFFSET,
+  BASE_PORT as TS_BASE_PORT,
+  DEFAULT_HUB_PORT as TS_DEFAULT_HUB_PORT,
+  MAX_PORT as TS_MAX_PORT,
+} from '../../server/src/constants.js';
+
 describe('shared constants sync', () => {
   it('hub.js CLIENT_PORT_OFFSET matches shared/constants.json', () => {
     const hub = require('../../bin/lib/hub');
     const sharedConstants = require('../../shared/constants.json');
 
     expect(hub.CLIENT_PORT_OFFSET).toBe(sharedConstants.CLIENT_PORT_OFFSET);
+  });
+
+  it('constants.ts matches shared/constants.json', () => {
+    const sharedConstants = require('../../shared/constants.json');
+
+    expect(TS_CLIENT_PORT_OFFSET).toBe(sharedConstants.CLIENT_PORT_OFFSET);
+    expect(TS_BASE_PORT).toBe(sharedConstants.BASE_PORT);
+    expect(TS_DEFAULT_HUB_PORT).toBe(sharedConstants.DEFAULT_HUB_PORT);
+    expect(TS_MAX_PORT).toBe(sharedConstants.MAX_PORT);
   });
 });
 

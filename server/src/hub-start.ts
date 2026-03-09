@@ -32,6 +32,17 @@ function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
+// ── Error handling ──
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Error: Port ${HUB_PORT} is already in use.`);
+  } else {
+    console.error(`Error starting hub: ${err.message}`);
+  }
+  registry.close();
+  process.exit(1);
+});
+
 // ── Start ──
 server.listen(HUB_PORT, '127.0.0.1', () => {
   // Write PID file only after the port is confirmed bound.

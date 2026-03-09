@@ -2,7 +2,7 @@
 
 'use strict';
 
-const { spawn, execSync } = require('child_process');
+const { spawn, spawnSync, execSync } = require('child_process');
 const { existsSync } = require('fs');
 const { resolve, join } = require('path');
 const http = require('http');
@@ -340,7 +340,11 @@ async function handleDefault() {
       console.log(`Repo ${entry.name}: PID alive but server not responding. Killing stale process...`);
       await killStaleProcess(entry);
     }
-    // else: PID is stale — fall through to restart
+
+    if (!alive) {
+      // PID is stale — update status to 'stopped' before restarting
+      try { await updateRepoStatus(entry.id, 'stopped', null); } catch { /* non-fatal */ }
+    }
   }
 
   // ── Dependency check ──
@@ -485,11 +489,12 @@ async function handleDefault() {
     const exitStatus = worstExitCode !== 0 ? 'error' : 'stopped';
     try {
       const body = JSON.stringify({ status: exitStatus, pid: null });
-      execSync(
-        `curl -s -X PATCH -H "Content-Type: application/json" -d '${body}' ` +
-        `"http://localhost:${HUB_PORT}/api/hub/repos/${encodeURIComponent(entry.id)}"`,
-        { timeout: 3000, stdio: 'ignore' }
-      );
+      spawnSync('curl', [
+        '-s', '-X', 'PATCH',
+        '-H', 'Content-Type: application/json',
+        '-d', body,
+        `http://localhost:${HUB_PORT}/api/hub/repos/${encodeURIComponent(entry.id)}`,
+      ], { timeout: 3000, stdio: 'ignore' });
     } catch { /* non-fatal — hub may be unreachable */ }
 
     // Clean up repo PID file
