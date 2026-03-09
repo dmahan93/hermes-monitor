@@ -176,9 +176,39 @@ describe('GET /api/hub/browse', () => {
 
     const { status, body } = await request(
       server,
-      `/api/hub/browse?path=${encodeURIComponent(emptyDir)}`
+      `/api/hub/browse?path=${encodeURIComponent(emptyDir)}`,
     );
     expect(status).toBe(200);
     expect(body.entries).toHaveLength(0);
+  });
+
+  it('truncates results when directory has more than 200 entries', async () => {
+    // Create 210 subdirectories
+    for (let i = 0; i < 210; i++) {
+      mkdirSync(join(tmpDir, `dir-${String(i).padStart(4, '0')}`));
+    }
+
+    const { status, body } = await request(
+      server,
+      `/api/hub/browse?path=${encodeURIComponent(tmpDir)}`,
+    );
+    expect(status).toBe(200);
+    expect(body.entries).toHaveLength(200);
+    expect(body.truncated).toBe(true);
+    expect(body.totalEntries).toBe(210);
+  });
+
+  it('does not include truncated flag when under limit', async () => {
+    mkdirSync(join(tmpDir, 'project-a'));
+    mkdirSync(join(tmpDir, 'project-b'));
+
+    const { status, body } = await request(
+      server,
+      `/api/hub/browse?path=${encodeURIComponent(tmpDir)}`,
+    );
+    expect(status).toBe(200);
+    expect(body.entries).toHaveLength(2);
+    expect(body.truncated).toBeUndefined();
+    expect(body.totalEntries).toBeUndefined();
   });
 });

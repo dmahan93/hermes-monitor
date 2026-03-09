@@ -228,6 +228,15 @@
   padding: 1.5rem 0.75rem;
 }
 
+.folder-picker-truncated {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-align: center;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--chrome);
+  font-style: italic;
+}
+
 .folder-picker-error {
   color: var(--error);
   font-size: 0.833rem;

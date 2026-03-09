@@ -17,12 +17,22 @@
 import express from 'express';
 import { createServer } from 'http';
 import type { Server } from 'http';
-import { readdirSync, statSync, existsSync } from 'fs';
+import { readdir, stat, access } from 'fs/promises';
 import { join, dirname, resolve } from 'path';
 import { homedir } from 'os';
 import { Registry } from './manager/registry.js';
 import { createRegistryApiRouter } from './manager/registry-api.js';
 import { CLIENT_PORT_OFFSET } from './constants.js';
+
+// ── Types ──
+interface DirEntry {
+  name: string;
+  path: string;
+  isGitRepo: boolean;
+}
+
+/** Maximum number of entries returned by the browse API */
+const BROWSE_ENTRY_LIMIT = 200;
 
 // ── Helpers ──
 function escapeHtml(str: string): string {
@@ -52,14 +62,16 @@ export function createHubApp(dbPath?: string): {
   });
 
   // ── Directory browse API ──
-  app.get('/api/hub/browse', (req, res) => {
+  // NOTE: The hub binds to 127.0.0.1, so filesystem browsing is local-user-only,
+  // equivalent to the user running `ls` themselves.
+  app.get('/api/hub/browse', async (req, res) => {
     const rawPath = typeof req.query.path === 'string' ? req.query.path.trim() : '';
     const browsePath = rawPath || homedir();
     const resolved = resolve(browsePath);
 
     // Validate path exists and is a directory
     try {
-      const st = statSync(resolved);
+      const st = await stat(resolved);
       if (!st.isDirectory()) {
         res.status(400).json({ error: 'Path is not a directory' });
         return;
@@ -70,14 +82,9 @@ export function createHubApp(dbPath?: string): {
     }
 
     // Read directory entries, filtering to subdirectories only
-    interface DirEntry {
-      name: string;
-      path: string;
-      isGitRepo: boolean;
-    }
     const entries: DirEntry[] = [];
     try {
-      const items = readdirSync(resolved, { withFileTypes: true });
+      const items = await readdir(resolved, { withFileTypes: true });
       for (const item of items) {
         // Skip hidden directories (starting with .)
         if (item.name.startsWith('.')) continue;
@@ -88,14 +95,15 @@ export function createHubApp(dbPath?: string): {
           let isDir = item.isDirectory();
           if (!isDir && item.isSymbolicLink()) {
             try {
-              isDir = statSync(fullPath).isDirectory();
+              isDir = (await stat(fullPath)).isDirectory();
             } catch {
               // Broken symlink — skip
               continue;
             }
           }
           if (!isDir) continue;
-          const isGitRepo = existsSync(join(fullPath, '.git'));
+          let isGitRepo = false;
+          try { await access(join(fullPath, '.git')); isGitRepo = true; } catch { /* not a git repo */ }
           entries.push({ name: item.name, path: fullPath, isGitRepo });
         } catch {
           // Permission denied on individual entry — skip
@@ -112,11 +120,16 @@ export function createHubApp(dbPath?: string): {
       return a.name.localeCompare(b.name);
     });
 
+    // Cap results to avoid huge payloads on directories with thousands of subdirectories
+    const truncated = entries.length > BROWSE_ENTRY_LIMIT;
+    const limitedEntries = truncated ? entries.slice(0, BROWSE_ENTRY_LIMIT) : entries;
+
     const parent = resolved === '/' ? null : dirname(resolved);
     res.json({
       path: resolved,
       parent,
-      entries,
+      entries: limitedEntries,
+      ...(truncated ? { truncated: true, totalEntries: entries.length } : {}),
     });
   });
 

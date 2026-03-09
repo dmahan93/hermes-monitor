@@ -458,4 +458,31 @@ describe('FolderPicker', () => {
     const btn = screen.getByText('[SELECT THIS FOLDER]');
     expect(btn).toBeDisabled();
   });
+
+  // ── Truncated results ──
+
+  it('shows truncated message when server returns truncated flag', async () => {
+    mockBrowseResponse({
+      path: '/usr/share',
+      parent: '/usr',
+      entries: [
+        { name: 'dir-1', path: '/usr/share/dir-1', isGitRepo: false },
+      ],
+      truncated: true,
+      totalEntries: 500,
+    } as any);
+    render(<FolderPicker onSelect={onSelect} onClose={onClose} />);
+    await waitFor(() => {
+      expect(screen.getByText(/Too many entries/)).toBeInTheDocument();
+    });
+  });
+
+  it('does not show truncated message when results are not truncated', async () => {
+    mockBrowseResponse(HOME_RESPONSE);
+    render(<FolderPicker onSelect={onSelect} onClose={onClose} />);
+    await waitFor(() => {
+      expect(screen.getByText('projects')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Too many entries/)).not.toBeInTheDocument();
+  });
 });

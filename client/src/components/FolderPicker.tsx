@@ -12,6 +12,8 @@ interface BrowseResponse {
   path: string;
   parent: string | null;
   entries: DirEntry[];
+  truncated?: boolean;
+  totalEntries?: number;
 }
 
 interface FolderPickerProps {
@@ -34,6 +36,7 @@ export function FolderPicker({ onSelect, onClose, initialPath }: FolderPickerPro
   const [parentPath, setParentPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [truncated, setTruncated] = useState(false);
 
   // Manual path input
   const [manualPath, setManualPath] = useState('');
@@ -63,6 +66,7 @@ export function FolderPicker({ onSelect, onClose, initialPath }: FolderPickerPro
       setEntries(data.entries);
       setParentPath(data.parent);
       setManualPath(data.path);
+      setTruncated(!!data.truncated);
       // Scroll list to top on navigation
       if (listRef.current) listRef.current.scrollTop = 0;
     } catch (err: any) {
@@ -241,6 +245,11 @@ export function FolderPicker({ onSelect, onClose, initialPath }: FolderPickerPro
                 </button>
               </div>
             ))}
+            {truncated && (
+              <div className="folder-picker-truncated">
+                Too many entries — use the path input (✎) to navigate directly.
+              </div>
+            )}
           </>
         )}
       </div>

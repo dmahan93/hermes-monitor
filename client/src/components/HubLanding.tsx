@@ -317,8 +317,9 @@ export function HubLanding() {
                 className="hub-browse-btn"
                 type="button"
                 onClick={() => setShowFolderPicker(!showFolderPicker)}
-                aria-label={showFolderPicker ? 'Close folder browser' : 'Browse folders'}
+                aria-label="Browse folders"
                 title={showFolderPicker ? 'Close folder browser' : 'Browse folders'}
+                data-testid="browse-folders-btn"
               >
                 {showFolderPicker ? '\u2715' : '\ud83d\udcc2 Browse'}
               </button>
