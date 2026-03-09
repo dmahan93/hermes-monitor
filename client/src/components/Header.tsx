@@ -3,14 +3,25 @@ import './Header.css';
 
 interface HeaderProps {
   onAdd?: () => void;
+  onHome?: () => void;
   connected: boolean;
   children?: ReactNode;
 }
 
-export function Header({ onAdd, connected, children }: HeaderProps) {
+export function Header({ onAdd, onHome, connected, children }: HeaderProps) {
   return (
     <header className="header">
       <div className="header-left">
+        {onHome && (
+          <button
+            className="header-hub-btn"
+            onClick={onHome}
+            title="Back to hub"
+            aria-label="Back to hub"
+          >
+            ← HUB
+          </button>
+        )}
         <h1 className="header-title">HERMES MONITOR</h1>
         {children}
       </div>

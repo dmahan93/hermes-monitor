@@ -1,5 +1,32 @@
 /* ── Header ── */
 
+.header-hub-btn {
+  background: transparent;
+  border: 1px solid var(--chrome-light);
+  border-top-color: var(--bevel-light);
+  border-left-color: var(--bevel-light);
+  border-bottom-color: var(--bevel-dark);
+  border-right-color: var(--bevel-dark);
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.833rem;
+  padding: 0.167rem 0.667rem;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.header-hub-btn:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.header-hub-btn:active {
+  border-top-color: var(--bevel-dark);
+  border-left-color: var(--bevel-dark);
+  border-bottom-color: var(--bevel-light);
+  border-right-color: var(--bevel-light);
+}
+
 .header {
   display: flex;
   justify-content: space-between;

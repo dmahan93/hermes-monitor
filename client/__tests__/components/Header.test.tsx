@@ -49,4 +49,32 @@ describe('Header', () => {
     render(<Header connected={true} />);
     expect(screen.queryByText(/awaiting input/)).not.toBeInTheDocument();
   });
+
+  it('renders hub button when onHome is provided', () => {
+    const onHome = vi.fn();
+    render(<Header onHome={onHome} connected={true} />);
+    const btn = screen.getByRole('button', { name: 'Back to hub' });
+    expect(btn).toBeInTheDocument();
+    expect(btn).toHaveTextContent('← HUB');
+  });
+
+  it('hub button calls onHome when clicked', () => {
+    const onHome = vi.fn();
+    render(<Header onHome={onHome} connected={true} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Back to hub' }));
+    expect(onHome).toHaveBeenCalledOnce();
+  });
+
+  it('hides hub button when onHome is not provided', () => {
+    render(<Header connected={true} />);
+    expect(screen.queryByRole('button', { name: 'Back to hub' })).not.toBeInTheDocument();
+  });
+
+  it('renders both hub and add buttons when both props provided', () => {
+    const onHome = vi.fn();
+    const onAdd = vi.fn();
+    render(<Header onHome={onHome} onAdd={onAdd} connected={true} />);
+    expect(screen.getByRole('button', { name: 'Back to hub' })).toBeInTheDocument();
+    expect(screen.getByText('[+ ADD TERMINAL]')).toBeInTheDocument();
+  });
 });
