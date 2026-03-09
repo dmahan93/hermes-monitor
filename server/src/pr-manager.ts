@@ -280,6 +280,9 @@ export class PRManager {
     pr.status = 'reviewing';
     pr.updatedAt = Date.now();
 
+    // Sync issue.terminalId so the UI status indicator maps to the reviewer terminal
+    this.issueManager?.updateTerminalId(pr.issueId, terminal.id);
+
     this.persist(pr);
     this.emit('pr:updated', pr);
     return pr;
@@ -364,6 +367,9 @@ export class PRManager {
           this.persist(pr);
           this.emit('pr:updated', pr);
 
+          // Also clear the issue's terminal reference
+          this.issueManager?.updateTerminalId(pr.issueId, null);
+
           // Schedule relaunch after delay
           const existingTimer = this.reviewerRelaunchTimers.get(pr.id);
           if (existingTimer) clearTimeout(existingTimer);
@@ -398,6 +404,9 @@ export class PRManager {
       this.terminalManager.kill(pr.reviewerTerminalId);
       pr.reviewerTerminalId = null;
     }
+
+    // Clear the issue's terminal reference — reviewer is no longer active
+    this.issueManager?.updateTerminalId(pr.issueId, null);
 
     pr.updatedAt = Date.now();
     this.persist(pr);
@@ -452,6 +461,9 @@ export class PRManager {
     pr.updatedAt = Date.now();
     this.persist(pr);
     this.emit('pr:updated', pr);
+
+    // Clear the issue's terminal reference — conflict fixer is no longer active
+    this.issueManager?.updateTerminalId(pr.issueId, null);
 
     // Remove the terminal after a short delay so the user can see the final output,
     // then emit pr:updated again to trigger a terminal list refetch on the client
@@ -660,6 +672,10 @@ export class PRManager {
     pr.status = 'open';
     pr.reviewerTerminalId = terminal.id;
     pr.updatedAt = Date.now();
+
+    // Sync issue.terminalId so the UI status indicator maps to the conflict fixer terminal
+    this.issueManager?.updateTerminalId(pr.issueId, terminal.id);
+
     this.persist(pr);
     this.emit('pr:updated', pr);
     return { pr };
@@ -899,6 +915,9 @@ export class PRManager {
       this.intentionallyKilledTerminals.add(pr.reviewerTerminalId);
       this.terminalManager.kill(pr.reviewerTerminalId);
       pr.reviewerTerminalId = null;
+
+      // Clear the issue's terminal reference
+      this.issueManager?.updateTerminalId(pr.issueId, null);
     }
 
     // Cancel any pending auto-relaunch

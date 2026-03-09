@@ -241,6 +241,21 @@ export class IssueManager {
     return issue;
   }
 
+  /**
+   * Update the terminal ID for an issue externally (e.g., when a reviewer
+   * terminal is spawned or exits). Persists and emits an update event.
+   * Used by PRManager to keep issue.terminalId in sync with the active
+   * reviewer/conflict-fixer terminal during the review phase.
+   */
+  updateTerminalId(issueId: string, terminalId: string | null): void {
+    const issue = this.issues.get(issueId);
+    if (!issue) return;
+    issue.terminalId = terminalId;
+    issue.updatedAt = Date.now();
+    this.persist(issue);
+    this.emit('issue:updated', issue);
+  }
+
   /** Clear transient progress fields from an issue */
   private clearProgress(issue: Issue): void {
     issue.progressMessage = null;
@@ -340,30 +355,45 @@ export class IssueManager {
       issue.terminalId = terminal.id;
     }
 
-    // Create PR + spawn reviewer when moving TO review
-    if (to === 'review' && this.prManager) {
-      const existingPr = this.prManager.getByIssueId(issue.id);
-      if (!existingPr) {
-        const pr = this.prManager.create({
-          issueId: issue.id,
-          title: issue.title,
-          description: issue.description,
-          submitterNotes: issue.submitterNotes,
-          screenshotBypassReason: issue.screenshotBypassReason,
-        });
-        if (pr) {
-          // Spawn adversarial reviewer
-          this.prManager.spawnReviewer(pr.id);
+    // When transitioning to review, kill the coding agent terminal FIRST
+    // (before spawning the reviewer), then link issue to the reviewer terminal.
+    if (to === 'review') {
+      if (issue.terminalId) {
+        this.terminalManager.kill(issue.terminalId);
+        issue.terminalId = null;
+      }
+
+      if (this.prManager) {
+        const existingPr = this.prManager.getByIssueId(issue.id);
+        if (!existingPr) {
+          const pr = this.prManager.create({
+            issueId: issue.id,
+            title: issue.title,
+            description: issue.description,
+            submitterNotes: issue.submitterNotes,
+            screenshotBypassReason: issue.screenshotBypassReason,
+          });
+          if (pr) {
+            // Spawn adversarial reviewer — this also updates issue.terminalId
+            // to the reviewer's terminal via updateTerminalId()
+            this.prManager.spawnReviewer(pr.id);
+          }
+        } else {
+          // PR already exists (e.g. review → in_progress → review cycle)
+          // Relaunch the review to pick up new changes + updated submitter notes
+          this.prManager.relaunchReview(existingPr.id, issue.submitterNotes, issue.screenshotBypassReason);
         }
-      } else {
-        // PR already exists (e.g. review → in_progress → review cycle)
-        // Relaunch the review to pick up new changes + updated submitter notes
-        this.prManager.relaunchReview(existingPr.id, issue.submitterNotes, issue.screenshotBypassReason);
+
+        // Sync issue.terminalId with the reviewer's terminal
+        const pr = this.prManager.getByIssueId(issue.id);
+        if (pr?.reviewerTerminalId) {
+          issue.terminalId = pr.reviewerTerminalId;
+        }
       }
     }
 
-    // Kill terminal when moving TO backlog, todo, review, or done
-    if ((to === 'backlog' || to === 'todo' || to === 'review' || to === 'done') && issue.terminalId) {
+    // Kill terminal when moving TO backlog, todo, or done (NOT review — handled above)
+    if ((to === 'backlog' || to === 'todo' || to === 'done') && issue.terminalId) {
       this.terminalManager.kill(issue.terminalId);
       issue.terminalId = null;
     }

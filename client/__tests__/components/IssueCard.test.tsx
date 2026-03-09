@@ -70,6 +70,18 @@ describe('IssueCard', () => {
     expect(screen.getByText(/active/)).toBeInTheDocument();
   });
 
+  it('shows reviewing status when issue is in review with terminal', () => {
+    renderCard({ ...mockIssue, terminalId: 'term-1', status: 'review' });
+    expect(screen.getByText(/reviewing/)).toBeInTheDocument();
+    expect(screen.getByTitle('View reviewer terminal')).toBeInTheDocument();
+  });
+
+  it('shows active status for in_progress issue with terminal', () => {
+    renderCard({ ...mockIssue, terminalId: 'term-1', status: 'in_progress' });
+    expect(screen.getByText('▸ active')).toBeInTheDocument();
+    expect(screen.getByTitle('Open terminal')).toBeInTheDocument();
+  });
+
   describe('delete confirmation', () => {
     it('shows confirm dialog when delete is clicked', async () => {
       renderCard();

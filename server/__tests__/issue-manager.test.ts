@@ -720,4 +720,65 @@ describe('IssueManager', () => {
     );
     consoleSpy.mockRestore();
   });
+
+  it('updateTerminalId sets terminalId and emits event', () => {
+    setup();
+    const events: string[] = [];
+    issueManager.onEvent((event) => events.push(event));
+    const issue = issueManager.create({ title: 'Terminal sync test' });
+    issueManager.updateTerminalId(issue.id, 'new-term-123');
+    const updated = issueManager.get(issue.id);
+    expect(updated!.terminalId).toBe('new-term-123');
+    expect(events).toContain('issue:updated');
+  });
+
+  it('updateTerminalId can clear terminalId to null', () => {
+    setup();
+    const issue = issueManager.create({ title: 'Clear terminal test' });
+    issueManager.updateTerminalId(issue.id, 'term-abc');
+    expect(issueManager.get(issue.id)!.terminalId).toBe('term-abc');
+    issueManager.updateTerminalId(issue.id, null);
+    expect(issueManager.get(issue.id)!.terminalId).toBeNull();
+  });
+
+  it('updateTerminalId is no-op for nonexistent issue', () => {
+    setup();
+    const events: string[] = [];
+    issueManager.onEvent((event) => events.push(event));
+    issueManager.updateTerminalId('nonexistent', 'term-123');
+    // Should not emit any events
+    expect(events).toHaveLength(0);
+  });
+
+  it('in_progress→review sets issue.terminalId to reviewer terminal', () => {
+    setup();
+    const fakePr = { id: 'pr-review-term', issueId: '', reviewerTerminalId: 'reviewer-term-42' };
+    const mockPRManager = {
+      getByIssueId: vi.fn().mockReturnValue(undefined),
+      create: vi.fn().mockReturnValue(fakePr),
+      spawnReviewer: vi.fn().mockImplementation(() => {
+        fakePr.reviewerTerminalId = 'reviewer-term-42';
+      }),
+      relaunchReview: vi.fn(),
+      resetToOpen: vi.fn(),
+    } as unknown as PRManager;
+
+    issueManager.setPRManager(mockPRManager);
+    const issue = issueManager.create({ title: 'Review terminal test' });
+    fakePr.issueId = issue.id;
+
+    issueManager.changeStatus(issue.id, 'in_progress');
+    const termId = issueManager.get(issue.id)!.terminalId;
+    expect(termId).toBeTruthy();
+
+    // Mock getByIssueId to return undefined first (no existing PR)
+    (mockPRManager.getByIssueId as ReturnType<typeof vi.fn>)
+      .mockReturnValueOnce(undefined)  // first call in the 'no existing PR' check
+      .mockReturnValue(fakePr);        // second call for syncing terminalId
+
+    issueManager.changeStatus(issue.id, 'review');
+    const updated = issueManager.get(issue.id);
+    // Issue should now point to the reviewer's terminal
+    expect(updated!.terminalId).toBe('reviewer-term-42');
+  });
 });
