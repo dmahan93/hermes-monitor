@@ -52,8 +52,9 @@ export class SpawnerError extends Error {
  * credentials (GITHUB_TOKEN, API keys, etc.) since they run the same code.
  */
 const STRIP_ENV_KEYS = new Set([
-  'DATABASE_URL', // Parent's DB — children have their own
-  'PORT',         // Parent's port — children get --server-port
+  'DATABASE_URL',   // Parent's DB — children have their own
+  'PORT',           // Parent's port — children get --server-port
+  'HERMES_DB_PATH', // Parent's explicit DB path — children derive their own per-repo path
 ]);
 
 /** Filter out parent-only environment variables from process.env. */

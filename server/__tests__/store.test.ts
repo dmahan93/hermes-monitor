@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Store } from '../src/store.js';
-import { mkdtempSync, rmSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { Store, getDefaultDbPath } from '../src/store.js';
+import { mkdtempSync, rmSync, existsSync } from 'fs';
+import { join, resolve } from 'path';
+import { tmpdir, homedir } from 'os';
+import { createHash } from 'crypto';
 
 describe('Store', () => {
   let store: Store;
@@ -240,5 +241,124 @@ describe('Store', () => {
 
     // Reassign so afterEach doesn't double-close
     store = new Store(dbPath);
+  });
+});
+
+describe('getDefaultDbPath', () => {
+  const originalEnv = { ...process.env };
+
+  afterEach(() => {
+    // Restore environment after each test
+    process.env = { ...originalEnv };
+  });
+
+  it('returns HERMES_DB_PATH when set (explicit override)', () => {
+    process.env.HERMES_DB_PATH = '/custom/path/my.db';
+    delete process.env.HERMES_REPO_PATH;
+    expect(getDefaultDbPath()).toBe('/custom/path/my.db');
+  });
+
+  it('HERMES_DB_PATH takes priority over HERMES_REPO_PATH', () => {
+    process.env.HERMES_DB_PATH = '/explicit/override.db';
+    process.env.HERMES_REPO_PATH = '/some/repo';
+    expect(getDefaultDbPath()).toBe('/explicit/override.db');
+  });
+
+  it('derives per-repo path from HERMES_REPO_PATH', () => {
+    delete process.env.HERMES_DB_PATH;
+    process.env.HERMES_REPO_PATH = '/home/user/project-a';
+
+    const result = getDefaultDbPath();
+    const expectedHash = createHash('sha256')
+      .update(resolve('/home/user/project-a'))
+      .digest('hex')
+      .slice(0, 16);
+    const expectedPath = join(homedir(), '.hermes', 'repos', expectedHash, 'hermes-monitor.db');
+
+    expect(result).toBe(expectedPath);
+  });
+
+  it('different repos produce different DB paths', () => {
+    delete process.env.HERMES_DB_PATH;
+
+    process.env.HERMES_REPO_PATH = '/home/user/repo-alpha';
+    const pathA = getDefaultDbPath();
+
+    process.env.HERMES_REPO_PATH = '/home/user/repo-beta';
+    const pathB = getDefaultDbPath();
+
+    expect(pathA).not.toBe(pathB);
+  });
+
+  it('same repo always produces the same DB path', () => {
+    delete process.env.HERMES_DB_PATH;
+    process.env.HERMES_REPO_PATH = '/home/user/stable-repo';
+
+    const path1 = getDefaultDbPath();
+    const path2 = getDefaultDbPath();
+
+    expect(path1).toBe(path2);
+  });
+
+  it('creates the per-repo directory when HERMES_REPO_PATH is set', () => {
+    delete process.env.HERMES_DB_PATH;
+    // Use a unique temp path to ensure directory creation is fresh
+    const tempRepoPath = join(tmpdir(), `hermes-test-repo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    process.env.HERMES_REPO_PATH = tempRepoPath;
+
+    const result = getDefaultDbPath();
+    const dir = join(result, '..');
+
+    expect(existsSync(dir)).toBe(true);
+
+    // Cleanup
+    try { rmSync(dir, { recursive: true }); } catch {}
+  });
+
+  it('falls back to cwd-relative path when no env vars set', () => {
+    delete process.env.HERMES_DB_PATH;
+    delete process.env.HERMES_REPO_PATH;
+
+    const result = getDefaultDbPath();
+    expect(result).toBe(join(process.cwd(), '..', 'hermes-monitor.db'));
+  });
+});
+
+describe('Store per-repo isolation', () => {
+  it('two stores with different repo paths have independent data', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hermes-isolation-'));
+    const dbPathA = join(dir, 'repo-a.db');
+    const dbPathB = join(dir, 'repo-b.db');
+
+    const storeA = new Store(dbPathA);
+    const storeB = new Store(dbPathB);
+
+    // Save an issue in store A
+    storeA.saveIssue({
+      id: 'iso-1', title: 'Only in A', description: '', status: 'todo',
+      agent: 'hermes', command: '', terminalId: null, branch: null,
+      parentId: null, createdAt: Date.now(), updatedAt: Date.now(),
+    } as any);
+
+    // Store B should have no issues
+    expect(storeA.loadIssues()).toHaveLength(1);
+    expect(storeB.loadIssues()).toHaveLength(0);
+
+    // Save a different issue in store B
+    storeB.saveIssue({
+      id: 'iso-2', title: 'Only in B', description: '', status: 'backlog',
+      agent: 'claude', command: '', terminalId: null, branch: null,
+      parentId: null, createdAt: Date.now(), updatedAt: Date.now(),
+    } as any);
+
+    // Each store sees only its own data
+    expect(storeA.loadIssues()).toHaveLength(1);
+    expect(storeA.loadIssues()[0].title).toBe('Only in A');
+    expect(storeB.loadIssues()).toHaveLength(1);
+    expect(storeB.loadIssues()[0].title).toBe('Only in B');
+
+    storeA.close();
+    storeB.close();
+    try { rmSync(dir, { recursive: true }); } catch {}
   });
 });
