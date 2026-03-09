@@ -10,6 +10,7 @@ import type { IssueManager, IssueStatus } from './issue-manager.js';
 import { AGENT_PRESETS, type AgentPreset } from './agents.js';
 import { getDiagnostics, readDiagnosticFile } from './diagnostics.js';
 import { config } from './config.js';
+import { playStatusAlert } from './audible-alerts.js';
 import type { ModelInfo } from '@hermes-monitor/shared/types';
 
 const VALID_STATUSES: IssueStatus[] = ['backlog', 'todo', 'in_progress', 'review', 'done'];
@@ -133,11 +134,21 @@ export function createIssueApiRouter(manager: IssueManager): Router {
       return;
     }
     try {
+      // Capture old status before transition for audible alert
+      const existing = manager.get(req.params.id);
+      const oldStatus = existing?.status;
+
       const issue = manager.changeStatus(req.params.id, status);
       if (!issue) {
         res.status(404).json({ error: 'Issue not found' });
         return;
       }
+
+      // Play audible alert if enabled and status actually changed
+      if (oldStatus && oldStatus !== status) {
+        playStatusAlert(oldStatus, status);
+      }
+
       res.json(issue);
     } catch (err: any) {
       res.status(400).json({ error: err.message });

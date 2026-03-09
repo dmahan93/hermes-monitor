@@ -23,6 +23,7 @@ export interface AppConfig {
   githubRemote: string;
   mergeMode: MergeMode;
   managerTerminalAgent: ManagerTerminalAgent;
+  audibleAlerts: boolean;
 }
 
 // Detect the default branch name for a repo
@@ -57,6 +58,7 @@ export const config: AppConfig = {
   managerTerminalAgent: isManagerTerminalAgent(process.env.HERMES_MANAGER_TERMINAL_AGENT)
     ? process.env.HERMES_MANAGER_TERMINAL_AGENT
     : 'hermes',
+  audibleAlerts: process.env.HERMES_AUDIBLE_ALERTS === 'true',
 };
 
 export function updateConfig(updates: Partial<AppConfig>): void {
@@ -90,6 +92,7 @@ export function updateConfig(updates: Partial<AppConfig>): void {
       config.managerTerminalAgent = updates.managerTerminalAgent;
     }
   }
+  if (updates.audibleAlerts !== undefined) config.audibleAlerts = !!updates.audibleAlerts;
 }
 
 // Cache isGitRepo result per path — the repo status doesn't change during
