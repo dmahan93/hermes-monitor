@@ -17,18 +17,21 @@ const { join, resolve } = require('path');
 const { spawn } = require('child_process');
 const os = require('os');
 
+const sharedConstants = require('../../shared/constants.json');
+
 const HERMES_DIR = join(os.homedir(), '.hermes');
 const PID_FILE = join(HERMES_DIR, 'hub.pid');
 const LOCK_FILE = join(HERMES_DIR, 'hub.lock');
 const REPO_PIDS_DIR = join(HERMES_DIR, 'repo-pids');
-const HUB_PORT = parseInt(process.env.HUB_PORT || '3000', 10);
+const HUB_PORT = parseInt(process.env.HUB_PORT || String(sharedConstants.DEFAULT_HUB_PORT), 10);
 const HUB_BASE = `http://localhost:${HUB_PORT}`;
 
 /**
  * Client port offset — the Vite dev server (or vite preview) runs on
- * SERVER_PORT + CLIENT_PORT_OFFSET. Shared between CLI, hub-server, and tests.
+ * SERVER_PORT + CLIENT_PORT_OFFSET.
+ * Single source of truth: shared/constants.json
  */
-const CLIENT_PORT_OFFSET = 1000;
+const CLIENT_PORT_OFFSET = sharedConstants.CLIENT_PORT_OFFSET;
 
 // Resolve hermes-monitor root directory (two levels up from bin/lib/)
 const ROOT = resolve(__dirname, '..', '..');
@@ -145,7 +148,7 @@ function startHub({ foreground = false, port = HUB_PORT } = {}) {
   process.on('exit', cleanupLock);
 
   const tsxBin = join(ROOT, 'node_modules', '.bin', 'tsx');
-  const hubScript = join(ROOT, 'server', 'src', 'hub-server.ts');
+  const hubScript = join(ROOT, 'server', 'src', 'hub-start.ts');
 
   if (!existsSync(tsxBin)) {
     console.error('Error: tsx not found. Run npm install in', ROOT);
@@ -202,7 +205,11 @@ function stopHub() {
 
   try {
     process.kill(pid, 'SIGTERM');
-    // Wait briefly for cleanup (synchronous sleep using Atomics.wait)
+    // Wait briefly for cleanup using synchronous sleep.
+    // Atomics.wait blocks the thread for `ms` milliseconds without spawning a
+    // subprocess (unlike execSync('sleep ...')). This is necessary because
+    // stopHub() is synchronous (used in signal handlers and sequentially with
+    // other stop operations).
     const sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
     const start = Date.now();
     while (Date.now() - start < 3000) {

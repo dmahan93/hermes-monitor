@@ -16,11 +16,10 @@ import { join, dirname, basename, resolve } from 'path';
 import { mkdirSync, realpathSync } from 'fs';
 import { homedir } from 'os';
 import { v4 as uuidv4 } from 'uuid';
+import { BASE_PORT, MAX_PORT, CLIENT_PORT_OFFSET, DEFAULT_HUB_PORT } from '../constants.js';
 
 const HERMES_DIR = join(homedir(), '.hermes');
 const DEFAULT_DB_PATH = join(HERMES_DIR, 'hermes-hub.db');
-const BASE_PORT = 4001;
-const MAX_PORT = 65535;
 
 const VALID_STATUSES = new Set<string>(['stopped', 'starting', 'running', 'error']);
 
@@ -225,21 +224,50 @@ export class Registry {
     return row ? this.rowToEntry(row) : null;
   }
 
-  /** Find the next available port (starting from 4001, up to 65535). */
+  /**
+   * Find the next available server port (starting from BASE_PORT, up to MAX_PORT).
+   *
+   * Port collision rules:
+   * 1. The candidate must not already be used as a server port by another repo.
+   * 2. The candidate's client port (candidate + CLIENT_PORT_OFFSET) must not
+   *    collide with any existing repo's server port.
+   * 3. The candidate must not be any existing repo's client port
+   *    (existingServer + CLIENT_PORT_OFFSET).
+   * 4. The candidate + CLIENT_PORT_OFFSET must be ≤ MAX_PORT (valid TCP port).
+   * 5. The candidate must not be the hub port (DEFAULT_HUB_PORT or HUB_PORT env).
+   */
   nextPort(): number {
+    const hubPort = parseInt(process.env.HUB_PORT || String(DEFAULT_HUB_PORT), 10);
+
     const allPorts = this.db.prepare(
       'SELECT port FROM repos ORDER BY port'
     ).all() as any[];
 
-    const usedPorts = new Set(allPorts.map((r: any) => r.port));
+    const serverPorts = new Set(allPorts.map((r: any) => r.port as number));
+    // Client ports are server port + CLIENT_PORT_OFFSET
+    const clientPorts = new Set(allPorts.map((r: any) => (r.port as number) + CLIENT_PORT_OFFSET));
+
     let candidate = BASE_PORT;
-    while (usedPorts.has(candidate)) {
-      candidate++;
+    while (candidate <= MAX_PORT) {
+      const candidateClient = candidate + CLIENT_PORT_OFFSET;
+
+      // Skip if candidate is already a server port
+      if (serverPorts.has(candidate)) { candidate++; continue; }
+      // Skip if candidate equals the hub port
+      if (candidate === hubPort) { candidate++; continue; }
+      // Skip if candidate's client port exceeds valid range
+      if (candidateClient > MAX_PORT) { candidate++; continue; }
+      // Skip if candidate's client port collides with an existing server port
+      if (serverPorts.has(candidateClient)) { candidate++; continue; }
+      // Skip if candidate itself is an existing repo's client port
+      if (clientPorts.has(candidate)) { candidate++; continue; }
+      // Skip if candidate's client port equals the hub port
+      if (candidateClient === hubPort) { candidate++; continue; }
+
+      return candidate;
     }
-    if (candidate > MAX_PORT) {
-      throw new Error('No available ports in range 4001-65535');
-    }
-    return candidate;
+
+    throw new Error(`No available ports in range ${BASE_PORT}-${MAX_PORT} (with client offset ${CLIENT_PORT_OFFSET})`);
   }
 
   /** Close the database connection. Safe to call multiple times. Prevents re-initialization. */

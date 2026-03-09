@@ -303,72 +303,44 @@ async function handleDefault() {
 
   // ── Check if repo server is already running or starting ──
   if ((entry.status === 'running' || entry.status === 'starting') && entry.pid) {
-    let alive = false;
-    try {
-      process.kill(entry.pid, 0);
-      alive = true;
-    } catch {
-      // PID is stale
-    }
-    if (alive) {
-      if (entry.status === 'starting') {
-        // Another CLI instance is currently starting this repo — wait for it
-        console.log(`Repo ${entry.name} is being started by another instance. Waiting...`);
-        const MAX_START_WAIT = 30000;
+    const alive = (() => { try { process.kill(entry.pid, 0); return true; } catch { return false; } })();
+
+    if (alive && entry.status === 'starting') {
+      // Another CLI instance is currently starting this repo — wait for it
+      console.log(`Repo ${entry.name} is being started by another instance. Waiting...`);
+      const serverUp = await checkHealth(entry.port);
+      if (!serverUp) {
+        // Poll for up to 30 seconds
         const startWait = Date.now();
         let ready = false;
-        while (Date.now() - startWait < MAX_START_WAIT) {
-          const serverUp = await new Promise((res) => {
-            const req = http.get(`http://localhost:${entry.port}/api/health`, (resp) => {
-              resp.resume();
-              res(resp.statusCode >= 200 && resp.statusCode < 500);
-            });
-            req.on('error', () => res(false));
-            req.setTimeout(2000, () => { req.destroy(); res(false); });
-          });
-          if (serverUp) {
-            ready = true;
-            break;
-          }
+        while (Date.now() - startWait < 30000) {
+          if (await checkHealth(entry.port)) { ready = true; break; }
           await new Promise((r) => setTimeout(r, 500));
         }
-        if (ready) {
-          const runningClientPort = entry.port + CLIENT_PORT_OFFSET;
-          console.log(`Repo ${entry.name} is now running on :${runningClientPort}`);
-          if (opts.browser) {
-            openBrowser(`http://localhost:${runningClientPort}`);
-          }
-          process.exit(0);
+        if (!ready) {
+          console.log('Timed out waiting for repo to start. Killing stale process and restarting...');
+          await killStaleProcess(entry);
         }
-        // Timed out waiting — kill the stale process before restarting
-        console.log('Timed out waiting for repo to start. Killing stale process and restarting...');
-        try { process.kill(entry.pid, 'SIGTERM'); } catch { /* ignore */ }
-        try { await updateRepoStatus(entry.id, 'stopped', null); } catch { /* non-fatal */ }
-      } else {
-        // status === 'running' — verify HTTP server is actually responding
-        const serverUp = await new Promise((res) => {
-          const req = http.get(`http://localhost:${entry.port}/api/health`, (resp) => {
-            resp.resume();
-            res(resp.statusCode >= 200 && resp.statusCode < 500);
-          });
-          req.on('error', () => res(false));
-          req.setTimeout(2000, () => { req.destroy(); res(false); });
-        });
-
-        if (serverUp) {
-          const runningClientPort = entry.port + CLIENT_PORT_OFFSET;
-          console.log(`Repo ${entry.name} is already running on :${runningClientPort}`);
-          if (opts.browser) {
-            openBrowser(`http://localhost:${runningClientPort}`);
-          }
-          process.exit(0);
-        }
-        // PID alive but server not responding — kill stale process before restart
-        console.log(`Repo ${entry.name}: PID alive but server not responding. Killing stale process...`);
-        try { process.kill(entry.pid, 'SIGTERM'); } catch { /* ignore */ }
-        try { await updateRepoStatus(entry.id, 'stopped', null); } catch { /* non-fatal */ }
       }
+      if (await checkHealth(entry.port)) {
+        const runningClientPort = entry.port + CLIENT_PORT_OFFSET;
+        console.log(`Repo ${entry.name} is now running on :${runningClientPort}`);
+        if (opts.browser) openBrowser(`http://localhost:${runningClientPort}`);
+        process.exit(0);
+      }
+    } else if (alive && entry.status === 'running') {
+      // Verify HTTP server is actually responding
+      if (await checkHealth(entry.port)) {
+        const runningClientPort = entry.port + CLIENT_PORT_OFFSET;
+        console.log(`Repo ${entry.name} is already running on :${runningClientPort}`);
+        if (opts.browser) openBrowser(`http://localhost:${runningClientPort}`);
+        process.exit(0);
+      }
+      // PID alive but server not responding — kill stale process before restart
+      console.log(`Repo ${entry.name}: PID alive but server not responding. Killing stale process...`);
+      await killStaleProcess(entry);
     }
+    // else: PID is stale — fall through to restart
   }
 
   // ── Dependency check ──
@@ -474,61 +446,25 @@ async function handleDefault() {
   // ── Poll for readiness, then update status and optionally open browser ──
   let shuttingDown = false;
   let worstExitCode = 0;
-  let statusUpdated = false;
 
   {
     const url = `http://localhost:${CLIENT_PORT}`;
-    const MAX_WAIT = 30000;
-    const POLL_INTERVAL = 500;
-    const startTime = Date.now();
-
-    function checkServerReady() {
-      return new Promise((resolve) => {
-        const req = http.get(`http://localhost:${SERVER_PORT}/api/health`, (res) => {
-          res.resume();
-          resolve(res.statusCode >= 200 && res.statusCode < 500);
-        });
-        req.on('error', () => resolve(false));
-        req.setTimeout(2000, () => { req.destroy(); resolve(false); });
-      });
-    }
-
-    function checkClientReady() {
-      return new Promise((resolve) => {
-        const req = http.get(`http://localhost:${CLIENT_PORT}/`, (res) => {
-          res.resume();
-          resolve(res.statusCode >= 200 && res.statusCode < 500);
-        });
-        req.on('error', () => resolve(false));
-        req.setTimeout(2000, () => { req.destroy(); resolve(false); });
-      });
-    }
 
     async function pollReady() {
       if (shuttingDown) return;
-      if (Date.now() - startTime > MAX_WAIT) return;
 
-      const [serverReady, clientReady] = await Promise.all([
-        checkServerReady(),
-        checkClientReady(),
-      ]);
-
-      if (serverReady && clientReady) {
+      // Wait for both server and client to respond
+      const ready = await waitForServerReady(SERVER_PORT, CLIENT_PORT, 30000);
+      if (ready && !shuttingDown) {
         // Update status to 'running' only after health check confirms readiness
-        if (!statusUpdated) {
-          statusUpdated = true;
-          try {
-            await updateRepoStatus(entry.id, 'running', process.pid);
-          } catch { /* non-fatal */ }
-          // Write PID file as fallback for `hermes-monitor stop` when hub is unreachable
-          writeRepoPid(entry.id, process.pid);
-        }
+        try {
+          await updateRepoStatus(entry.id, 'running', process.pid);
+        } catch { /* non-fatal */ }
+        // Write PID file as fallback for `hermes-monitor stop` when hub is unreachable
+        writeRepoPid(entry.id, process.pid);
         if (opts.browser) {
           openBrowser(url);
         }
-      } else {
-        const t = setTimeout(pollReady, POLL_INTERVAL);
-        t.unref();
       }
     }
 
@@ -537,16 +473,24 @@ async function handleDefault() {
   }
 
   // ── Graceful shutdown ──
-  async function shutdown() {
+  // NOTE: Signal handlers fire-and-forget async functions in Node.js.
+  // We use a synchronous HTTP request (execSync + curl) for the critical
+  // registry status update to ensure it completes before the process exits.
+  function shutdown() {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log('\nShutting down hermes-monitor...');
 
-    // Update hub status — use 'error' if a child exited with non-zero code
+    // Update hub status synchronously — use 'error' if a child exited with non-zero code
     const exitStatus = worstExitCode !== 0 ? 'error' : 'stopped';
     try {
-      await updateRepoStatus(entry.id, exitStatus, null);
-    } catch { /* non-fatal */ }
+      const body = JSON.stringify({ status: exitStatus, pid: null });
+      execSync(
+        `curl -s -X PATCH -H "Content-Type: application/json" -d '${body}' ` +
+        `"http://localhost:${HUB_PORT}/api/hub/repos/${encodeURIComponent(entry.id)}"`,
+        { timeout: 3000, stdio: 'ignore' }
+      );
+    } catch { /* non-fatal — hub may be unreachable */ }
 
     // Clean up repo PID file
     removeRepoPid(entry.id);
@@ -594,6 +538,59 @@ async function handleDefault() {
 // ────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────
+
+/**
+ * Check if an HTTP server is responding on the given port.
+ * @param {number} port
+ * @returns {Promise<boolean>}
+ */
+function checkHealth(port) {
+  return new Promise((resolve) => {
+    const req = http.get(`http://localhost:${port}/api/health`, (res) => {
+      res.resume();
+      resolve(res.statusCode >= 200 && res.statusCode < 500);
+    });
+    req.on('error', () => resolve(false));
+    req.setTimeout(2000, () => { req.destroy(); resolve(false); });
+  });
+}
+
+/**
+ * Wait for a server to become ready (both server and client ports).
+ * @param {number} serverPort
+ * @param {number} clientPort
+ * @param {number} [timeoutMs=30000]
+ * @returns {Promise<boolean>}
+ */
+async function waitForServerReady(serverPort, clientPort, timeoutMs = 30000) {
+  const start = Date.now();
+  const POLL_INTERVAL = 500;
+  while (Date.now() - start < timeoutMs) {
+    const [serverReady, clientReady] = await Promise.all([
+      checkHealth(serverPort),
+      new Promise((resolve) => {
+        const req = http.get(`http://localhost:${clientPort}/`, (res) => {
+          res.resume();
+          resolve(res.statusCode >= 200 && res.statusCode < 500);
+        });
+        req.on('error', () => resolve(false));
+        req.setTimeout(2000, () => { req.destroy(); resolve(false); });
+      }),
+    ]);
+    if (serverReady && clientReady) return true;
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+  }
+  return false;
+}
+
+/**
+ * Kill a stale process and update its registry status to 'stopped'.
+ * @param {{ id: string, pid: number }} entry
+ */
+async function killStaleProcess(entry) {
+  try { process.kill(entry.pid, 'SIGTERM'); } catch { /* ignore */ }
+  try { await updateRepoStatus(entry.id, 'stopped', null); } catch { /* non-fatal */ }
+}
 
 /**
  * Ensure the hub manager is running. Starts it if needed.

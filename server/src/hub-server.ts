@@ -6,76 +6,79 @@
  *   - Registry API at /api/hub/repos (CRUD for registered repos)
  *   - Health check at /api/health
  *   - Landing page listing registered repos
- *   - PID file management (~/.hermes/hub.pid)
  *
  * Each per-repo instance runs its own server+client process on its assigned
  * port. The hub is a coordination point — it tracks repos, assigns ports,
  * and provides a landing page with links to each repo's dashboard.
  *
- * Started by the CLI via: tsx server/src/hub-server.ts
+ * This module exports a factory function `createHubApp()` so the app can be
+ * tested without side effects. The CLI entry point is hub-start.ts.
  */
 import express from 'express';
 import { createServer } from 'http';
-import { join } from 'path';
-import { writeFileSync, unlinkSync, mkdirSync } from 'fs';
-import { homedir } from 'os';
+import type { Server } from 'http';
 import { Registry } from './manager/registry.js';
 import { createRegistryApiRouter } from './manager/registry-api.js';
+import { CLIENT_PORT_OFFSET } from './constants.js';
 
-const HUB_PORT = parseInt(process.env.HUB_PORT || '3000', 10);
-const HERMES_DIR = join(homedir(), '.hermes');
-const PID_FILE = join(HERMES_DIR, 'hub.pid');
+// ── Helpers ──
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+}
 
 /**
- * Client port offset — the Vite dev server (or vite preview) runs on
- * SERVER_PORT + CLIENT_PORT_OFFSET. The canonical value lives in
- * bin/lib/hub.js (exported as CLIENT_PORT_OFFSET). Keep in sync.
+ * Create the hub Express app, HTTP server, and registry.
+ * Does NOT start listening — call server.listen() yourself.
  */
-const CLIENT_PORT_OFFSET = 1000;
+export function createHubApp(dbPath?: string): {
+  app: express.Express;
+  server: Server;
+  registry: Registry;
+} {
+  const registry = new Registry(dbPath);
+  const app = express();
+  const server = createServer(app);
 
-const registry = new Registry();
-const app = express();
-const server = createServer(app);
+  // ── JSON body parsing ──
+  app.use(express.json());
 
-// ── JSON body parsing ──
-app.use(express.json());
+  // ── Health check ──
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', service: 'hermes-hub' });
+  });
 
-// ── Health check ──
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'hermes-hub' });
-});
+  // ── Registry API (CRUD for repos) ──
+  app.use('/api', createRegistryApiRouter(registry));
 
-// ── Registry API (CRUD for repos) ──
-app.use('/api', createRegistryApiRouter(registry));
-
-// ── Landing page (HTML) ──
-app.get('/', (_req, res) => {
-  const repos = registry.list();
-  const repoCards = repos.length === 0
-    ? '<p class="empty">No repositories registered. Run <code>hermes-monitor</code> in a git repo to add one.</p>'
-    : repos.map((r) => {
-        const statusClass = r.status === 'running' ? 'running' : 'stopped';
-        const statusDot = r.status === 'running' ? '●' : '○';
-        const clientPort = r.port + CLIENT_PORT_OFFSET;
-        const link = r.status === 'running'
-          ? `<a href="http://localhost:${clientPort}" class="repo-link">Open Dashboard →</a>`
-          : '<span class="repo-offline">Not running</span>';
-        return `
-          <div class="repo-card ${statusClass}">
-            <div class="repo-header">
-              <span class="repo-status">${statusDot}</span>
-              <span class="repo-name">${escapeHtml(r.name)}</span>
+  // ── Landing page (HTML) ──
+  app.get('/', (_req, res) => {
+    const repos = registry.list();
+    const repoCards = repos.length === 0
+      ? '<p class="empty">No repositories registered. Run <code>hermes-monitor</code> in a git repo to add one.</p>'
+      : repos.map((r) => {
+          const statusClass = r.status === 'running' ? 'running' : 'stopped';
+          const statusDot = r.status === 'running' ? '●' : '○';
+          const clientPort = r.port + CLIENT_PORT_OFFSET;
+          const link = r.status === 'running'
+            ? `<a href="http://localhost:${clientPort}" class="repo-link">Open Dashboard →</a>`
+            : '<span class="repo-offline">Not running</span>';
+          return `
+            <div class="repo-card ${statusClass}">
+              <div class="repo-header">
+                <span class="repo-status">${statusDot}</span>
+                <span class="repo-name">${escapeHtml(r.name)}</span>
+              </div>
+              <div class="repo-path">${escapeHtml(r.path)}</div>
+              <div class="repo-footer">
+                <span class="repo-port">:${clientPort}</span>
+                ${link}
+              </div>
             </div>
-            <div class="repo-path">${escapeHtml(r.path)}</div>
-            <div class="repo-footer">
-              <span class="repo-port">:${clientPort}</span>
-              ${link}
-            </div>
-          </div>
-        `;
-      }).join('');
+          `;
+        }).join('');
 
-  res.type('html').send(`<!DOCTYPE html>
+    res.type('html').send(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -126,39 +129,12 @@ app.get('/', (_req, res) => {
   <p class="footer">hermes-monitor hub • ${repos.length} repo${repos.length === 1 ? '' : 's'} registered</p>
 </body>
 </html>`);
-});
+  });
 
-// ── 404 fallback ──
-app.use((_req, res) => {
-  res.status(404).json({ error: 'Not found' });
-});
+  // ── 404 fallback ──
+  app.use((_req: express.Request, res: express.Response) => {
+    res.status(404).json({ error: 'Not found' });
+  });
 
-// ── Cleanup on shutdown ──
-function shutdown() {
-  console.log('\nShutting down Hermes Hub...');
-  try { unlinkSync(PID_FILE); } catch { /* ignore */ }
-  registry.close();
-  server.close();
-  process.exit(0);
+  return { app, server, registry };
 }
-
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
-
-// ── Start ──
-server.listen(HUB_PORT, '127.0.0.1', () => {
-  // Write PID file only after the port is confirmed bound.
-  // This prevents leaving a stale PID file if the port is already in use.
-  mkdirSync(HERMES_DIR, { recursive: true });
-  writeFileSync(PID_FILE, String(process.pid));
-  console.log(`Hermes Hub listening on :${HUB_PORT}`);
-  console.log(`PID: ${process.pid}`);
-});
-
-// ── Helpers ──
-function escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
-}
-
-export { app, server, registry };

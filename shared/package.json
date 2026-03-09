@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./types": "./types.ts"
+    "./types": "./types.ts",
+    "./constants.json": "./constants.json"
   }
 }

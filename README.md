@@ -189,7 +189,9 @@ When an issue moves to `in_progress`:
 ```
 server/src/
   index.ts              Entry point — wires everything together
-  hub-server.ts         Hub manager entry point (multi-repo mode)
+  hub-server.ts         Hub app factory (createHubApp) — no side effects
+  hub-start.ts          Hub CLI entry point — starts server, writes PID
+  constants.ts          Shared port constants (mirrors shared/constants.json)
   issue-manager.ts      Issue lifecycle, status transitions, auto-resume
   terminal-manager.ts   PTY session management (node-pty wrapper)
   worktree-manager.ts   Git worktree creation/cleanup

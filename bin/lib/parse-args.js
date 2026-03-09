@@ -161,7 +161,9 @@ Examples:
   hermes-monitor --remove <id>            # unregister a repo
   hermes-monitor stop                     # stop hub + all repos
   hermes-monitor --repo ~/projects/myapp  # explicit repo
+  hermes-monitor --build --no-browser     # production mode, no browser
   hermes-monitor --port 5000              # custom port
+  hermes-monitor --server-port 8000       # custom server port
   hermes-monitor version                  # show version info
   hermes-monitor update                   # self-update
 `;

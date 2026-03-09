@@ -7,6 +7,17 @@ import { tmpdir } from 'os';
 
 const require = createRequire(import.meta.url);
 
+// ── Verify shared constants stay in sync ──
+
+describe('shared constants sync', () => {
+  it('hub.js CLIENT_PORT_OFFSET matches shared/constants.json', () => {
+    const hub = require('../../bin/lib/hub');
+    const sharedConstants = require('../../shared/constants.json');
+
+    expect(hub.CLIENT_PORT_OFFSET).toBe(sharedConstants.CLIENT_PORT_OFFSET);
+  });
+});
+
 // We need to test the hub.js module, but it has hardcoded paths.
 // We'll test the functions that can be tested in isolation.
 // For functions that need HTTP, we'll spin up a tiny test server.
@@ -264,8 +275,11 @@ describe('hub.js', () => {
     const { unregisterRepo } = require('../../bin/lib/hub');
     let server: http.Server;
     let serverPort: number;
+    const originalError = console.error;
 
     beforeEach(async () => {
+      // Suppress expected stderr output from error paths
+      console.error = vi.fn();
       await new Promise<void>((resolve) => {
         server = http.createServer((req, res) => {
           if (req.method === 'DELETE' && req.url === '/api/hub/repos/valid-id') {
@@ -290,6 +304,7 @@ describe('hub.js', () => {
     });
 
     afterEach(async () => {
+      console.error = originalError;
       await new Promise<void>((resolve) => {
         server.close(() => resolve());
       });
