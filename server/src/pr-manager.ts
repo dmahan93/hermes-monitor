@@ -280,6 +280,9 @@ export class PRManager {
     pr.status = 'reviewing';
     pr.updatedAt = Date.now();
 
+    // Sync issue.terminalId so the UI status indicator maps to the reviewer terminal
+    this.issueManager?.updateTerminalId(pr.issueId, terminal.id);
+
     this.persist(pr);
     this.emit('pr:updated', pr);
     return pr;
@@ -296,6 +299,14 @@ export class PRManager {
     // External kills (user via UI, killAll) should still trigger cleanup here.
     if (this.intentionallyKilledTerminals.has(terminalId)) {
       this.intentionallyKilledTerminals.delete(terminalId);
+      return;
+    }
+
+    // Terminal was killed externally (e.g., by IssueManager during a status
+    // transition away from review). When kill() is called, the terminal is
+    // removed from the TerminalManager map before the exit event fires.
+    // Skip cleanup — the caller handles the transition.
+    if (!this.terminalManager.get(terminalId)) {
       return;
     }
 
@@ -364,6 +375,9 @@ export class PRManager {
           this.persist(pr);
           this.emit('pr:updated', pr);
 
+          // Also clear the issue's terminal reference
+          this.issueManager?.updateTerminalId(pr.issueId, null);
+
           // Schedule relaunch after delay
           const existingTimer = this.reviewerRelaunchTimers.get(pr.id);
           if (existingTimer) clearTimeout(existingTimer);
@@ -399,6 +413,9 @@ export class PRManager {
       pr.reviewerTerminalId = null;
     }
 
+    // Clear the issue's terminal reference — reviewer is no longer active
+    this.issueManager?.updateTerminalId(pr.issueId, null);
+
     pr.updatedAt = Date.now();
     this.persist(pr);
     this.emit('pr:updated', pr);
@@ -432,6 +449,12 @@ export class PRManager {
   private handleConflictFixerExit(terminalId: string): void {
     this.conflictFixerTerminals.delete(terminalId);
 
+    // Terminal was killed externally (e.g., by IssueManager during a status
+    // transition away from review). Skip cleanup — the caller handles it.
+    if (!this.terminalManager.get(terminalId)) {
+      return;
+    }
+
     // Find the PR this conflict fixer belongs to
     const pr = Array.from(this.prs.values()).find(
       (p) => p.reviewerTerminalId === terminalId
@@ -452,6 +475,9 @@ export class PRManager {
     pr.updatedAt = Date.now();
     this.persist(pr);
     this.emit('pr:updated', pr);
+
+    // Clear the issue's terminal reference — conflict fixer is no longer active
+    this.issueManager?.updateTerminalId(pr.issueId, null);
 
     // Remove the terminal after a short delay so the user can see the final output,
     // then emit pr:updated again to trigger a terminal list refetch on the client
@@ -660,6 +686,10 @@ export class PRManager {
     pr.status = 'open';
     pr.reviewerTerminalId = terminal.id;
     pr.updatedAt = Date.now();
+
+    // Sync issue.terminalId so the UI status indicator maps to the conflict fixer terminal
+    this.issueManager?.updateTerminalId(pr.issueId, terminal.id);
+
     this.persist(pr);
     this.emit('pr:updated', pr);
     return { pr };
@@ -899,6 +929,9 @@ export class PRManager {
       this.intentionallyKilledTerminals.add(pr.reviewerTerminalId);
       this.terminalManager.kill(pr.reviewerTerminalId);
       pr.reviewerTerminalId = null;
+
+      // Clear the issue's terminal reference
+      this.issueManager?.updateTerminalId(pr.issueId, null);
     }
 
     // Cancel any pending auto-relaunch

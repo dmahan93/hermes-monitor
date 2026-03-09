@@ -117,9 +117,9 @@ export function IssueCard({ issue, index, agents, onDelete, onEdit, onTerminalCl
                   e.stopPropagation();
                   onTerminalClick?.(issue.id);
                 }}
-                title="Open terminal"
+                title={issue.status === 'review' ? 'View reviewer terminal' : 'Open terminal'}
               >
-                ▸ active
+                {issue.status === 'review' ? '⚖ reviewing' : '▸ active'}
               </button>
             )}
             {issue.branch && (

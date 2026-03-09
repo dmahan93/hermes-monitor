@@ -188,7 +188,7 @@ export function IssueDetail({
                   className="issue-detail-value issue-detail-terminal-link"
                   onClick={() => onTerminalClick?.(issue.id)}
                 >
-                  ▸ active — click to view
+                  {issue.status === 'review' ? '⚖ reviewer active — click to view' : '▸ active — click to view'}
                 </button>
               </div>
             )}

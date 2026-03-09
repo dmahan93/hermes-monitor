@@ -177,6 +177,18 @@ describe('IssueDetail', () => {
     expect(select2.className).toContain('issue-status-done');
   });
 
+  it('shows reviewer terminal link when issue is in review with terminal', () => {
+    const reviewIssue = { ...mockIssue, terminalId: 'term-reviewer', status: 'review' as const };
+    render(<IssueDetail {...defaultProps} issue={reviewIssue} />);
+    expect(screen.getByText(/reviewer active/)).toBeInTheDocument();
+  });
+
+  it('shows standard terminal link when issue is in_progress with terminal', () => {
+    const activeIssue = { ...mockIssue, terminalId: 'term-1', status: 'in_progress' as const };
+    render(<IssueDetail {...defaultProps} issue={activeIssue} />);
+    expect(screen.getByText(/▸ active — click to view/)).toBeInTheDocument();
+  });
+
   it('does not render old inline status buttons', () => {
     render(<IssueDetail {...defaultProps} />);
     // The old implementation rendered buttons like "→ BACKLOG", "→ TODO", etc.
