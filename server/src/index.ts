@@ -23,6 +23,14 @@ import { enrichPRWithScreenshots } from './screenshot-utils.js';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
 
+// When HERMES_REPO_PATH is set, we're running as a per-repo instance launched
+// by the CLI. In that mode, the CLI manages process lifecycle — the Spawner
+// should NOT try to start/stop/health-check other repo instances. Without this
+// guard, each per-repo server's Spawner.startAll() corrupts the registry state
+// of sibling repos (sets them to 'starting' with null PID, then 'error' when
+// the redundant spawn fails due to port conflicts).
+const isPerRepoInstance = !!process.env.HERMES_REPO_PATH;
+
 const app = express();
 const server = createServer(app);
 
@@ -233,15 +241,23 @@ const shutdown = () => {
   issueManager.clearResumeTimers();
   prManager.clearAllPendingTimers();
   terminalManager.killAll();
-  // Stop all spawned repo instances, then close everything
-  spawner.stopAll()
-    .catch((err) => console.error('[spawner] Error stopping instances:', err))
-    .finally(() => {
-      store.close();
-      registry.close();
-      server.close();
-      process.exit(0);
-    });
+
+  const closeAll = () => {
+    store.close();
+    registry.close();
+    server.close();
+    process.exit(0);
+  };
+
+  // Stop all spawned repo instances, then close everything.
+  // Skip in per-repo mode — there are no spawner-managed children to stop.
+  if (!isPerRepoInstance) {
+    spawner.stopAll()
+      .catch((err) => console.error('[spawner] Error stopping instances:', err))
+      .finally(closeAll);
+  } else {
+    closeAll();
+  }
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
@@ -249,17 +265,21 @@ process.on('SIGTERM', shutdown);
 server.listen(PORT, () => {
   console.log(`Hermes Monitor server listening on :${PORT}`);
 
-  // Start all registered repo instances and begin health checking
-  spawner.startAll().then(() => {
-    const running = registry.list().filter(r => r.status === 'running').length;
-    if (running > 0) {
-      console.log(`[spawner] Started ${running} repo instance(s)`);
-    }
-    spawner.startHealthCheck();
-  }).catch((err) => {
-    console.error('[spawner] Failed to start instances on boot:', err);
-    spawner.startHealthCheck();
-  });
+  // Start all registered repo instances and begin health checking.
+  // Skip in per-repo mode — the CLI manages process lifecycle; the Spawner
+  // would interfere with sibling instances (corrupt their registry state).
+  if (!isPerRepoInstance) {
+    spawner.startAll().then(() => {
+      const running = registry.list().filter(r => r.status === 'running').length;
+      if (running > 0) {
+        console.log(`[spawner] Started ${running} repo instance(s)`);
+      }
+      spawner.startHealthCheck();
+    }).catch((err) => {
+      console.error('[spawner] Failed to start instances on boot:', err);
+      spawner.startHealthCheck();
+    });
+  }
 });
 
 export { app, server, terminalManager, issueManager, worktreeManager, prManager, store, registry, spawner };
