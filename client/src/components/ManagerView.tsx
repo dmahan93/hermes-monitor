@@ -63,8 +63,12 @@ const PREVIEW_LINES = 3;
 const MANAGER_TERMINAL_STORAGE_KEY = 'hermes:managerTerminalId';
 const MANAGER_TERMINAL_HEIGHT_KEY = 'hermes:managerTerminalHeight';
 const DEFAULT_TERMINAL_HEIGHT = 320;
-const MIN_TERMINAL_HEIGHT = 120;
-const MAX_TERMINAL_HEIGHT = 800;
+const MIN_TERMINAL_HEIGHT = 100;
+
+/** Compute the maximum allowed terminal height as ~80% of the viewport. */
+function getMaxTerminalHeight(): number {
+  return Math.max(MIN_TERMINAL_HEIGHT, Math.floor(window.innerHeight * 0.8));
+}
 const DEFAULT_MANAGER_TERMINAL_AGENT: ManagerTerminalAgent = 'hermes';
 const MANAGER_TERMINAL_COMMANDS: Record<ManagerTerminalAgent, string> = {
   hermes: 'hermes',
@@ -130,7 +134,7 @@ export function ManagerView({
   const [terminalHeight, setTerminalHeight] = useState(() => {
     const saved = localStorage.getItem(MANAGER_TERMINAL_HEIGHT_KEY);
     const parsed = saved ? parseInt(saved, 10) : NaN;
-    return Number.isNaN(parsed) ? DEFAULT_TERMINAL_HEIGHT : Math.max(MIN_TERMINAL_HEIGHT, Math.min(MAX_TERMINAL_HEIGHT, parsed));
+    return Number.isNaN(parsed) ? DEFAULT_TERMINAL_HEIGHT : Math.max(MIN_TERMINAL_HEIGHT, Math.min(getMaxTerminalHeight(), parsed));
   });
   const managerInitRef = useRef(false);
   const managerCreatingRef = useRef(false);
@@ -542,7 +546,8 @@ export function ManagerView({
       if (!resizingRef.current) return;
       // Dragging up increases height (y decreases)
       const delta = resizeStartRef.current.y - moveEvent.clientY;
-      const newHeight = Math.max(MIN_TERMINAL_HEIGHT, Math.min(MAX_TERMINAL_HEIGHT, resizeStartRef.current.height + delta));
+      const maxHeight = getMaxTerminalHeight();
+      const newHeight = Math.max(MIN_TERMINAL_HEIGHT, Math.min(maxHeight, resizeStartRef.current.height + delta));
       setTerminalHeight(newHeight);
     };
 
@@ -809,6 +814,9 @@ export function ManagerView({
             {/* Resize Handle */}
             <div
               className="manager-terminal-resize-handle"
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="Resize terminal panel"
               onMouseDown={handleResizeStart}
               title="Drag to resize"
             />
